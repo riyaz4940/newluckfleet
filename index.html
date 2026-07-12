@@ -497,8 +497,15 @@
 
     /* Responsive */
     @media (max-width:768px) {
-      .sidebar { transform:translateX(-100%); position:fixed; width:280px; height:100%; box-shadow:2px 0 12px rgba(0,0,0,0.15); }
+      .sidebar { transform:translateX(-100%); position:fixed; width:280px; height:100%; box-shadow:2px 0 12px rgba(0,0,0,0.15); z-index:1500; }
       .sidebar.open { transform:translateX(0); }
+      .sidebar-backdrop {
+        display:none;
+        position:fixed; top:0; left:0; width:100%; height:100%;
+        background:rgba(0,0,0,0.45);
+        z-index:1400;
+      }
+      .sidebar-backdrop.visible { display:block; }
       .menu-toggle { display:flex; }
       .header { padding:0.5rem 1rem; }
       .header-search .search-input { width:140px; }
@@ -545,6 +552,9 @@
         </button>
       </div>
     </aside>
+
+    <!-- SIDEBAR BACKDROP (mobile only — tap to close) -->
+    <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
 
     <!-- MAIN CONTENT -->
     <main class="main-content">
@@ -647,7 +657,7 @@
     // ==============================================================
     const API = {
       // ✅ YOUR APPS SCRIPT URL (already set)
-      baseUrl: 'https://script.google.com/macros/s/AKfycbytXJA9u12po6-D3RNYzXKMxZp4m2j5CYuGxc_clEcgWVLe9A0s9HbjalWJl4Z5PuBX/exec',
+      baseUrl: 'https://script.google.com/macros/s/AKfycby7-1mFV-fdJS1jBV29ENMFQBZFC7xEcYBgSgq_8fqvy8vFdXaWnXGKlGJiS7BGgXMSOA/exec',
 
       async request(action, data = null) {
         const url = new URL(this.baseUrl);
