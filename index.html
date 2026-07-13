@@ -9,9 +9,14 @@
   <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
 
+  <!-- Firebase SDK (v9 compat) – Auth + Firestore only -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+
   <style>
     /* ==============================================================
-       COMPLETE STYLES (all in one)
+       COMPLETE STYLES
        ============================================================== */
     :root {
       --primary-dark: #0b1e33;
@@ -265,6 +270,20 @@
     legend { font-weight:600; padding:0 0.5rem; }
     .required { color:var(--danger); }
 
+    .radio-picker { display:flex; flex-direction:column; gap:0.75rem; margin:0.5rem 0; }
+    .radio-picker label {
+      display:flex; align-items:center; gap:0.75rem;
+      padding:0.75rem 1rem;
+      border:1px solid var(--gray);
+      border-radius:var(--radius);
+      cursor:pointer;
+      font-size:1rem;
+      transition:0.2s;
+    }
+    .radio-picker label:hover { border-color:var(--accent); background:#f8fafc; }
+    .radio-picker input[type="radio"] { width:20px; height:20px; accent-color:var(--primary-blue); flex-shrink:0; }
+    .radio-picker input[type="radio"]:checked + span { font-weight:600; color:var(--primary-blue); }
+
     .btn {
       padding:0.5rem 1.25rem;
       border-radius:var(--radius);
@@ -346,9 +365,9 @@
     .modal {
       background:white;
       border-radius:var(--radius);
-      max-width:700px;
+      max-width:760px;
       width:100%;
-      max-height:90vh;
+      max-height:92vh;
       overflow-y:auto;
       box-shadow:0 10px 40px rgba(0,0,0,0.2);
       animation:slideUp 0.3s;
@@ -452,9 +471,7 @@
     .vehicle-photo-hero { width:100%; max-height:220px; object-fit:cover; border-radius:var(--radius); margin-bottom:0.75rem; background:var(--light-gray); }
     .vehicle-thumb { width:44px; height:32px; object-fit:cover; border-radius:4px; background:var(--light-gray); vertical-align:middle; }
 
-    /* Worker task cards — no dashboard/stat summary, straight to the work with
-       a large, recognizable vehicle photo so the worker knows exactly which
-       vehicle to walk up to. */
+    /* Worker task cards */
     .worker-task-list { display:flex; flex-direction:column; gap:1rem; }
     .worker-task-card { background:white; border-radius:var(--radius); box-shadow:var(--shadow); padding:1rem; display:flex; gap:1.25rem; align-items:center; flex-wrap:wrap; }
     .worker-task-card .task-vehicle-photo { width:160px; height:110px; object-fit:cover; border-radius:var(--radius); background:var(--light-gray); flex-shrink:0; }
@@ -514,10 +531,23 @@
       .page-content { padding:1rem; }
       .breadcrumb { padding:0.5rem 1rem; }
       .form-row { grid-template-columns:1fr; }
-      .modal { max-width:95%; }
+      .modal { max-width:95%; max-height:92vh; }
+      .modal-body { padding:1rem; }
+      .checkbox-group { display:flex; flex-direction:column; gap:0.6rem; }
+      .checkbox-group label { font-size:0.95rem; }
+      fieldset { padding:0.75rem; }
+      .btn { padding:0.6rem 1rem; }
       .dashboard-stats { grid-template-columns:repeat(2,1fr); }
       .photo-grid { grid-template-columns:1fr; }
       .work-log-meta { flex-direction:column; gap:0.25rem; }
+      .worker-task-card { flex-direction:column; align-items:stretch; }
+      .worker-task-card .task-vehicle-photo,
+      .worker-task-card .task-vehicle-photo-placeholder { width:100%; height:160px; }
+      .worker-task-card .task-actions { flex-direction:column; }
+      .worker-task-card .task-actions .btn { width:100%; justify-content:center; }
+      .table-container { overflow-x:auto; }
+      table { font-size:0.8rem; }
+      th, td { padding:0.5rem 0.6rem; }
     }
     @media (max-width:480px) {
       .dashboard-stats { grid-template-columns:1fr; }
@@ -536,35 +566,22 @@
        APPLICATION SHELL
        ============================================================== -->
   <div id="app" class="app">
-
-    <!-- SIDEBAR -->
-    <aside id="sidebar" class="sidebar" role="navigation" aria-label="Main navigation">
+    <aside id="sidebar" class="sidebar">
       <div class="sidebar-brand">
         <div class="sidebar-logo">NL</div>
         <span class="sidebar-brand-text">Fleet ERP</span>
       </div>
       <nav class="sidebar-nav" id="sidebarNav"></nav>
       <div class="sidebar-footer">
-        <span class="sidebar-version">v3.1</span>
-        <button id="logoutBtn" class="sidebar-logout" aria-label="Logout">
-          <span class="material-icons">logout</span>
-          <span>Logout</span>
-        </button>
+        <span class="sidebar-version">v4.0 Hybrid</span>
+        <button id="logoutBtn" class="sidebar-logout"><span class="material-icons">logout</span> <span>Logout</span></button>
       </div>
     </aside>
-
-    <!-- SIDEBAR BACKDROP (mobile only — tap to close) -->
     <div id="sidebarBackdrop" class="sidebar-backdrop"></div>
-
-    <!-- MAIN CONTENT -->
     <main class="main-content">
-
-      <!-- HEADER -->
       <header class="header">
         <div class="header-left">
-          <button id="menuToggle" class="menu-toggle" aria-label="Toggle sidebar">
-            <span class="material-icons">menu</span>
-          </button>
+          <button id="menuToggle" class="menu-toggle"><span class="material-icons">menu</span></button>
           <h1 id="pageTitle" class="page-title">Dashboard</h1>
         </div>
         <div class="header-right">
@@ -572,10 +589,7 @@
             <span class="material-icons search-icon">search</span>
             <input type="text" id="globalSearch" placeholder="Search..." class="search-input" />
           </div>
-          <button class="header-btn" id="notifBtn" aria-label="Notifications">
-            <span class="material-icons">notifications</span>
-            <span class="notif-badge" id="notifBadge">0</span>
-          </button>
+          <button class="header-btn" id="notifBtn"><span class="material-icons">notifications</span><span class="notif-badge" id="notifBadge">0</span></button>
           <div class="user-profile">
             <span class="user-avatar" id="userAvatar">JD</span>
             <span class="user-name" id="userName">John Doe</span>
@@ -584,34 +598,20 @@
           </div>
         </div>
       </header>
-
-      <!-- BREADCRUMB -->
-      <nav class="breadcrumb" id="breadcrumb">
-        <span>Home</span> / <span id="breadcrumbPage">Dashboard</span>
-      </nav>
-
-      <!-- PAGE CONTENT -->
+      <nav class="breadcrumb"><span>Home</span> / <span id="breadcrumbPage">Dashboard</span></nav>
       <section id="pageContent" class="page-content"></section>
-
-      <!-- FOOTER -->
       <footer class="app-footer">
         <span>© 2026 NewLuck Fleet ERP. All rights reserved.</span>
         <span class="footer-divider">•</span>
         <span class="footer-secure"><span class="material-icons">lock</span> Encrypted Connection</span>
       </footer>
-
     </main>
   </div>
 
-  <!-- MODAL -->
-  <div id="modalOverlay" class="modal-overlay" style="display:none;" aria-modal="true" role="dialog">
+  <!-- MODALS, TOAST, LOADER -->
+  <div id="modalOverlay" class="modal-overlay" style="display:none;">
     <div class="modal">
-      <div class="modal-header">
-        <h2 id="modalTitle" class="modal-title">Modal</h2>
-        <button id="modalClose" class="modal-close" aria-label="Close">
-          <span class="material-icons">close</span>
-        </button>
-      </div>
+      <div class="modal-header"><h2 id="modalTitle" class="modal-title">Modal</h2><button id="modalClose" class="modal-close"><span class="material-icons">close</span></button></div>
       <div class="modal-body" id="modalBody"></div>
       <div class="modal-footer" id="modalFooter">
         <button class="btn btn-secondary" id="modalCancel">Cancel</button>
@@ -619,27 +619,13 @@
       </div>
     </div>
   </div>
-
-  <!-- TOAST -->
-  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
-
-  <!-- LOADER -->
+  <div id="toastContainer" class="toast-container"></div>
   <div id="loadingOverlay" class="loading-overlay" style="display:none;">
-    <div class="loading-spinner">
-      <div class="spinner-ring"></div>
-      <span class="loading-text">Loading...</span>
-    </div>
+    <div class="loading-spinner"><div class="spinner-ring"></div><span class="loading-text">Loading...</span></div>
   </div>
-
-  <!-- CONFIRM DIALOG -->
   <div id="confirmDialog" class="modal-overlay" style="display:none;">
     <div class="modal" style="max-width:400px;">
-      <div class="modal-header">
-        <h2 id="confirmTitle" class="modal-title">Confirm</h2>
-        <button id="confirmClose" class="modal-close" aria-label="Close">
-          <span class="material-icons">close</span>
-        </button>
-      </div>
+      <div class="modal-header"><h2 id="confirmTitle" class="modal-title">Confirm</h2><button id="confirmClose" class="modal-close"><span class="material-icons">close</span></button></div>
       <div class="modal-body" id="confirmBody">Are you sure?</div>
       <div class="modal-footer">
         <button class="btn btn-secondary" id="confirmCancel">Cancel</button>
@@ -649,104 +635,386 @@
   </div>
 
   <!-- ==============================================================
-       JAVASCRIPT – COMPLETE APPLICATION
+       JAVASCRIPT – COMPLETE HYBRID (Firebase + Apps Script)
        ============================================================== -->
   <script>
     // ==============================================================
-    // 1. API LAYER – CONNECTED TO YOUR APPS SCRIPT
+    // 1. FIREBASE CONFIG & INIT
+    // ==============================================================
+    const firebaseConfig = {
+      apiKey: "AIzaSyBfPC98mYVBfcMCPtMl-vKYnoblA8-ykcc",
+      authDomain: "newlucherp.firebaseapp.com",
+      projectId: "newlucherp",
+      storageBucket: "newlucherp.firebasestorage.app",
+      messagingSenderId: "247759020361",
+      appId: "1:247759020361:web:f4cc56611e35331878fa98"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    db.enablePersistence({ synchronizeTabs: true }).catch(() => {});
+
+    // ==============================================================
+    // 2. APPS SCRIPT – ONLY FOR PHOTO UPLOADS
     // ==============================================================
     const API = {
-      // ✅ YOUR APPS SCRIPT URL (already set)
-      baseUrl: 'https://script.google.com/macros/s/AKfycby7-1mFV-fdJS1jBV29ENMFQBZFC7xEcYBgSgq_8fqvy8vFdXaWnXGKlGJiS7BGgXMSOA/exec',
-
-      async request(action, data = null) {
-        const url = new URL(this.baseUrl);
-        url.searchParams.append('action', action);
-        if (data) {
-          for (let key in data) {
-            if (data[key] !== undefined && data[key] !== null) {
-              url.searchParams.append(key, data[key]);
-            }
-          }
-        }
-        try {
-          const response = await fetch(url.toString(), { method: 'GET' });
-          const result = await response.json();
-          if (result.error) throw new Error(result.error);
-          return result;
-        } catch (err) {
-          console.error('API Error:', err);
-          throw err;
-        }
-      },
-
-      // Used for photo uploads — base64 image data is too large for a GET
-      // URL, so this POSTs a JSON body instead. Content-Type is deliberately
-      // "text/plain" (not "application/json"): Apps Script web apps don't
-      // handle CORS preflight (OPTIONS) requests, and text/plain is a "simple"
-      // content type that browsers send without a preflight. The body is
-      // still valid JSON — Code.gs parses it either way.
+      // ⚠️ REPLACE THIS WITH YOUR ACTUAL APPS SCRIPT WEB APP URL
+      baseUrl: 'YOUR_APPS_SCRIPT_URL',
       async upload(action, data) {
-        try {
-          const response = await fetch(this.baseUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify({ action, ...data })
-          });
-          const result = await response.json();
-          if (result.error) throw new Error(result.error);
-          return result;
-        } catch (err) {
-          console.error('API Upload Error:', err);
-          throw err;
-        }
+        const response = await fetch(this.baseUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action, ...data })
+        });
+        const result = await response.json();
+        if (result.error) throw new Error(result.error);
+        return result;
       }
     };
 
     // ==============================================================
-    // 2. UTILITY HELPERS
+    // 3. FIRESTORE API – ALL DATA OPERATIONS
     // ==============================================================
+    const FireAPI = {
+      // ---------- AUTH ----------
+      async login(username, password) {
+        const email = username + '@newluck.erp';
+        const cred = await auth.signInWithEmailAndPassword(email, password);
+        const userDoc = await db.collection('MASTER').doc(cred.user.uid).get();
+        if (!userDoc.exists) throw new Error('User not found in MASTER. Please contact admin.');
+        const data = userDoc.data();
+        return {
+          success: true,
+          user: {
+            id: cred.user.uid,
+            username: data.username || username,
+            fullName: data.fullName || 'User',
+            role: data.role || 'worker',
+            employeeType: data.employeeType || 'Company',
+            skills: data.skills || '',
+            active: data.active !== false,
+            department: data.department || ''
+          }
+        };
+      },
+      // ---------- MASTER (Users) ----------
+      async getUsers() {
+        const snap = await db.collection('MASTER').get();
+        return { users: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+      },
+      async addWorker(data) {
+        const username = data.username || data.fullName.split(' ')[0].toLowerCase();
+        const email = username + '@newluck.erp';
+        const password = data.password || (username + '123');
+        const cred = await auth.createUserWithEmailAndPassword(email, password);
+        await db.collection('MASTER').doc(cred.user.uid).set({
+          username, fullName: data.fullName, role: data.role || 'worker',
+          employeeType: data.employeeType || 'Company', skills: data.skills || '',
+          active: true, department: data.department || ''
+        });
+        return { success: true, id: cred.user.uid, username, password };
+      },
+      async updateWorker(data) {
+        const { id, ...rest } = data;
+        await db.collection('MASTER').doc(id).update(rest);
+        return { success: true };
+      },
+      async deleteWorker(id) {
+        await db.collection('MASTER').doc(id).delete();
+        return { success: true };
+      },
+      async getWorkers() {
+        const snap = await db.collection('MASTER').where('role', '==', 'worker').get();
+        return { workers: snap.docs.map(d => ({ id: d.id, name: d.data().fullName, department: d.data().department, employeeType: d.data().employeeType, skills: (d.data().skills || '').split(',') })) };
+      },
+      async getDepartmentTypes() {
+        const snap = await db.collection('MASTER').get();
+        const map = {};
+        snap.docs.forEach(d => { if (d.data().department && d.data().employeeType) map[d.data().department] = d.data().employeeType; });
+        return { departmentTypes: map };
+      },
+      // ---------- INVENTORY ----------
+      async getInventory() {
+        const snap = await db.collection('INVENTORY').orderBy('vehicleNumber').get();
+        return { items: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+      },
+      async addInventory(data) {
+        const now = new Date().toISOString();
+        const ref = await db.collection('INVENTORY').add({ ...data, createdAt: now, updatedAt: now });
+        return { success: true, id: ref.id };
+      },
+      async updateInventory(data) {
+        const { id, ...rest } = data;
+        rest.updatedAt = new Date().toISOString();
+        await db.collection('INVENTORY').doc(id).update(rest);
+        return { success: true };
+      },
+      async deleteInventory(id) {
+        await db.collection('INVENTORY').doc(id).delete();
+        return { success: true };
+      },
+      // ---------- SALES ----------
+      async getSales() {
+        const snap = await db.collection('SALES').orderBy('createdAt', 'desc').get();
+        return { orders: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+      },
+      async addSales(data) {
+        const now = new Date().toISOString();
+        const month = new Date().getMonth(), year = new Date().getFullYear();
+        const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+        const prefix = months[month] + String(year).slice(-2);
+        const cnt = (await db.collection('SALES').where('token', '>=', prefix+'000').where('token', '<=', prefix+'999').get()).size;
+        const token = prefix + String(cnt+1).padStart(3,'0');
+        const ref = await db.collection('SALES').add({ ...data, token, createdAt: now, progress: 0, paymentReminderSent: false });
+        return { success: true, token, orderId: ref.id, awaitingVehicle: !data.vehicleNumber };
+      },
+      async updateSales(data) {
+        const { id, ...rest } = data;
+        await db.collection('SALES').doc(id).update(rest);
+        return { success: true };
+      },
+      async deleteSales(id) {
+        await db.collection('SALES').doc(id).delete();
+        return { success: true };
+      },
+      async linkVehicleToSales({ id, vehicleNumber }) {
+        await db.collection('SALES').doc(id).update({ vehicleNumber, status: 'confirmed' });
+        const order = (await db.collection('SALES').doc(id).get()).data();
+        const req = JSON.parse(order.requirements || '{}');
+        await this.generateProductionTasks(id, vehicleNumber, order.customerName, order.deliveryDate, req);
+        return { success: true };
+      },
+      async sendPaymentReminder({ id }) {
+        await db.collection('SALES').doc(id).update({ paymentReminderSent: true });
+        return { success: true };
+      },
+      // ---------- PRODUCTION ----------
+      async getProduction() {
+        const snap = await db.collection('PRODUCTION').orderBy('id').get();
+        return { production: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+      },
+      async updateProduction(data) {
+        const { id, ...rest } = data;
+        await db.collection('PRODUCTION').doc(id).update(rest);
+        if (rest.vehicleNumber) await this.calculateAndUpdateProgress(rest.vehicleNumber);
+        return { success: true };
+      },
+      async getTask({ id }) {
+        const doc = await db.collection('PRODUCTION').doc(id).get();
+        if (!doc.exists) return { error: 'Task not found' };
+        return { task: { id: doc.id, ...doc.data() } };
+      },
+      async getVehicleTasks({ vehicleNumber }) {
+        const snap = await db.collection('PRODUCTION').where('vehicleNumber', '==', vehicleNumber).get();
+        return { tasks: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+      },
+      async startWork({ id }) {
+        const ref = db.collection('PRODUCTION').doc(id);
+        const task = (await ref.get()).data();
+        if (!task.beforePhotoUploaded) throw new Error('Upload Before photo first');
+        await ref.update({ status: 'in_progress', startTime: new Date().toISOString() });
+        return { success: true };
+      },
+      async completeWork({ id, remarks }) {
+        const ref = db.collection('PRODUCTION').doc(id);
+        const task = (await ref.get()).data();
+        const start = task.startTime ? new Date(task.startTime) : null;
+        const end = new Date();
+        const actual = start ? (end - start) / (1000*60*60) : 0;
+        await ref.update({ status: 'pending_approval', actualHours: actual.toFixed(2), endTime: end.toISOString(), remarks: remarks || task.remarks || '' });
+        await this.calculateAndUpdateProgress(task.vehicleNumber);
+        return { success: true };
+      },
+      // ---------- QC ----------
+      async getQC() {
+        const snap = await db.collection('QC').orderBy('qcDate', 'desc').get();
+        return { qc: snap.docs.map(d => ({ qcId: d.id, ...d.data() })) };
+      },
+      async addQC(data) {
+        await db.collection('QC').add({ ...data, qcDate: new Date().toISOString() });
+        return { success: true };
+      },
+      async updateQC(data) {
+        const { qcId, ...rest } = data;
+        await db.collection('QC').doc(qcId).update({ ...rest, qcDate: new Date().toISOString() });
+        return { success: true };
+      },
+      async approveTask({ productionId, qcStatus, qcRemarks }) {
+        const ref = db.collection('PRODUCTION').doc(productionId);
+        const task = (await ref.get()).data();
+        let status;
+        if (qcStatus === 'Approved') status = 'completed';
+        else if (qcStatus === 'Rejected') { status = 'rejected'; await ref.update({ assignedWorkerId: '' }); }
+        else if (qcStatus === 'Rework') status = 'in_progress';
+        await ref.update({ status });
+        await db.collection('QC').add({ productionId, vehicleNumber: task.vehicleNumber, taskName: task.taskName, qcStatus, qcRemarks: qcRemarks || '', qcDate: new Date().toISOString() });
+        if (qcStatus === 'Approved') await this.calculateAndUpdateProgress(task.vehicleNumber);
+        return { success: true };
+      },
+      // ---------- DELIVERY ----------
+      async getDelivery() {
+        const snap = await db.collection('DELIVERY').orderBy('deliveryId').get();
+        return { deliveries: snap.docs.map(d => ({ deliveryId: d.id, ...d.data() })) };
+      },
+      async addDelivery(data) {
+        const ref = await db.collection('DELIVERY').add(data);
+        return { success: true, deliveryId: ref.id };
+      },
+      async updateDelivery(data) {
+        const { deliveryId, ...rest } = data;
+        await db.collection('DELIVERY').doc(deliveryId).update(rest);
+        return { success: true };
+      },
+      async completeDelivery({ deliveryId, productionId, keysHandoverPhotoUrl, remarks }) {
+        const now = new Date().toISOString();
+        await db.collection('DELIVERY').doc(deliveryId).update({ status: 'Delivered', actualDate: now, keysHandoverPhotoUrl: keysHandoverPhotoUrl || '', remarks: remarks || '' });
+        if (productionId) await db.collection('PRODUCTION').doc(productionId).update({ status: 'completed', endTime: now });
+        const del = (await db.collection('DELIVERY').doc(deliveryId).get()).data();
+        if (del.vehicleNumber) {
+          await db.collection('VEHICLE_HISTORY').add({ vehicleNumber: del.vehicleNumber, action: 'Delivered', notes: 'Delivered on ' + new Date().toLocaleDateString(), timestamp: now });
+        }
+        return { success: true };
+      },
+      // ---------- PHOTOS (read via Firestore, upload via Apps Script) ----------
+      async getPhotos() {
+        const snap = await db.collection('PHOTOS').orderBy('uploadTime', 'desc').get();
+        return { photos: snap.docs.map(d => ({ photoId: d.id, ...d.data() })) };
+      },
+      async getPhotosByVehicle({ vehicleNumber }) {
+        const snap = await db.collection('PHOTOS').where('vehicleNumber', '==', vehicleNumber).get();
+        return { photos: snap.docs.map(d => ({ photoId: d.id, ...d.data() })) };
+      },
+      async uploadPhotoFile(data) {
+        return await API.upload('uploadPhotoFile', data);
+      },
+      // ---------- REPORTS ----------
+      async getReports() {
+        const snap = await db.collection('REPORTS').orderBy('reportDate', 'desc').get();
+        return { reports: snap.docs.map(d => ({ id: d.id, ...d.data() })) };
+      },
+      async getTaskAnalytics() {
+        const snap = await db.collection('PRODUCTION').where('status', '==', 'completed').get();
+        const groups = {};
+        snap.docs.forEach(d => {
+          const t = d.data();
+          const h = parseFloat(t.actualHours);
+          if (!t.taskName || isNaN(h)) return;
+          if (!groups[t.taskName]) groups[t.taskName] = { total: 0, count: 0, min: h, max: h };
+          groups[t.taskName].total += h;
+          groups[t.taskName].count++;
+          groups[t.taskName].min = Math.min(groups[t.taskName].min, h);
+          groups[t.taskName].max = Math.max(groups[t.taskName].max, h);
+        });
+        const analytics = Object.keys(groups).map(k => ({ taskName: k, avgHours: Math.round(groups[k].total/groups[k].count*100)/100, minHours: groups[k].min, maxHours: groups[k].max, completedCount: groups[k].count }));
+        analytics.sort((a,b)=>b.completedCount-a.completedCount);
+        return { analytics };
+      },
+      // ---------- HELPERS ----------
+      async generateProductionTasks(salesOrderId, vehicleNumber, customerName, deliveryDate, req) {
+        const taskMap = {
+          'Tinkering':{dept:'Tinkering',hours:8}, 'Mechanical':{dept:'Mechanical',hours:12},
+          'Dummy Closing':{dept:'Dummy Closing',hours:6}, 'Body Coach':{dept:'Body Coach',hours:16},
+          'Kitchen Layout':{dept:'Kitchen Layout',hours:10}, 'Painting':{dept:'Painting',hours:10},
+          'ACP Work':{dept:'ACP',hours:8}, 'Vehicle Electrical':{dept:'Electrical',hours:8},
+          'Coach Electrical':{dept:'Electrical',hours:8}, 'Plumbing':{dept:'Plumbing',hours:6},
+          'Canopy':{dept:'Canopy',hours:6}, 'Tyre Change':{dept:'Tyres',hours:4},
+          'Glass Checking':{dept:'Glass',hours:4}, 'Branding':{dept:'Branding',hours:6},
+          'Solar':{dept:'Solar',hours:4}, 'UPS':{dept:'UPS',hours:4}, 'Camera':{dept:'Camera',hours:3},
+          'QC':{dept:'QC',hours:4}, 'Delivery':{dept:'Delivery',hours:2}
+        };
+        const deps = {
+          'Tinkering':[], 'Mechanical':[], 'Dummy Closing':[],
+          'Body Coach':['Tinkering','Mechanical'], 'Kitchen Layout':['Body Coach'],
+          'Painting':['Dummy Closing'], 'ACP Work':['Kitchen Layout'],
+          'Vehicle Electrical':['Mechanical'], 'Coach Electrical':['Kitchen Layout'],
+          'Plumbing':['Body Coach'], 'Canopy':['Body Coach'],
+          'Tyre Change':['Painting'], 'Glass Checking':['Painting'], 'Branding':['Painting'],
+          'Solar':['Vehicle Electrical'], 'UPS':['Vehicle Electrical'], 'Camera':['Vehicle Electrical'],
+          'QC':[], 'Delivery':['QC']
+        };
+        const keys = [];
+        for (const k in taskMap) {
+          let add = false;
+          if (k==='QC'||k==='Delivery') add = true;
+          else if (k==='Kitchen Layout' && (req.insideKitchen||req.outsideKitchen||req.kitchenLayout)) add = true;
+          else if (k==='Body Coach' && req.bodyCoach) add = true;
+          else if (k==='Solar' && req.solar) add = true;
+          else if (k==='UPS' && req.ups) add = true;
+          else if (k==='Camera' && req.camera) add = true;
+          else if (k==='UPS' && req.upsWiring) add = true;
+          else if (req[k.toLowerCase()] !== undefined) add = !!req[k.toLowerCase()];
+          else if (req[k.replace(/ /g,'')] !== undefined) add = !!req[k.replace(/ /g,'')];
+          if (add) keys.push(k);
+        }
+        if (!keys.includes('QC')) keys.push('QC');
+        if (!keys.includes('Delivery')) keys.push('Delivery');
+        const last = await db.collection('PRODUCTION').orderBy('id','desc').limit(1).get();
+        let lastId = 0;
+        if (!last.empty) lastId = last.docs[0].data().id || 0;
+        const batch = db.batch();
+        for (let i=0; i<keys.length; i++) {
+          const name = keys[i];
+          const config = taskMap[name];
+          const doc = db.collection('PRODUCTION').doc();
+          batch.set(doc, {
+            id: lastId + i + 1,
+            salesOrderId, vehicleNumber, customerName,
+            taskName: name,
+            department: config.dept,
+            assignedWorkerId: '',
+            status: 'pending',
+            estimatedHours: config.hours,
+            actualHours: '', startTime: '', endTime: '', remarks: '',
+            deliveryDate, priorityScore: 0,
+            dependencyFlags: JSON.stringify(deps[name] || []),
+            forceStart: false,
+            beforePhotoUploaded: false,
+            afterPhotoUploaded: false,
+            photoUploadedAt: ''
+          });
+        }
+        await batch.commit();
+        return { success: true };
+      },
+      async calculateAndUpdateProgress(vehicleNumber) {
+        const snap = await db.collection('PRODUCTION').where('vehicleNumber','==',vehicleNumber).get();
+        const tasks = snap.docs.map(d => d.data());
+        const total = tasks.length;
+        const done = tasks.filter(t => t.status === 'completed').length;
+        const pct = total > 0 ? Math.round(done/total*100) : 0;
+        const sales = await db.collection('SALES').where('vehicleNumber','==',vehicleNumber).get();
+        if (!sales.empty) await sales.docs[0].ref.update({ progress: pct });
+        return pct;
+      }
+    };
+
+    // ==============================================================
+    // 4. UTILITY HELPERS & COMPONENTS
+    // ==============================================================
+    const SALESPEOPLE = ['Ahmed', 'Rasheed', 'Kumar'];
+
     const Utils = {
       storage: {
-        get(key) { try { return JSON.parse(localStorage.getItem(key)); } catch { return null; } },
-        set(key, val) { localStorage.setItem(key, JSON.stringify(val)); },
-        remove(key) { localStorage.removeItem(key); }
+        get(k) { try { return JSON.parse(localStorage.getItem(k)); } catch { return null; } },
+        set(k,v) { localStorage.setItem(k, JSON.stringify(v)); },
+        remove(k) { localStorage.removeItem(k); }
       },
       dateUtils: {
-        daysUntil(dateStr) {
-          const today = new Date(); today.setHours(0,0,0,0);
-          const target = new Date(dateStr); target.setHours(0,0,0,0);
-          return Math.ceil((target - today) / (1000 * 60 * 60 * 24));
-        },
-        format(dateStr) { return new Date(dateStr).toLocaleDateString('en-IN'); },
+        daysUntil(d) { const today = new Date(); today.setHours(0,0,0,0); const target = new Date(d); target.setHours(0,0,0,0); return Math.ceil((target - today) / (1000*60*60*24)); },
+        format(d) { return new Date(d).toLocaleDateString('en-IN'); },
         now() { return new Date().toISOString(); }
       },
-      tokenGenerator: {
-        generate(month = new Date().getMonth(), year = new Date().getFullYear(), seq = 1) {
-          const months = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
-          return `${months[month]}${String(year).slice(-2)}${String(seq).padStart(3,'0')}`;
-        }
-      },
-      // Converts a File (from an <input type=file>) into a raw base64 string
-      // (no "data:image/...;base64," prefix) plus its mime type, ready to send
-      // to uploadPhotoFile on the backend.
       fileToBase64(file) {
         return new Promise((resolve, reject) => {
           const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result; // "data:image/jpeg;base64,AAAA..."
-            const base64 = result.split(',')[1];
-            resolve({ base64, mimeType: file.type || 'image/jpeg' });
-          };
+          reader.onload = () => { const base64 = reader.result.split(',')[1]; resolve({ base64, mimeType: file.type || 'image/jpeg' }); };
           reader.onerror = () => reject(new Error('Could not read file'));
           reader.readAsDataURL(file);
         });
       }
     };
 
-    // ==============================================================
-    // 3. COMPONENTS (Table, Modal, Toast, etc.)
-    // ==============================================================
+    // Components: Toast, Loader, Modal, ConfirmationDialog, Table, Pagination, Filters
     const Components = {
       Toast: class {
         constructor(container = document.getElementById('toastContainer')) { this.container = container; }
@@ -761,13 +1029,11 @@
         }
         dismiss(toast) { toast.style.opacity = '0'; toast.style.transform = 'translateX(20px)'; setTimeout(() => toast.remove(), 300); }
       },
-
       Loader: class {
         constructor(el = document.getElementById('loadingOverlay')) { this.el = el; }
         show() { this.el.style.display = 'flex'; }
         hide() { this.el.style.display = 'none'; }
       },
-
       Modal: class {
         constructor(overlay = document.getElementById('modalOverlay'), title = document.getElementById('modalTitle'),
             body = document.getElementById('modalBody'), footer = document.getElementById('modalFooter'),
@@ -796,7 +1062,6 @@
         }
         close() { this.overlay.style.display = 'none'; if (this.onCancel) this.onCancel(); }
       },
-
       ConfirmationDialog: class {
         constructor(overlay = document.getElementById('confirmDialog'), title = document.getElementById('confirmTitle'),
             body = document.getElementById('confirmBody'), okBtn = document.getElementById('confirmOk'),
@@ -821,7 +1086,6 @@
         }
         close() { this.overlay.style.display = 'none'; this.onConfirm = null; }
       },
-
       Table: class {
         constructor(container, { columns, onAction = null }) {
           this.container = container; this.columns = columns; this.onAction = onAction; this.data = [];
@@ -853,7 +1117,6 @@
         _handleAction(e) { const target = e.target.closest('button'); if (target && this.onAction) this.onAction(e); }
         destroy() { this.container.querySelectorAll('tbody').forEach(tbody => tbody.removeEventListener('click', this._boundAction)); }
       },
-
       Pagination: class {
         constructor(container, { pageSize = 5, total = 0, onPageChange = null }) {
           this.container = container; this.pageSize = pageSize; this.total = total;
@@ -880,7 +1143,6 @@
           });
         }
       },
-
       Filters: class {
         constructor(container, { fields = [], onApply = null }) {
           this.container = container; this.fields = fields; this.onApply = onApply; this.values = {};
@@ -909,28 +1171,37 @@
     };
 
     // ==============================================================
-    // 4. AUTHENTICATION
+    // 5. AUTHENTICATION (using Firebase)
     // ==============================================================
     class Auth {
       constructor() { this.currentUser = null; }
       async checkSession() {
-        const token = Utils.storage.get('authToken');
-        if (!token) return false;
-        const user = Utils.storage.get('user');
-        if (user) { this.currentUser = user; return true; }
+        const user = firebase.auth().currentUser;
+        if (user) {
+          const userDoc = await db.collection('MASTER').doc(user.uid).get();
+          if (userDoc.exists) {
+            this.currentUser = { id: user.uid, ...userDoc.data() };
+            Utils.storage.set('user', this.currentUser);
+            return true;
+          }
+        }
         return false;
       }
       async login(username, password) {
-        const result = await API.request('login', { username, password });
+        const result = await FireAPI.login(username, password);
         if (result.success) {
           this.currentUser = result.user;
-          Utils.storage.set('authToken', 'mock-token');
           Utils.storage.set('user', result.user);
           return result.user;
         }
-        throw new Error(result.error || 'Login failed');
+        throw new Error('Login failed');
       }
-      logout() { Utils.storage.remove('authToken'); Utils.storage.remove('user'); this.currentUser = null; window.location.reload(); }
+      logout() {
+        auth.signOut();
+        Utils.storage.remove('user');
+        this.currentUser = null;
+        window.location.reload();
+      }
       getCurrentUser() { return this.currentUser || Utils.storage.get('user'); }
       hasPermission(page) {
         const user = this.getCurrentUser();
@@ -939,7 +1210,7 @@
         const permissions = {
           owner: ['*'],
           operations_manager: ['dashboard', 'inventory', 'sales', 'supervisor', 'worker', 'reports', 'settings', 'users'],
-          supervisor: ['dashboard', 'supervisor', 'worker'],
+          supervisor: ['supervisor', 'worker'],
           sales: ['sales', 'inventory'],
           inventory: ['dashboard', 'inventory'],
           worker: ['worker']
@@ -950,21 +1221,25 @@
     }
 
     // ==============================================================
-    // 5. PAGES (Dashboard, Inventory, Sales, Supervisor, Worker)
+    // 6. PAGES (Dashboard, Inventory, Sales, Supervisor, Worker, Users)
+    // These are the same as your Apps Script version but using FireAPI
     // ==============================================================
     const Pages = {
-
-      // ----- Dashboard -----
       Dashboard: class {
         constructor(app) { this.app = app; }
         async render(container) {
-          const inventory = (await API.request('getInventory')).items || [];
-          const production = (await API.request('getProduction')).production || [];
-          const sales = (await API.request('getSales')).orders || [];
+          const [inv, prod, sales] = await Promise.all([
+            FireAPI.getInventory(),
+            FireAPI.getProduction(),
+            FireAPI.getSales()
+          ]);
+          const inventory = inv.items || [];
+          const production = prod.production || [];
+          const orders = sales.orders || [];
           const totalVehicles = inventory.length;
-          const activeOrders = sales.filter(s => s.status !== 'delivered').length;
-          const dueThisWeek = sales.filter(s => { const days = Utils.dateUtils.daysUntil(s.deliveryDate); return days >= 0 && days <= 7; }).length;
-          const delayed = sales.filter(s => { const days = Utils.dateUtils.daysUntil(s.deliveryDate); return days < 0 && s.status !== 'delivered'; }).length;
+          const activeOrders = orders.filter(s => s.status !== 'delivered').length;
+          const dueThisWeek = orders.filter(s => { const d = Utils.dateUtils.daysUntil(s.deliveryDate); return d >= 0 && d <= 7; }).length;
+          const delayed = orders.filter(s => { const d = Utils.dateUtils.daysUntil(s.deliveryDate); return d < 0 && s.status !== 'delivered'; }).length;
           container.innerHTML = `
             <div class="dashboard-stats">
               <div class="stat-card"><div class="stat-label">Total Vehicles</div><div class="stat-value">${totalVehicles}</div><span class="material-icons stat-icon">directions_car</span></div>
@@ -980,8 +1255,7 @@
           `;
         }
       },
-
-      // ----- Inventory (Full CRUD) -----
+      // ---------- INVENTORY (full CRUD) ----------
       Inventory: class {
         constructor(app) {
           this.app = app;
@@ -1019,13 +1293,7 @@
             onApply: (f) => { this.filters = f; this.applyFilters(); }
           });
 
-          // Sales role gets a stripped-down, read-only view: Vehicle No, Name,
-          // FC status, Insurance status, Category — no photos, no edit/delete.
-          const categoryBadges = (r) => (r.category || '').split(',').filter(Boolean).map(c =>
-            `<span class="badge" style="background:#e2d6f3;color:#4b2e83;margin-right:2px;">${c.trim()}</span>`).join('') || '<span style="color:var(--dark-gray);">—</span>';
-
-          // Turns a stored expiry date into a badge that actually warns you —
-          // red if already expired, amber if due within 30 days, green otherwise.
+          const categoryBadges = (r) => (r.category || '').split(',').filter(Boolean).map(c => `<span class="badge" style="background:#e2d6f3;color:#4b2e83;margin-right:2px;">${c.trim()}</span>`).join('') || '<span style="color:var(--dark-gray);">—</span>';
           const expiryBadge = (dateStr) => {
             if (!dateStr) return '<span style="color:var(--dark-gray);">—</span>';
             const days = Utils.dateUtils.daysUntil(dateStr);
@@ -1036,26 +1304,26 @@
           };
 
           const columns = isSales ? [
-              { key: 'vehicleNumber', label: 'Vehicle No' },
-              { key: 'vehicleName', label: 'Name' },
-              { key: 'category', label: 'Category', render: categoryBadges },
-              { key: 'fcStatus', label: 'FC Status', render: (r) => `<span class="badge ${r.fcStatus==='Running'?'badge-completed':'badge-pending'}">${r.fcStatus}</span>` },
-              { key: 'insurance', label: 'Insurance', render: (r) => `<span class="badge ${r.insurance==='Running'?'badge-completed':'badge-pending'}">${r.insurance}</span>` }
-            ] : [
-              { key: 'photo', label: 'Photo', render: (r) => r.frontPhotoUrl ? `<img class="vehicle-thumb" src="${r.frontPhotoUrl}" />` : '<span class="material-icons" style="color:var(--gray);">directions_car</span>' },
-              { key: 'vehicleNumber', label: 'Vehicle No' },
-              { key: 'vehicleName', label: 'Name' },
-              { key: 'model', label: 'Model' },
-              { key: 'category', label: 'Category', render: categoryBadges },
-              { key: 'bodyShape', label: 'Body Shape', render: (r) => r.bodyShape || '<span style="color:var(--dark-gray);">—</span>' },
-              { key: 'fcExpiryDate', label: 'FC Expiry', render: (r) => expiryBadge(r.fcExpiryDate) },
-              { key: 'insuranceExpiryDate', label: 'Insurance Expiry', render: (r) => expiryBadge(r.insuranceExpiryDate) },
-              { key: 'inventoryStatus', label: 'Status', render: (r) => `<span class="badge ${r.inventoryStatus==='Delivered'?'badge-delivered':r.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${r.inventoryStatus}</span>` },
-              { key: 'actions', label: 'Actions', render: (r) =>
-                `<button class="btn-icon edit-inv" data-id="${r.id}"><span class="material-icons">edit</span></button>
-                ${r.inventoryStatus !== 'Delivered' ? `<button class="btn-icon mark-delivered-inv" data-id="${r.id}" title="Mark delivered — removes it from the default view"><span class="material-icons">local_shipping</span></button>` : ''}`
-              }
-            ];
+            { key: 'vehicleNumber', label: 'Vehicle No' },
+            { key: 'vehicleName', label: 'Name' },
+            { key: 'category', label: 'Category', render: categoryBadges },
+            { key: 'fcStatus', label: 'FC Status', render: (r) => `<span class="badge ${r.fcStatus==='Running'?'badge-completed':'badge-pending'}">${r.fcStatus}</span>` },
+            { key: 'insurance', label: 'Insurance', render: (r) => `<span class="badge ${r.insurance==='Running'?'badge-completed':'badge-pending'}">${r.insurance}</span>` }
+          ] : [
+            { key: 'photo', label: 'Photo', render: (r) => r.frontPhotoUrl ? `<img class="vehicle-thumb" src="${r.frontPhotoUrl}" />` : '<span class="material-icons" style="color:var(--gray);">directions_car</span>' },
+            { key: 'vehicleNumber', label: 'Vehicle No' },
+            { key: 'vehicleName', label: 'Name' },
+            { key: 'model', label: 'Model' },
+            { key: 'category', label: 'Category', render: categoryBadges },
+            { key: 'bodyShape', label: 'Body Shape', render: (r) => r.bodyShape || '<span style="color:var(--dark-gray);">—</span>' },
+            { key: 'fcExpiryDate', label: 'FC Expiry', render: (r) => expiryBadge(r.fcExpiryDate) },
+            { key: 'insuranceExpiryDate', label: 'Insurance Expiry', render: (r) => expiryBadge(r.insuranceExpiryDate) },
+            { key: 'inventoryStatus', label: 'Status', render: (r) => `<span class="badge ${r.inventoryStatus==='Delivered'?'badge-delivered':r.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${r.inventoryStatus}</span>` },
+            { key: 'actions', label: 'Actions', render: (r) =>
+              `<button class="btn-icon edit-inv" data-id="${r.id}"><span class="material-icons">edit</span></button>
+              ${r.inventoryStatus !== 'Delivered' ? `<button class="btn-icon mark-delivered-inv" data-id="${r.id}" title="Mark delivered — removes it from the default view"><span class="material-icons">local_shipping</span></button>` : ''}`
+            }
+          ];
 
           this.table = new Components.Table(document.getElementById('invTable'), {
             columns: columns,
@@ -1083,14 +1351,12 @@
         }
         async loadData() {
           this.loader.show();
-          try { const res = await API.request('getInventory'); this.data = res.items || []; this.filteredData = [...this.data]; }
-          catch (e) { this.toast.show('Failed to load inventory', 'error'); } finally { this.loader.hide(); }
+          try { const res = await FireAPI.getInventory(); this.data = res.items || []; this.filteredData = [...this.data]; }
+          catch (e) { this.toast.show('Failed to load inventory: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
         }
         applyFilters() {
           this.filteredData = this.data.filter(item => {
             let match = true;
-            // Delivered vehicles are hidden from the default view to keep the
-            // screen uncluttered — they're never deleted, just tucked away.
             if (!this.showDelivered && item.inventoryStatus === 'Delivered') match = false;
             if (this.filters.fcStatus && this.filters.fcStatus !== 'All') { if (item.fcStatus !== this.filters.fcStatus) match = false; }
             if (this.filters.inventoryStatus && this.filters.inventoryStatus !== 'All') { if (item.inventoryStatus !== this.filters.inventoryStatus) match = false; }
@@ -1203,15 +1469,14 @@
               this.loader.show();
               try {
                 if (isEdit) {
-                  await API.request('updateInventory', data);
+                  await FireAPI.updateInventory(data);
                   this.toast.show('Vehicle updated', 'success');
                 } else {
-                  await API.request('addInventory', data);
-                  // Now that the vehicle exists, attach any photos picked before saving.
+                  await FireAPI.addInventory(data);
                   for (const key of ['_pendingFrontPhoto', '_pendingSidePhoto']) {
                     const pending = this[key];
                     if (pending && pending.pending) {
-                      await API.upload('uploadPhotoFile', {
+                      await FireAPI.uploadPhotoFile({
                         vehicleNumber: data.vehicleNumber,
                         photoType: pending.photoType,
                         base64Data: pending.base64,
@@ -1225,14 +1490,12 @@
                 this._pendingFrontPhoto = null; this._pendingSidePhoto = null;
                 await this.loadData();
                 this.applyFilters();
-              } catch (e) { this.toast.show('Failed to save', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to save: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
-
           document.getElementById('bodyShapeSelect').addEventListener('change', (e) => {
             document.getElementById('bodyShapeOtherGroup').style.display = e.target.value === '__other__' ? '' : 'none';
           });
-
           const wireUpload = (boxId, inputId, key, photoType) => {
             const box = document.getElementById(boxId);
             const input = document.getElementById(inputId);
@@ -1243,11 +1506,8 @@
               this.toast.show('Uploading photo...', 'info');
               try {
                 const { base64, mimeType } = await Utils.fileToBase64(file);
-                // If editing an existing vehicle we can save immediately; for a
-                // brand-new vehicle we hold the photo and attach it once the
-                // vehicle itself is saved (it needs a vehicleNumber to attach to).
                 if (isEdit) {
-                  const res = await API.upload('uploadPhotoFile', {
+                  const res = await FireAPI.uploadPhotoFile({
                     vehicleNumber: item.vehicleNumber,
                     photoType: photoType,
                     base64Data: base64,
@@ -1280,17 +1540,16 @@
             onConfirm: async () => {
               this.loader.show();
               try {
-                await API.request('updateInventory', { ...item, id: item.id, inventoryStatus: 'Delivered' });
+                await FireAPI.updateInventory({ ...item, id: item.id, inventoryStatus: 'Delivered' });
                 this.toast.show('Vehicle marked delivered', 'success');
                 await this.loadData();
                 this.applyFilters();
-              } catch (e) { this.toast.show('Failed to update', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to update: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
         }
       },
-
-      // ----- Sales (with Payment Reminders) -----
+      // ---------- SALES (full CRUD) ----------
       Sales: class {
         constructor(app) {
           this.app = app;
@@ -1322,6 +1581,7 @@
           this.table = new Components.Table(document.getElementById('salesTable'), {
             columns: [
               { key: 'token', label: 'Token' },
+              { key: 'salesperson', label: 'Salesperson', render: (r) => r.salesperson || '<span style="color:var(--dark-gray);">—</span>' },
               { key: 'vehicleNumber', label: 'Vehicle', render: (r) => r.vehicleNumber || '<em style="color:var(--dark-gray);">To be purchased</em>' },
               { key: 'customerName', label: 'Customer' },
               { key: 'deliveryDate', label: 'Delivery', render: (r) => Utils.dateUtils.format(r.deliveryDate) },
@@ -1402,22 +1662,21 @@
         async sendReminder(id) {
           this.loader.show();
           try {
-            await API.request('sendPaymentReminder', { id });
+            await FireAPI.sendPaymentReminder({ id });
             this.toast.show('Marked as followed up ✅', 'success');
             await this.loadData();
             this.applyFilters();
             this.showReminderBanner();
-          } catch (e) { this.toast.show('Failed to send reminder', 'error'); } finally { this.loader.hide(); }
+          } catch (e) { this.toast.show('Failed to send reminder: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
         }
         async loadData() {
           this.loader.show();
           try {
-            const inv = await API.request('getInventory');
+            const [inv, res] = await Promise.all([FireAPI.getInventory(), FireAPI.getSales()]);
             this.vehicles = inv.items || [];
-            const res = await API.request('getSales');
             this.data = res.orders || [];
             this.filteredData = [...this.data];
-          } catch (e) { this.toast.show('Failed to load sales', 'error'); } finally { this.loader.hide(); }
+          } catch (e) { this.toast.show('Failed to load sales: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
         }
         applyFilters() {
           this.filteredData = this.data.filter(item => {
@@ -1451,9 +1710,6 @@
           const req = order?.requirements || {};
           const bd = req.brandingDetails || {};
           const opt = req.optional || {};
-          // These 5 are ticked by default on every new order — matches the
-          // standard base build every vehicle goes through; supervisor/sales
-          // can untick if a particular order doesn't need one of them.
           const DEFAULTS = { tinkering: true, mechanical: true, dummyClosing: true, bodyCoach: true, vehicleElectrical: true };
           const chk = (key) => (isEdit ? !!req[key] : !!DEFAULTS[key]) ? 'checked' : '';
           const vehicleOpts = this.vehicles.map(v =>
@@ -1461,6 +1717,17 @@
           ).join('');
           const form = `
             <form id="salesForm">
+              <div class="form-group">
+                <label>Salesperson * <span style="font-weight:400;color:var(--dark-gray);">(select your name)</span></label>
+                <div class="radio-picker">
+                  ${SALESPEOPLE.map(name => `
+                    <label>
+                      <input type="radio" name="salesperson" value="${name}" ${order?.salesperson===name?'checked':''} required />
+                      <span>${name}</span>
+                    </label>
+                  `).join('')}
+                </div>
+              </div>
               <div class="form-group">
                 <label><input type="checkbox" id="vehiclePendingToggle" ${!order?.vehicleNumber && isEdit ? 'checked' : ''} /> Vehicle not in our inventory yet — will be purchased for this order</label>
               </div>
@@ -1535,6 +1802,10 @@
               const fd = new FormData(document.getElementById('salesForm'));
               const data = Object.fromEntries(fd.entries());
               const vehiclePending = document.getElementById('vehiclePendingToggle').checked;
+              if (!data.salesperson) {
+                this.toast.show('Select which salesperson this order is for', 'warning');
+                return;
+              }
               if (!vehiclePending && !data.vehicleNumber) {
                 this.toast.show('Select a vehicle, or tick "vehicle not in inventory yet"', 'warning');
                 return;
@@ -1564,6 +1835,7 @@
               };
               const orderData = {
                 id: isEdit ? order.id : null,
+                salesperson: data.salesperson,
                 vehicleNumber: vehiclePending ? '' : data.vehicleNumber,
                 customerName: data.customerName,
                 customerPhone: data.customerPhone,
@@ -1576,9 +1848,9 @@
               };
               this.loader.show();
               try {
-                if (isEdit) { await API.request('updateSales', { ...orderData, id: order.id }); this.toast.show('Order updated', 'success'); }
+                if (isEdit) { await FireAPI.updateSales({ ...orderData, id: order.id }); this.toast.show('Order updated', 'success'); }
                 else {
-                  const res = await API.request('addSales', orderData);
+                  const res = await FireAPI.addSales(orderData);
                   this.toast.show(res.awaitingVehicle
                     ? `Order ${res.token} saved — awaiting vehicle purchase before work can start`
                     : 'Order created — supervisor queue updated', 'success');
@@ -1586,7 +1858,7 @@
                 this.modal.close();
                 await this.loadData();
                 this.applyFilters();
-              } catch (e) { this.toast.show('Failed to save', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to save: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
           const pendingToggle = document.getElementById('vehiclePendingToggle');
@@ -1620,12 +1892,12 @@
               if (!vehicleNumber) { this.toast.show('Select a vehicle first', 'warning'); return; }
               this.loader.show();
               try {
-                await API.request('linkVehicleToSales', { id: order.id, vehicleNumber });
+                await FireAPI.linkVehicleToSales({ id: order.id, vehicleNumber });
                 this.toast.show('Vehicle linked — production tasks generated', 'success');
                 this.modal.close();
                 await this.loadData();
                 this.applyFilters();
-              } catch (e) { this.toast.show('Failed to link vehicle', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to link vehicle: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
         }
@@ -1635,14 +1907,13 @@
             body: 'Are you sure?',
             onConfirm: async () => {
               this.loader.show();
-              try { await API.request('deleteSales', { id }); this.toast.show('Order deleted', 'warning'); await this.loadData(); this.applyFilters(); }
-              catch (e) { this.toast.show('Failed to delete', 'error'); } finally { this.loader.hide(); }
+              try { await FireAPI.deleteSales(id); this.toast.show('Order deleted', 'warning'); await this.loadData(); this.applyFilters(); }
+              catch (e) { this.toast.show('Failed to delete: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
         }
       },
-
-      // ----- Supervisor (Queue, Assignment, QC, Delivery) -----
+      // ---------- SUPERVISOR (full queue, assignment, QC, delivery) ----------
       Supervisor: class {
         constructor(app) {
           this.app = app;
@@ -1655,10 +1926,11 @@
           this.priorityQueue = [];
           this.departmentTypes = {};
           this.filterType = 'All';
+          this.vehiclePhotos = {};
         }
         async render(container) {
           container.innerHTML = `
-            <div class="page-header"><h2>Supervisor Dashboard</h2></div>
+            <div class="page-header"><h2>Supervisor</h2></div>
             <div class="dashboard-stats" id="supStats"></div>
             <div class="department-status"><h3>Department Status</h3><div class="dept-cards" id="deptCards"></div></div>
             <div class="department-status">
@@ -1667,7 +1939,7 @@
             </div>
             <div class="priority-queue">
               <div class="flex justify-between items-center" style="margin-bottom:1rem;">
-                <h3>Vehicle Queue (sorted by delivery date — soonest first)</h3>
+                <h3>Vehicles (sorted by delivery date — tap a vehicle to assign work)</h3>
                 <div class="filter-group">
                   <label>Worker Type:</label>
                   <select id="typeFilter">
@@ -1679,29 +1951,54 @@
               </div>
               <div id="supTable"></div>
             </div>
+            <div class="department-status">
+              <h3>Assignments Overview (who's working on what)</h3>
+              <div id="assignmentsOverview"></div>
+            </div>
           `;
           await this.loadData();
           this.renderStats();
           this.renderDeptStatus();
           this.renderTaskAnalytics();
           this.renderQueue();
+          this.renderAssignmentsOverview();
           document.getElementById('typeFilter').addEventListener('change', (e) => {
             this.filterType = e.target.value;
             this.renderQueue();
           });
         }
+        renderAssignmentsOverview() {
+          const container = document.getElementById('assignmentsOverview');
+          const assigned = this.data.filter(t => t.assignedWorkerId);
+          if (assigned.length === 0) {
+            container.innerHTML = `<p style="color:var(--dark-gray);">No tasks assigned yet.</p>`;
+            return;
+          }
+          const table = new Components.Table(container, {
+            columns: [
+              { key: 'vehicleNumber', label: 'Vehicle' },
+              { key: 'taskName', label: 'Task' },
+              { key: 'workers', label: 'Assigned To', render: (r) => (r.assignedWorkerId || '').split(',').filter(Boolean)
+                  .map(id => this.workers.find(w => String(w.id) === id.trim())?.name || 'Unknown').join(', ') || '—' },
+              { key: 'status', label: 'Status', render: (r) => `<span class="badge badge-${r.status}">${r.status}</span>` },
+              { key: 'hours', label: 'Est / Actual', render: (r) => `${r.estimatedHours || '--'} / ${r.actualHours ? r.actualHours.toFixed(1) : '--'} hrs` }
+            ]
+          });
+          table.render(assigned);
+        }
         async loadData() {
           this.loader.show();
           try {
-            const inv = await API.request('getInventory');
+            const [inv, prod, deptRes, workers] = await Promise.all([
+              FireAPI.getInventory(),
+              FireAPI.getProduction(),
+              FireAPI.getDepartmentTypes(),
+              FireAPI.getWorkers()
+            ]);
             this.vehiclePhotos = {};
             (inv.items || []).forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
-
-            const prod = await API.request('getProduction');
             this.data = prod.production || [];
-            const deptRes = await API.request('getDepartmentTypes');
             this.departmentTypes = deptRes.departmentTypes || {};
-            const workers = await API.request('getWorkers');
             this.workers = workers.workers || [];
 
             const grouped = {};
@@ -1727,10 +2024,8 @@
               else grouped[t.vehicleNumber].status = 'pending';
             });
             this.priorityQueue = Object.values(grouped);
-            // Primary sort: delivery date ascending (soonest first), as requested —
-            // vehicle 1, 2, 3 in the exact order they're due.
             this.priorityQueue.sort((a, b) => new Date(a.deliveryDate) - new Date(b.deliveryDate));
-          } catch (e) { console.error(e); this.toast.show('Failed to load data', 'error'); } finally { this.loader.hide(); }
+          } catch (e) { console.error(e); this.toast.show('Failed to load data: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
         }
         renderStats() {
           const stats = {
@@ -1763,7 +2058,7 @@
         async renderTaskAnalytics() {
           const container = document.getElementById('taskAnalytics');
           try {
-            const res = await API.request('getTaskAnalytics');
+            const res = await FireAPI.getTaskAnalytics();
             const analytics = res.analytics || [];
             if (analytics.length === 0) {
               container.innerHTML = `<p style="color:var(--dark-gray);">No completed tasks yet — averages will appear once work starts finishing.</p>`;
@@ -1787,50 +2082,54 @@
           if (this.filterType === 'Contractual') filtered = filtered.filter(v => v.employeeType === 'Contractual');
           else if (this.filterType === 'Company') filtered = filtered.filter(v => v.employeeType === 'Company');
 
-          const table = new Components.Table(container, {
-            columns: [
-              { key: 'photo', label: 'Photo', render: (r) => {
-                  const url = (this.vehiclePhotos && this.vehiclePhotos[r.vehicleNumber]) || '';
-                  return url ? `<img class="vehicle-thumb" src="${url}" />` : '<span class="material-icons" style="color:var(--gray);">directions_car</span>';
-                } },
-              { key: 'vehicleNumber', label: 'Vehicle' },
-              { key: 'customerName', label: 'Customer' },
-              { key: 'deliveryDate', label: 'Delivery', render: (r) => Utils.dateUtils.format(r.deliveryDate) },
-              { key: 'days', label: 'Days Left', render: (r) => { const d = Utils.dateUtils.daysUntil(r.deliveryDate); return `<span class="${d<0?'text-danger':d<3?'text-warning':''}">${d}</span>`; } },
-              { key: 'employeeType', label: 'Type', render: (r) => { const type = r.employeeType || 'Company'; const color = type === 'Contractual' ? '#dc3545' : '#28a745'; return `<span style="color:${color};font-weight:600;">${type}</span>`; } },
-              { key: 'progress', label: 'Progress', render: (r) => {
-                  const tasks = r.tasks || [];
-                  const total = tasks.length;
-                  const completed = tasks.filter(t => t.status === 'completed').length;
-                  const p = total > 0 ? Math.round((completed / total) * 100) : 0;
-                  const color = p >= 100 ? 'var(--success)' : (p > 50 ? 'var(--warning)' : 'var(--accent)');
-                  return `<div class="progress-bar" style="width:100px;"><div class="progress-fill" style="width:${p}%;background:${color};"></div><span>${p}%</span></div>`;
-                } },
-              { key: 'status', label: 'Status', render: (r) => `<span class="badge badge-${r.status}">${r.status}</span>` },
-              { key: 'actions', label: 'Actions', render: (r) =>
-                `<button class="btn-icon view-timeline" data-vehicle="${r.vehicleNumber}"><span class="material-icons">timeline</span></button>
-                <button class="btn-icon assign-team" data-vehicle="${r.vehicleNumber}"><span class="material-icons">group_add</span></button>
-                ${r.status === 'pending_approval' ? `<button class="btn-icon qc-approve" data-vehicle="${r.vehicleNumber}" style="color:var(--warning);" title="Worker marked complete — needs your review"><span class="material-icons">verified</span></button>` : ''}
-                ${r.status === 'completed' ? `<button class="btn-icon delivery" data-vehicle="${r.vehicleNumber}"><span class="material-icons">local_shipping</span></button>` : ''}`
-              }
-            ],
-            onAction: (e) => {
-              const t = e.target.closest('button');
-              if (!t) return;
-              if (t.classList.contains('view-timeline')) this.viewTimeline(t.dataset.vehicle);
-              if (t.classList.contains('assign-team')) this.assignTeam(t.dataset.vehicle);
-              if (t.classList.contains('qc-approve')) this.showQCApprove(t.dataset.vehicle);
-              if (t.classList.contains('delivery')) this.showDelivery(t.dataset.vehicle);
-            }
-          });
-          table.render(filtered);
+          if (filtered.length === 0) {
+            container.innerHTML = `<p style="color:var(--dark-gray);padding:1rem;">No vehicles in the queue.</p>`;
+            return;
+          }
+
+          container.innerHTML = `<div class="worker-task-list">${filtered.map(r => {
+            const photoUrl = (this.vehiclePhotos && this.vehiclePhotos[r.vehicleNumber]) || '';
+            const photoHtml = photoUrl
+              ? `<img class="task-vehicle-photo" src="${photoUrl}" />`
+              : `<div class="task-vehicle-photo-placeholder"><span class="material-icons" style="font-size:2rem;">directions_car</span></div>`;
+            const tasks = r.tasks || [];
+            const completed = tasks.filter(t => t.status === 'completed').length;
+            const p = tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0;
+            const days = Utils.dateUtils.daysUntil(r.deliveryDate);
+            const daysColor = days < 0 ? 'var(--danger)' : days < 3 ? 'var(--warning)' : 'var(--dark-gray)';
+            const typeColor = r.employeeType === 'Contractual' ? '#dc3545' : '#28a745';
+            let extraBtns = `<button class="btn btn-secondary btn-sm view-timeline" data-vehicle="${r.vehicleNumber}"><span class="material-icons" style="font-size:16px;">timeline</span> Timeline</button>`;
+            if (r.status === 'pending_approval') extraBtns += `<button class="btn btn-sm qc-approve" data-vehicle="${r.vehicleNumber}" style="background:var(--warning);color:#333;" title="Worker marked complete — needs your review"><span class="material-icons" style="font-size:16px;">verified</span> QC Check</button>`;
+            if (r.status === 'completed') extraBtns += `<button class="btn btn-success btn-sm delivery" data-vehicle="${r.vehicleNumber}"><span class="material-icons" style="font-size:16px;">local_shipping</span> Delivery</button>`;
+            return `
+              <div class="worker-task-card">
+                ${photoHtml}
+                <div class="task-info assign-team" data-vehicle="${r.vehicleNumber}" style="cursor:pointer;" title="Tap to assign work">
+                  <div class="task-vehicle-number">${r.vehicleNumber} <span class="material-icons" style="font-size:16px;color:var(--accent);vertical-align:middle;">touch_app</span></div>
+                  <div class="task-name">${r.customerName}</div>
+                  <div class="task-meta">
+                    Delivery: ${Utils.dateUtils.format(r.deliveryDate)} — <span style="color:${daysColor};font-weight:600;">${days} day(s) left</span>
+                    &nbsp;•&nbsp; <span style="color:${typeColor};font-weight:600;">${r.employeeType || 'Company'}</span>
+                    &nbsp;•&nbsp; <span class="badge badge-${r.status}">${r.status}</span>
+                  </div>
+                  <div class="progress-bar" style="margin-top:0.4rem;"><div class="progress-fill" style="width:${p}%;"></div><span>${p}%</span></div>
+                </div>
+                <div class="task-actions" style="flex-wrap:wrap;">${extraBtns}</div>
+              </div>
+            `;
+          }).join('')}</div>`;
+
+          container.querySelectorAll('.assign-team').forEach(el => el.addEventListener('click', () => this.assignTeam(el.dataset.vehicle)));
+          container.querySelectorAll('.view-timeline').forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); this.viewTimeline(el.dataset.vehicle); }));
+          container.querySelectorAll('.qc-approve').forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); this.showQCApprove(el.dataset.vehicle); }));
+          container.querySelectorAll('.delivery').forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); this.showDelivery(el.dataset.vehicle); }));
         }
 
         async viewTimeline(vehicleNumber) {
           const vehicle = this.priorityQueue.find(v => v.vehicleNumber === vehicleNumber);
           if (!vehicle) return;
           const tasks = this.data.filter(t => t.vehicleNumber === vehicleNumber);
-          const salesRes = await API.request('getSales');
+          const salesRes = await FireAPI.getSales();
           const order = salesRes.orders?.find(o => o.vehicleNumber === vehicleNumber);
           let reqHtml = '';
           if (order?.requirements) {
@@ -1860,9 +2159,6 @@
           const dept = pendingTasks[0].department || '';
           const type = this.departmentTypes[dept] || 'Company';
 
-          // Show every worker, not just the ones tagged to this exact department —
-          // the supervisor picks by name/specialization and can select more than
-          // one person for the same task (e.g. two workers on Body Coach together).
           const sortedWorkers = [...this.workers].sort((a, b) => {
             const aMatch = a.department === dept ? 0 : 1;
             const bMatch = b.department === dept ? 0 : 1;
@@ -1898,9 +2194,9 @@
               if (task) {
                 task.assignedWorkerId = selectedWorkerIds.join(',');
                 task.estimatedHours = parseFloat(data.estimatedHours) || 8;
-                task.status = 'pending'; // stays pending until worker uploads Before photo & starts
+                task.status = 'pending';
                 if (data.forceStart) task.forceStart = true;
-                await API.request('updateProduction', task);
+                await FireAPI.updateProduction(task);
                 this.toast.show('Task assigned — worker(s) will see it in their task list', 'success');
                 this.modal.close();
                 await this.loadData();
@@ -1916,7 +2212,7 @@
           if (tasks.length === 0) { this.toast.show('No tasks pending approval', 'warning'); return; }
           const task = tasks[0];
 
-          const photosRes = await API.request('getPhotosByVehicle', { vehicleNumber });
+          const photosRes = await FireAPI.getPhotosByVehicle({ vehicleNumber });
           const photos = photosRes.photos || [];
           const beforePhoto = photos.find(p => p.taskName === task.taskName && p.type === 'Before');
           const afterPhoto = photos.find(p => p.taskName === task.taskName && p.type === 'After');
@@ -1950,13 +2246,13 @@
               const remarks = document.getElementById('qcRemarks').value;
               this.loader.show();
               try {
-                await API.request('approveTask', { productionId: task.id, qcStatus: decision, qcRemarks: remarks });
+                await FireAPI.approveTask({ productionId: task.id, qcStatus: decision, qcRemarks: remarks });
                 this.toast.show(`Task ${decision.toLowerCase()}`, 'success');
                 this.modal.close();
                 await this.loadData();
                 this.renderQueue();
                 this.renderStats();
-              } catch (e) { this.toast.show('Failed to update', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to update: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
         }
@@ -1964,10 +2260,10 @@
         async showDelivery(vehicleNumber) {
           const vehicle = this.priorityQueue.find(v => v.vehicleNumber === vehicleNumber);
           if (!vehicle) return;
-          let deliveryRes = await API.request('getDelivery');
+          let deliveryRes = await FireAPI.getDelivery();
           let delivery = deliveryRes.deliveries?.find(d => d.vehicleNumber === vehicleNumber);
           if (!delivery) {
-            await API.request('addDelivery', {
+            await FireAPI.addDelivery({
               productionId: null,
               vehicleNumber: vehicleNumber,
               status: 'Ready',
@@ -1976,7 +2272,7 @@
               keysHandoverPhotoUrl: '',
               remarks: ''
             });
-            deliveryRes = await API.request('getDelivery');
+            deliveryRes = await FireAPI.getDelivery();
             delivery = deliveryRes.deliveries?.find(d => d.vehicleNumber === vehicleNumber);
           }
           if (!delivery) { this.toast.show('Delivery record not found', 'error'); return; }
@@ -2010,12 +2306,25 @@
               const photoInput = document.getElementById('deliveryPhotoInput');
               let photoUrl = delivery.keysHandoverPhotoUrl;
               if (photoInput.files.length > 0) {
-                photoUrl = 'https://drive.google.com/file/d/mock-delivery-' + Date.now();
-                this.toast.show('Photo uploaded (mock)', 'info');
+                // Upload via Apps Script
+                try {
+                  const file = photoInput.files[0];
+                  const { base64, mimeType } = await Utils.fileToBase64(file);
+                  const res = await FireAPI.uploadPhotoFile({
+                    vehicleNumber: vehicleNumber,
+                    photoType: 'DeliveryKeys',
+                    base64Data: base64,
+                    mimeType: mimeType
+                  });
+                  photoUrl = res.url;
+                  this.toast.show('Photo uploaded to Drive', 'success');
+                } catch (err) {
+                  this.toast.show('Photo upload failed: ' + err.message, 'error');
+                }
               }
               this.loader.show();
               try {
-                await API.request('completeDelivery', {
+                await FireAPI.completeDelivery({
                   deliveryId: delivery.deliveryId,
                   productionId: null,
                   keysHandoverPhotoUrl: photoUrl,
@@ -2026,7 +2335,7 @@
                 this.modal.close();
                 await this.loadData();
                 this.renderQueue();
-              } catch (e) { this.toast.show('Failed to update', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to update: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
 
@@ -2036,7 +2345,7 @@
         }
       },
 
-      // ----- Worker (Assigned Tasks, Start/Complete, Photos) -----
+      // ---------- WORKER (assigned tasks, start/complete, photos) ----------
       Worker: class {
         constructor(app) {
           this.app = app;
@@ -2060,20 +2369,14 @@
         async loadData() {
           this.loader.show();
           try {
-            const inv = await API.request('getInventory');
+            const [inv, prod] = await Promise.all([FireAPI.getInventory(), FireAPI.getProduction()]);
             this.vehiclePhotos = {};
             (inv.items || []).forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
-
-            const prod = await API.request('getProduction');
             this.data = prod.production || [];
-            // A task belongs to this worker if their ID appears anywhere in the
-            // (possibly comma-separated, multi-worker) assignedWorkerId list —
-            // not restricted to their home department, since a supervisor can
-            // now assign any worker to any task.
             const myId = String(this.currentUser.id);
             this.assignedTasks = this.data.filter(t => (t.assignedWorkerId || '')
               .split(',').map(s => s.trim()).includes(myId));
-          } catch (e) { this.toast.show('Failed to load tasks', 'error'); } finally { this.loader.hide(); }
+          } catch (e) { this.toast.show('Failed to load tasks: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
         }
         renderTasks() {
           const container = document.getElementById('workerTaskCards');
@@ -2110,14 +2413,14 @@
         }
 
         async openWorkLog(taskId) {
-          const res = await API.request('getTask', { id: taskId });
+          const res = await FireAPI.getTask({ id: taskId });
           const task = res.task;
           if (!task) { this.toast.show('Task not found', 'error'); return; }
 
-          const historyRes = await API.request('getVehicleTasks', { vehicleNumber: task.vehicleNumber });
+          const historyRes = await FireAPI.getVehicleTasks({ vehicleNumber: task.vehicleNumber });
           const history = historyRes.tasks || [];
 
-          const photosRes = await API.request('getPhotosByVehicle', { vehicleNumber: task.vehicleNumber });
+          const photosRes = await FireAPI.getPhotosByVehicle({ vehicleNumber: task.vehicleNumber });
           const photos = photosRes.photos || [];
           const beforePhoto = photos.find(p => p.taskName === task.taskName && p.type === 'Before');
           const afterPhoto = photos.find(p => p.taskName === task.taskName && p.type === 'After');
@@ -2202,7 +2505,7 @@
               this.toast.show('Uploading photo...', 'info');
               try {
                 const { base64, mimeType } = await Utils.fileToBase64(file);
-                await API.upload('uploadPhotoFile', {
+                await FireAPI.uploadPhotoFile({
                   productionId: taskId,
                   vehicleNumber: task.vehicleNumber,
                   taskName: task.taskName,
@@ -2229,13 +2532,12 @@
             if (!task.beforePhotoUploaded) { this.toast.show('Upload a Before photo first', 'warning'); return; }
             this.loader.show();
             try {
-              await API.request('startWork', { id: taskId });
+              await FireAPI.startWork({ id: taskId });
               this.toast.show('Work started!', 'success');
               this.modal.close();
               await this.loadData();
               this.renderTasks();
-              this.renderStats();
-            } catch (e) { this.toast.show('Failed to start', 'error'); } finally { this.loader.hide(); }
+            } catch (e) { this.toast.show('Failed to start: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
           });
 
           document.getElementById('completeTaskBtn')?.addEventListener('click', async () => {
@@ -2246,13 +2548,12 @@
             const remarks = document.getElementById('workRemarks').value;
             this.loader.show();
             try {
-              await API.request('completeWork', { id: taskId, remarks });
+              await FireAPI.completeWork({ id: taskId, remarks });
               this.toast.show('Work completed! Supervisor notified for approval.', 'success');
               this.modal.close();
               await this.loadData();
               this.renderTasks();
-              this.renderStats();
-            } catch (e) { this.toast.show('Failed to complete', 'error'); } finally { this.loader.hide(); }
+            } catch (e) { this.toast.show('Failed to complete: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
           });
 
           document.getElementById('closeWorkLog')?.addEventListener('click', () => {
@@ -2265,7 +2566,7 @@
         }
       },
 
-      // ----- Users / Workers Management (owner + operations_manager only) -----
+      // ---------- USERS (Manage Users) ----------
       Users: class {
         constructor(app) {
           this.app = app;
@@ -2311,8 +2612,8 @@
         }
         async loadData() {
           this.loader.show();
-          try { const res = await API.request('getUsers'); this.data = res.users || []; }
-          catch (e) { this.toast.show('Failed to load users', 'error'); } finally { this.loader.hide(); }
+          try { const res = await FireAPI.getUsers(); this.data = res.users || []; }
+          catch (e) { this.toast.show('Failed to load users: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
         }
         showForm(item = null) {
           const isEdit = !!item;
@@ -2362,16 +2663,16 @@
               this.loader.show();
               try {
                 if (isEdit) {
-                  await API.request('updateWorker', data);
+                  await FireAPI.updateWorker(data);
                   this.toast.show('User updated', 'success');
                 } else {
-                  const res = await API.request('addWorker', data);
+                  const res = await FireAPI.addWorker(data);
                   this.toast.show(`Login created — username: ${res.username}, password: ${res.password}`, 'success', 7000);
                 }
                 this.modal.close();
                 await this.loadData();
                 this.table.render(this.data);
-              } catch (e) { this.toast.show('Failed to save', 'error'); } finally { this.loader.hide(); }
+              } catch (e) { this.toast.show('Failed to save: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
         }
@@ -2382,8 +2683,8 @@
             body: 'Are you sure? This removes their login.',
             onConfirm: async () => {
               this.loader.show();
-              try { await API.request('deleteWorker', { id }); this.toast.show('User deleted', 'warning'); await this.loadData(); this.table.render(this.data); }
-              catch (e) { this.toast.show('Failed to delete', 'error'); } finally { this.loader.hide(); }
+              try { await FireAPI.deleteWorker(id); this.toast.show('User deleted', 'warning'); await this.loadData(); this.table.render(this.data); }
+              catch (e) { this.toast.show('Failed to delete: ' + (e.message || e), 'error'); } finally { this.loader.hide(); }
             }
           });
         }
@@ -2391,7 +2692,7 @@
     };
 
     // ==============================================================
-    // 6. ROUTER
+    // 7. ROUTER & APP
     // ==============================================================
     class Router {
       constructor(app) {
@@ -2415,8 +2716,6 @@
           item.addEventListener('click', (e) => {
             e.preventDefault();
             this.navigate(item.dataset.page);
-            // Auto-close the mobile sidebar after picking a page — no need to
-            // make the person tap a separate close button every time.
             document.getElementById('sidebar').classList.remove('open');
             document.getElementById('sidebarBackdrop').classList.remove('visible');
           });
@@ -2427,10 +2726,8 @@
           this.navigate(window.location.hash.slice(1) || this.getDefaultPage());
         });
       }
-      // Roles without dashboard access (Worker, Sales) land straight on their
-      // one working page instead of hitting an Access Denied on "dashboard".
       getDefaultPage() {
-        const order = ['dashboard', 'worker', 'sales', 'inventory', 'supervisor'];
+        const order = ['dashboard', 'supervisor', 'sales', 'inventory', 'worker'];
         return order.find(p => this.auth.hasPermission(p)) || 'dashboard';
       }
       async navigate(page) {
@@ -2458,9 +2755,6 @@
       }
     }
 
-    // ==============================================================
-    // 7. MAIN APP
-    // ==============================================================
     class App {
       constructor() {
         this.auth = new Auth();
