@@ -2412,7 +2412,14 @@
       }
       init() {
         document.querySelectorAll('.nav-item').forEach(item => {
-          item.addEventListener('click', (e) => { e.preventDefault(); this.navigate(item.dataset.page); });
+          item.addEventListener('click', (e) => {
+            e.preventDefault();
+            this.navigate(item.dataset.page);
+            // Auto-close the mobile sidebar after picking a page — no need to
+            // make the person tap a separate close button every time.
+            document.getElementById('sidebar').classList.remove('open');
+            document.getElementById('sidebarBackdrop').classList.remove('visible');
+          });
         });
         const hash = window.location.hash.slice(1) || this.getDefaultPage();
         this.navigate(hash);
@@ -2469,7 +2476,14 @@
         this.router = new Router(this);
         this.router.init();
         document.getElementById('logoutBtn').addEventListener('click', () => { this.auth.logout(); });
-        document.getElementById('menuToggle').addEventListener('click', () => { document.getElementById('sidebar').classList.toggle('open'); });
+        document.getElementById('menuToggle').addEventListener('click', () => {
+          document.getElementById('sidebar').classList.toggle('open');
+          document.getElementById('sidebarBackdrop').classList.toggle('visible');
+        });
+        document.getElementById('sidebarBackdrop').addEventListener('click', () => {
+          document.getElementById('sidebar').classList.remove('open');
+          document.getElementById('sidebarBackdrop').classList.remove('visible');
+        });
         document.getElementById('userAvatar').textContent = this.user.fullName.split(' ').map(n => n[0]).join('').toUpperCase();
         document.getElementById('userName').textContent = this.user.fullName;
         document.getElementById('userRole').textContent = this.user.role.replace('_', ' ').toUpperCase();
