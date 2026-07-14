@@ -1,4 +1,3 @@
-cat > /mnt/user-data/outputs/index.html << 'EOF'
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3195,8 +3194,7 @@ cat > /mnt/user-data/outputs/index.html << 'EOF'
         }
         showForm(order = null) {
           const isEdit = !!order;
-          let req = {};
-          try { req = order?.requirements ? JSON.parse(order.requirements) : {}; } catch (e) { req = {}; }
+          const req = order?.requirements || {};
           const bd = req.brandingDetails || {};
           const opt = req.optional || {};
           const DEFAULTS = { tinkering: true, mechanical: true, dummyClosing: true, bodyCoach: true,
@@ -3409,7 +3407,7 @@ cat > /mnt/user-data/outputs/index.html << 'EOF'
         async deleteItem(id) {
           this.confirm.open({
             title: 'Delete Order',
-            body: 'Are you sure? This also removes its production tasks.',
+            body: 'Are you sure?',
             onConfirm: async () => {
               this.loader.show();
               try {
@@ -3673,13 +3671,11 @@ cat > /mnt/user-data/outputs/index.html << 'EOF'
           const order = salesData.find(o => o.vehicleNumber === vehicleNumber);
           let reqHtml = '';
           if (order?.requirements) {
-            try {
-              const req = JSON.parse(order.requirements);
-              const list = Object.keys(req).filter(k => k !== 'remarks' && k !== 'brandingDetails' &&
-                k !== 'optional' && (req[k] === true || req[k] === 'Inside' || req[k] === 'Outside'));
-              if (list.length) reqHtml += `<p><strong>Requirements:</strong> ${list.join(', ')}</p>`;
-              if (req.remarks) reqHtml += `<p><strong>Remarks:</strong> ${req.remarks}</p>`;
-            } catch (e) {}
+            const req = order.requirements;
+            const list = Object.keys(req).filter(k => k !== 'remarks' && (req[k] === true ||
+              req[k] === 'Inside' || req[k] === 'Outside'));
+            if (list.length) reqHtml += `<p><strong>Requirements:</strong> ${list.join(', ')}</p>`;
+            if (req.remarks) reqHtml += `<p><strong>Remarks:</strong> ${req.remarks}</p>`;
           }
           const stepsHtml = tasks.map(t =>
             `<div class="step ${t.status==='completed'?'completed':t.status==='in_progress'||t.status==='pending_approval'?'active':''}">${t.taskName} (${t.status})</div>`
@@ -4471,4 +4467,3 @@ cat > /mnt/user-data/outputs/index.html << 'EOF'
   </script>
 </body>
 </html>
-EOF
