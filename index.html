@@ -1568,7 +1568,192 @@
         // 1. APPS SCRIPT URL FOR PHOTO UPLOADS
         // ==============================================================
         const APPS_SCRIPT_URL =
-            'https://script.google.com/macros/s/AKfycbyNeoOPx-xzvOGZJJdcoCzf2Bc2MX7p9ugpC1pwiVFWEAAk7FADuLdiwtKZBGxbI6nZ/exec';
+            '// ================================================================
+// NEWLUCK FLEET ERP – PHOTO UPLOAD SERVICE
+// ================================================================
+// Deploy as Web App, then copy the URL into your HTML.
+// ================================================================
+
+const CONFIG = {
+  // ⚠️ Replace this with your actual Drive folder ID.
+  // Open the folder in Drive, copy the ID from the URL:
+  // https://drive.google.com/drive/folders/1dx-SkSMjRLyOhEeTBpsj5oy5BLBv0fBn
+  PHOTOS_FOLDER_ID: '1dx-SkSMjRLyOhEeTBpsj5oy5BLBv0fBn'
+};
+
+// ================================================================
+// 1. WEB APP ENTRY POINTS
+// ================================================================
+
+function doGet(e) {
+  return handleRequest(e);
+}
+
+function doPost(e) {
+  return handleRequest(e);
+}
+
+/**
+ * Main request handler – routes actions.
+ * Supports 'uploadPhotoFile' only.
+ */
+function handleRequest(e) {
+  var params = {};
+
+  // Parse GET parameters
+  if (e && e.parameter) {
+    for (var key in e.parameter) {
+      params[key] = e.parameter[key];
+    }
+  }
+
+  // Parse POST body (JSON) – sent as text/plain to avoid CORS preflight
+  if (e && e.postData && e.postData.contents) {
+    try {
+      var jsonData = JSON.parse(e.postData.contents);
+      for (var key in jsonData) {
+        params[key] = jsonData[key];
+      }
+    } catch (err) {
+      // Not JSON – ignore
+    }
+  }
+
+  var action = params.action;
+  Logger.log('>>> Action: ' + action);
+  Logger.log('>>> Params: ' + JSON.stringify(params).substring(0, 200));
+
+  try {
+    if (action === 'uploadPhotoFile') {
+      return uploadPhotoFile(params);
+    } else {
+      Logger.log('❌ Unknown action: ' + action);
+      return outputJSON({ error: 'Unknown action: ' + action });
+    }
+  } catch (err) {
+    Logger.log('!!! Error: ' + err.toString());
+    return outputJSON({ error: err.toString() });
+  }
+}
+
+// ================================================================
+// 2. HELPERS
+// ================================================================
+
+function outputJSON(data) {
+  return ContentService.createTextOutput(JSON.stringify(data))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ================================================================
+// 3. PHOTO UPLOAD – saves to Drive and returns a direct view URL
+// ================================================================
+
+function uploadPhotoFile(params) {
+  Logger.log('📸 Starting uploadPhotoFile...');
+
+  // Validate folder ID
+  if (!CONFIG.PHOTOS_FOLDER_ID) {
+    Logger.log('❌ PHOTOS_FOLDER_ID not set in CONFIG.');
+    return outputJSON({ error: 'Folder ID not configured' });
+  }
+
+  // Validate image data
+  if (!params.base64Data) {
+    Logger.log('❌ No base64Data received.');
+    return outputJSON({ error: 'No image data received' });
+  }
+
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(15000);
+    Logger.log('🔒 Lock acquired.');
+
+    // Get the folder
+    var folder;
+    try {
+      folder = DriveApp.getFolderById(CONFIG.PHOTOS_FOLDER_ID);
+      Logger.log('📁 Folder found: ' + folder.getName());
+    } catch (err) {
+      Logger.log('❌ Cannot access folder: ' + err.toString());
+      return outputJSON({ error: 'Invalid folder ID or no access' });
+    }
+
+    // Build file name
+    var mimeType = params.mimeType || 'image/jpeg';
+    var fileName = (params.vehicleNumber || 'photo') + '_' + (params.photoType || 'image') + '_' + Date.now();
+    Logger.log('📄 File name: ' + fileName);
+
+    // Decode base64 and create blob
+    var bytes;
+    try {
+      bytes = Utilities.base64Decode(params.base64Data);
+    } catch (err) {
+      Logger.log('❌ Base64 decode failed: ' + err.toString());
+      return outputJSON({ error: 'Invalid base64 data' });
+    }
+    var blob = Utilities.newBlob(bytes, mimeType, fileName);
+
+    // Save to Drive
+    var file = folder.createFile(blob);
+    Logger.log('✅ File created: ' + file.getName() + ' (ID: ' + file.getId() + ')');
+
+    // Make it publicly viewable
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var directUrl = 'https://drive.google.com/uc?export=view&id=' + file.getId();
+    Logger.log('🔗 Direct URL: ' + directUrl);
+
+    return outputJSON({ success: true, url: directUrl });
+
+  } catch (err) {
+    Logger.log('❌ uploadPhotoFile error: ' + err.toString());
+    return outputJSON({ error: 'Upload failed: ' + err.toString() });
+  } finally {
+    lock.releaseLock();
+    Logger.log('🔓 Lock released.');
+  }
+}
+
+// ================================================================
+// 4. DEBUGGING TOOLS (run these from the Apps Script editor)
+// ================================================================
+
+function checkConfig() {
+  Logger.log('=== Checking Drive photo folder ===');
+  if (!CONFIG.PHOTOS_FOLDER_ID) {
+    Logger.log('❌ PHOTOS_FOLDER_ID is BLANK in CONFIG.');
+    return;
+  }
+  try {
+    var folder = DriveApp.getFolderById(CONFIG.PHOTOS_FOLDER_ID);
+    Logger.log('✅ PHOTOS_FOLDER_ID: OK — folder name is "' + folder.getName() + '"');
+    Logger.log('📁 Folder URL: https://drive.google.com/drive/folders/' + CONFIG.PHOTOS_FOLDER_ID);
+  } catch (err) {
+    Logger.log('❌ PHOTOS_FOLDER_ID: FAILED to open — ' + err.toString());
+  }
+}
+
+/**
+ * Run this from the Apps Script editor to test upload with dummy data.
+ * This will create a small 1x1 pixel image and upload it.
+ */
+function testUpload() {
+  Logger.log('🧪 Running testUpload...');
+  // 1x1 transparent pixel as base64
+  var dummyBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  var params = {
+    vehicleNumber: 'TEST',
+    photoType: 'Test',
+    base64Data: dummyBase64,
+    mimeType: 'image/png'
+  };
+  var result = uploadPhotoFile(params);
+  Logger.log('Test result: ' + JSON.stringify(result));
+}
+
+// ================================================================
+// 5. END OF FILE
+// ================================================================';
 
         // ==============================================================
         // 2. UTILITY HELPERS
