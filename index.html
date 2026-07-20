@@ -2817,7 +2817,7 @@
                 return { success: true };
             },
 
-            // ========== Sales (unchanged) ==========
+            // ========== Sales (fixed duplicate token & double-submit) ==========
             async getSales() {
                 const snapshot = await db.collection('sales').orderBy('createdAt', 'desc').get();
                 const orders = [];
@@ -2826,18 +2826,18 @@
             },
 
             async addSales(data) {
-                const id = data.id || Utils.genId();
+                // Generate a unique ID
+                const id = Utils.genId();
                 const now = Utils.dateUtils.now();
                 const isVehicle = data.orderType === 'vehicle';
                 const hasVehicle = isVehicle && data.vehicleNumber && data.vehicleNumber.trim() !== '';
                 const initialStatus = hasVehicle ? (data.status || 'confirmed') : 'awaiting_vehicle';
 
-                const allOrders = await this.getSales();
-                const seq = allOrders.length + 1;
+                // Create a unique token using the document ID (first 6 chars) + month+year
                 const month = new Date().getMonth();
                 const year = new Date().getFullYear();
                 const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-                const token = months[month] + String(year).slice(-2) + String(seq).padStart(3, '0');
+                const token = months[month] + String(year).slice(-2) + '-' + id.slice(0, 6).toUpperCase();
 
                 const order = {
                     ...data,
@@ -2854,6 +2854,7 @@
                 };
                 await db.collection('sales').doc(id).set(order);
 
+                // Generate production tasks only if vehicle is linked
                 if (isVehicle && hasVehicle) {
                     await this._generateProductionTasks(id, data.vehicleNumber, data.customerName, data
                         .deliveryDate, JSON.parse(data.requirements || '{}'), 'vehicle');
@@ -4058,7 +4059,7 @@
             },
 
             // ==============================================================
-            // SALES PAGE – with full order detail view
+            // SALES PAGE – fixed duplicate submission
             // ==============================================================
             Sales: class {
                 constructor(app) {
@@ -4078,6 +4079,7 @@
                     this.pagination = null;
                     this.filtersComp = null;
                     this.vehicles = [];
+                    this._submitting = false; // prevent double click
                 }
 
                 getActiveOrderVehicleSet() {
@@ -4638,105 +4640,118 @@
                         body: form,
                         confirmText: isEdit ? 'Update' : 'Create',
                         onConfirm: async () => {
-                            const fd = new FormData(document.getElementById('salesForm'));
-                            const data = Object.fromEntries(fd.entries());
+                            if (this._submitting) return;
+                            this._submitting = true;
+                            // Disable the confirm button to prevent double click
+                            const confirmBtn = document.getElementById('modalConfirm');
+                            if (confirmBtn) confirmBtn.disabled = true;
 
-                            const orderType = data.orderType || 'vehicle';
-                            const isVehicle = orderType === 'vehicle';
-                            const vehiclePending = document.getElementById('vehiclePendingToggle')
-                                ?.checked || false;
-
-                            let vehicleNumber = '';
-                            if (isVehicle) {
-                                vehicleNumber = document.getElementById('vehicleNumberHidden')
-                                    .value;
-                                if (!vehiclePending && !vehicleNumber) {
-                                    this.toast.show(
-                                        'Select a vehicle, or tick "vehicle not in inventory yet"',
-                                        'warning');
-                                    return;
-                                }
-                            } else {
-                                const productType = data.productType;
-                                const productName = data.productName || productType ||
-                                    'Non-Vehicle';
-                                if (!productType) {
-                                    this.toast.show('Please select a product type.',
-                                        'warning');
-                                    return;
-                                }
-                                data.productType = productType;
-                                data.productName = productName;
-                            }
-
-                            if (!data.salesperson) {
-                                this.toast.show('Select which salesperson this order is for',
-                                    'warning');
-                                return;
-                            }
-
-                            const requirements = {
-                                tinkering: !!data.tinkering,
-                                mechanical: !!data.mechanical,
-                                dummyClosing: !!data.dummyClosing,
-                                bodyCoach: !!data.bodyCoach,
-                                insideKitchen: !!data.insideKitchen,
-                                outsideKitchen: !!data.outsideKitchen,
-                                kitchenLayout: !!data.kitchenLayout,
-                                painting: !!data.painting,
-                                acpWork: !!data.acpWork,
-                                vehicleElectrical: !!data.vehicleElectrical,
-                                coachElectrical: !!data.coachElectrical,
-                                upsWiring: !!data.upsWiring,
-                                normalWiring: !!data.normalWiring,
-                                plumbing: !!data.plumbing,
-                                canopy: !!data.canopy,
-                                tyreChange: !!data.tyreChange,
-                                glassChecking: !!data.glassChecking,
-                                branding: !!data.branding,
-                                brandingDetails: { plainSticker: !!data.plainSticker,
-                                    lighting: !!data.lighting, threeDLogo: !!data
-                                        .threeDLogo, acpBoard: !!data.acpBoard },
-                                optional: { solar: !!data.solar, ups: !!data.ups,
-                                    camera: !!data.camera },
-                                remarks: data.remarks || ''
-                            };
-
-                            const orderData = {
-                                orderType: orderType,
-                                salesperson: data.salesperson,
-                                vehicleNumber: isVehicle ? (vehiclePending ? '' :
-                                    vehicleNumber) : '',
-                                productType: isVehicle ? '' : data.productType,
-                                productName: isVehicle ? '' : data.productName,
-                                customerName: data.customerName,
-                                customerPhone: data.customerPhone || '',
-                                customerEmail: data.customerEmail || '',
-                                deliveryDate: data.deliveryDate,
-                                advanceAmount: parseFloat(data.advanceAmount) || 0,
-                                paintColour: data.paintColour || '',
-                                requirements: JSON.stringify(requirements),
-                                status: data.status || 'confirmed'
-                            };
-
-                            this.loader.show();
                             try {
-                                if (isEdit) {
-                                    await DataService.updateSales(order.id, orderData);
-                                    this.toast.show('Order updated', 'success');
+                                const fd = new FormData(document.getElementById('salesForm'));
+                                const data = Object.fromEntries(fd.entries());
+
+                                const orderType = data.orderType || 'vehicle';
+                                const isVehicle = orderType === 'vehicle';
+                                const vehiclePending = document.getElementById('vehiclePendingToggle')
+                                    ?.checked || false;
+
+                                let vehicleNumber = '';
+                                if (isVehicle) {
+                                    vehicleNumber = document.getElementById('vehicleNumberHidden')
+                                        .value;
+                                    if (!vehiclePending && !vehicleNumber) {
+                                        this.toast.show(
+                                            'Select a vehicle, or tick "vehicle not in inventory yet"',
+                                            'warning');
+                                        return;
+                                    }
                                 } else {
-                                    const result = await DataService.addSales(orderData);
-                                    this.toast.show(result.awaitingVehicle ?
-                                        `Order ${result.token} saved — awaiting vehicle purchase` :
-                                        'Order created — supervisor queue updated',
-                                        'success');
+                                    const productType = data.productType;
+                                    const productName = data.productName || productType ||
+                                        'Non-Vehicle';
+                                    if (!productType) {
+                                        this.toast.show('Please select a product type.',
+                                            'warning');
+                                        return;
+                                    }
+                                    data.productType = productType;
+                                    data.productName = productName;
                                 }
-                                this.modal.close();
-                                await this.loadData();
-                                this.applyFilters();
-                            } catch (e) { this.toast.show('Failed to save: ' + (e
-                                    .message || e), 'error'); } finally { this.loader
-                                    .hide(); }
+
+                                if (!data.salesperson) {
+                                    this.toast.show('Select which salesperson this order is for',
+                                        'warning');
+                                    return;
+                                }
+
+                                const requirements = {
+                                    tinkering: !!data.tinkering,
+                                    mechanical: !!data.mechanical,
+                                    dummyClosing: !!data.dummyClosing,
+                                    bodyCoach: !!data.bodyCoach,
+                                    insideKitchen: !!data.insideKitchen,
+                                    outsideKitchen: !!data.outsideKitchen,
+                                    kitchenLayout: !!data.kitchenLayout,
+                                    painting: !!data.painting,
+                                    acpWork: !!data.acpWork,
+                                    vehicleElectrical: !!data.vehicleElectrical,
+                                    coachElectrical: !!data.coachElectrical,
+                                    upsWiring: !!data.upsWiring,
+                                    normalWiring: !!data.normalWiring,
+                                    plumbing: !!data.plumbing,
+                                    canopy: !!data.canopy,
+                                    tyreChange: !!data.tyreChange,
+                                    glassChecking: !!data.glassChecking,
+                                    branding: !!data.branding,
+                                    brandingDetails: { plainSticker: !!data.plainSticker,
+                                        lighting: !!data.lighting, threeDLogo: !!data
+                                            .threeDLogo, acpBoard: !!data.acpBoard },
+                                    optional: { solar: !!data.solar, ups: !!data.ups,
+                                        camera: !!data.camera },
+                                    remarks: data.remarks || ''
+                                };
+
+                                const orderData = {
+                                    orderType: orderType,
+                                    salesperson: data.salesperson,
+                                    vehicleNumber: isVehicle ? (vehiclePending ? '' :
+                                        vehicleNumber) : '',
+                                    productType: isVehicle ? '' : data.productType,
+                                    productName: isVehicle ? '' : data.productName,
+                                    customerName: data.customerName,
+                                    customerPhone: data.customerPhone || '',
+                                    customerEmail: data.customerEmail || '',
+                                    deliveryDate: data.deliveryDate,
+                                    advanceAmount: parseFloat(data.advanceAmount) || 0,
+                                    paintColour: data.paintColour || '',
+                                    requirements: JSON.stringify(requirements),
+                                    status: data.status || 'confirmed'
+                                };
+
+                                this.loader.show();
+                                try {
+                                    if (isEdit) {
+                                        await DataService.updateSales(order.id, orderData);
+                                        this.toast.show('Order updated', 'success');
+                                    } else {
+                                        const result = await DataService.addSales(orderData);
+                                        this.toast.show(result.awaitingVehicle ?
+                                            `Order ${result.token} saved — awaiting vehicle purchase` :
+                                            'Order created — supervisor queue updated',
+                                            'success');
+                                    }
+                                    this.modal.close();
+                                    await this.loadData();
+                                    this.applyFilters();
+                                } catch (e) { this.toast.show('Failed to save: ' + (e
+                                        .message || e), 'error'); } finally { this.loader
+                                        .hide(); }
+                            } catch (err) {
+                                // Already handled
+                            } finally {
+                                this._submitting = false;
+                                if (confirmBtn) confirmBtn.disabled = false;
+                            }
                         }
                     });
 
