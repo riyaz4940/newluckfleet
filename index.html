@@ -1970,6 +1970,51 @@
             font-size: 0.7rem;
             font-style: italic;
         }
+
+        /* --- NEW: sales order detail modal styles --- */
+        .order-detail-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.4rem 1rem;
+        }
+        .order-detail-grid .detail-item {
+            padding: 0.2rem 0;
+            border-bottom: 1px solid #f0f4f8;
+        }
+        .order-detail-grid .detail-item .label {
+            font-size: 0.7rem;
+            color: var(--dark-gray);
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .order-detail-grid .detail-item .value {
+            font-weight: 600;
+            color: var(--primary-dark);
+            font-size: 0.95rem;
+        }
+        .order-detail-grid .detail-item.full-width {
+            grid-column: 1 / -1;
+        }
+        .order-requirements-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+            margin-top: 0.3rem;
+        }
+        .order-requirements-list .req-tag {
+            background: var(--light-gray);
+            padding: 0.1rem 0.5rem;
+            border-radius: 12px;
+            font-size: 0.75rem;
+        }
+        .order-requirements-list .req-tag.yes {
+            background: #d4edda;
+            color: #155724;
+        }
+        .order-requirements-list .req-tag.no {
+            background: #f8d7da;
+            color: #721c24;
+        }
     </style>
 </head>
 <body>
@@ -2646,7 +2691,8 @@
                 const workers = [];
                 snapshot.forEach(doc => {
                     const d = doc.data();
-                    workers.push({ id: doc.id, name: d.fullName, department: d.department || '',
+                    workers.push({ id: doc.id, name: d.fullName || d.username || 'Unknown', department: d
+                            .department || '',
                         employeeType: d.employeeType || 'Company', skills: d.skills ? d.skills.split(',') : [] });
                 });
                 return workers;
@@ -4011,6 +4057,9 @@
                     item); }
             },
 
+            // ==============================================================
+            // SALES PAGE – with full order detail view
+            // ==============================================================
             Sales: class {
                 constructor(app) {
                     this.app = app;
@@ -4066,6 +4115,7 @@
                     const user = this.app.auth.getCurrentUser();
                     const canEdit = ['owner', 'operations_manager'].includes(user?.role);
 
+                    // Table with a "View" action that shows details
                     this.table = new Components.Table(document.getElementById('salesTableContainer'), {
                         columns: [
                             { key: 'token', label: 'Token' },
@@ -4090,11 +4140,12 @@
                             { key: 'status', label: 'Status', render: (r) =>
                                     `<span class="badge badge-${r.status}">${r.status.replace('_',' ')}</span>` },
                             { key: 'actions', label: 'Actions', render: (r) => {
-                                    let btns = '';
+                                    let btns =
+                                        `<button class="btn-icon view-order" data-id="${r.id}" title="View Details"><span class="material-icons">visibility</span></button>`;
                                     if (r.status === 'awaiting_vehicle' && r.orderType ===
                                         'vehicle') {
                                         btns +=
-                                            `<button class="btn btn-sm btn-primary link-vehicle" data-id="${r.id}"><span class="material-icons" style="font-size:16px;">directions_car</span> Link Vehicle</button> `;
+                                            `<button class="btn btn-sm btn-primary link-vehicle" data-id="${r.id}"><span class="material-icons" style="font-size:16px;">directions_car</span> Link</button> `;
                                     }
                                     if (canEdit) {
                                         btns +=
@@ -4111,12 +4162,14 @@
                         onAction: (e) => {
                             const t = e.target.closest('button');
                             if (!t) return;
-                            if (t.classList.contains('edit-sales')) this.editItem(t.dataset.id);
-                            if (t.classList.contains('delete-sales')) this.deleteItem(t.dataset.id);
-                            if (t.classList.contains('remind-sales')) this.sendReminder(t.dataset.id);
-                            if (t.classList.contains('link-vehicle')) this.showLinkVehicle(t.dataset
-                                .id);
-                        }
+                            const id = t.dataset.id;
+                            if (t.classList.contains('view-order')) this.showOrderDetails(id);
+                            if (t.classList.contains('edit-sales')) this.editItem(id);
+                            if (t.classList.contains('delete-sales')) this.deleteItem(id);
+                            if (t.classList.contains('remind-sales')) this.sendReminder(id);
+                            if (t.classList.contains('link-vehicle')) this.showLinkVehicle(id);
+                        },
+                        onRowClick: (id) => this.showOrderDetails(id)
                     });
 
                     this.pagination = new Components.Pagination(document.getElementById('salesPagination'), {
@@ -4211,7 +4264,6 @@
                         }
                         return match;
                     });
-                    // Reset to page 1 when filters change
                     this.currentPage = 1;
                     this.pagination.setTotal(this.filteredData.length);
                     this.renderTable();
@@ -4224,7 +4276,6 @@
                     const pageData = this.filteredData.slice(start, end);
                     this.table.render(pageData);
                     this.renderCards(pageData);
-                    // Update page indicator WITHOUT resetting to page 1
                     this.pagination.updatePageIndicator(this.currentPage);
                 }
 
@@ -4242,7 +4293,8 @@
                         const vehicleDisplay = r.orderType === 'non-vehicle' ?
                             (r.productName || r.productType || 'Non‑Vehicle') :
                             (r.vehicleNumber || '<em style="color:var(--dark-gray);">To be purchased</em>');
-                        let actionBtns = '';
+                        let actionBtns =
+                            `<button class="btn-icon view-order" data-id="${r.id}" title="View"><span class="material-icons">visibility</span></button>`;
                         if (r.status === 'awaiting_vehicle' && r.orderType === 'vehicle') {
                             actionBtns +=
                                 `<button class="btn btn-sm btn-primary link-vehicle" data-id="${r.id}"><span class="material-icons" style="font-size:16px;">directions_car</span> Link</button>`;
@@ -4281,36 +4333,152 @@
                     container.innerHTML = html;
 
                     // Bind events for card actions
+                    container.querySelectorAll('.view-order').forEach(btn => {
+                        btn.addEventListener('click', (e) => { e.stopPropagation();
+                            this.showOrderDetails(btn.dataset.id); });
+                    });
                     container.querySelectorAll('.edit-sales').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            this.editItem(btn.dataset.id);
-                        });
+                        btn.addEventListener('click', (e) => { e.stopPropagation();
+                            this.editItem(btn.dataset.id); });
                     });
                     container.querySelectorAll('.delete-sales').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            this.deleteItem(btn.dataset.id);
-                        });
+                        btn.addEventListener('click', (e) => { e.stopPropagation();
+                            this.deleteItem(btn.dataset.id); });
                     });
                     container.querySelectorAll('.remind-sales').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            this.sendReminder(btn.dataset.id);
-                        });
+                        btn.addEventListener('click', (e) => { e.stopPropagation();
+                            this.sendReminder(btn.dataset.id); });
                     });
                     container.querySelectorAll('.link-vehicle').forEach(btn => {
-                        btn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            this.showLinkVehicle(btn.dataset.id);
-                        });
+                        btn.addEventListener('click', (e) => { e.stopPropagation();
+                            this.showLinkVehicle(btn.dataset.id); });
                     });
-                    // Card click to show details (optional)
+                    // Card click to show details
                     container.querySelectorAll('.inv-card').forEach(card => {
                         card.addEventListener('click', () => {
-                            // could open a detail modal
-                            this.toast.show('Order details coming soon', 'info');
+                            this.showOrderDetails(card.dataset.id);
                         });
+                    });
+                }
+
+                // ---------- NEW: Full order detail view ----------
+                showOrderDetails(id) {
+                    const order = this.data.find(o => o.id === id);
+                    if (!order) { this.toast.show('Order not found', 'error'); return; }
+
+                    let req = {};
+                    try { req = JSON.parse(order.requirements || '{}'); } catch (e) { req = {}; }
+                    const branding = req.brandingDetails || {};
+                    const optional = req.optional || {};
+
+                    // Build requirements list
+                    const reqKeys = ['tinkering', 'mechanical', 'dummyClosing', 'bodyCoach', 'insideKitchen',
+                        'outsideKitchen', 'kitchenLayout', 'painting', 'acpWork', 'vehicleElectrical',
+                        'coachElectrical', 'upsWiring', 'normalWiring', 'plumbing', 'canopy', 'tyreChange',
+                        'glassChecking', 'branding', 'solar', 'ups', 'camera'
+                    ];
+                    const reqLabels = {
+                        tinkering: 'Tinkering',
+                        mechanical: 'Mechanical',
+                        dummyClosing: 'Dummy Closing',
+                        bodyCoach: 'Body Coach',
+                        insideKitchen: 'Inside Kitchen',
+                        outsideKitchen: 'Outside Kitchen',
+                        kitchenLayout: 'Kitchen Layout',
+                        painting: 'Painting',
+                        acpWork: 'ACP Work',
+                        vehicleElectrical: 'Vehicle Electrical',
+                        coachElectrical: 'Coach Electrical',
+                        upsWiring: 'UPS Wiring',
+                        normalWiring: 'Normal Wiring',
+                        plumbing: 'Plumbing',
+                        canopy: 'Canopy',
+                        tyreChange: 'Tyre Change',
+                        glassChecking: 'Glass Checking',
+                        branding: 'Branding',
+                        solar: 'Solar',
+                        ups: 'UPS',
+                        camera: 'Camera'
+                    };
+                    const reqHtml = reqKeys.map(k => {
+                        const val = req[k] || false;
+                        return `<span class="req-tag ${val ? 'yes' : 'no'}">${reqLabels[k] || k}: ${val ? '✅' : '❌'}</span>`;
+                    }).join('');
+
+                    const brandingHtml = `
+                        <div style="margin-top:0.3rem;">
+                            <span class="req-tag ${branding.plainSticker ? 'yes' : 'no'}">Plain Sticker: ${branding.plainSticker ? '✅' : '❌'}</span>
+                            <span class="req-tag ${branding.lighting ? 'yes' : 'no'}">Lighting: ${branding.lighting ? '✅' : '❌'}</span>
+                            <span class="req-tag ${branding.threeDLogo ? 'yes' : 'no'}">3D Logo: ${branding.threeDLogo ? '✅' : '❌'}</span>
+                            <span class="req-tag ${branding.acpBoard ? 'yes' : 'no'}">ACP Board: ${branding.acpBoard ? '✅' : '❌'}</span>
+                        </div>
+                    `;
+
+                    const optionalHtml = `
+                        <div style="margin-top:0.3rem;">
+                            <span class="req-tag ${optional.solar ? 'yes' : 'no'}">Solar: ${optional.solar ? '✅' : '❌'}</span>
+                            <span class="req-tag ${optional.ups ? 'yes' : 'no'}">UPS: ${optional.ups ? '✅' : '❌'}</span>
+                            <span class="req-tag ${optional.camera ? 'yes' : 'no'}">Camera: ${optional.camera ? '✅' : '❌'}</span>
+                        </div>
+                    `;
+
+                    const vehicleDisplay = order.orderType === 'non-vehicle' ?
+                        `${order.productName || order.productType || 'Non‑Vehicle'}` :
+                        (order.vehicleNumber || '⏳ Awaiting vehicle purchase');
+
+                    const html = `
+                        <div class="order-detail-grid">
+                            <div class="detail-item"><div class="label">Token</div><div class="value">${order.token || '—'}</div></div>
+                            <div class="detail-item"><div class="label">Order Type</div><div class="value">${order.orderType === 'vehicle' ? '🚗 Vehicle' : '🪑 Non‑Vehicle'}</div></div>
+                            <div class="detail-item"><div class="label">Salesperson</div><div class="value">${order.salesperson || '—'}</div></div>
+                            <div class="detail-item"><div class="label">Status</div><div class="value"><span class="badge badge-${order.status}">${order.status.replace('_',' ')}</span></div></div>
+                            <div class="detail-item full-width"><div class="label">Vehicle / Product</div><div class="value">${vehicleDisplay}</div></div>
+                            <div class="detail-item"><div class="label">Customer</div><div class="value">${order.customerName || '—'}</div></div>
+                            <div class="detail-item"><div class="label">Phone</div><div class="value">${order.customerPhone || '—'}</div></div>
+                            <div class="detail-item"><div class="label">Email</div><div class="value">${order.customerEmail || '—'}</div></div>
+                            <div class="detail-item"><div class="label">Delivery Date</div><div class="value">${Utils.dateUtils.format(order.deliveryDate)}</div></div>
+                            <div class="detail-item"><div class="label">Progress</div><div class="value">${order.progress || 0}%</div></div>
+                            <div class="detail-item"><div class="label">Advance Amount</div><div class="value">₹${(order.advanceAmount || 0).toLocaleString()}</div></div>
+                            <div class="detail-item"><div class="label">Paint Colour</div><div class="value">${order.paintColour || '—'}</div></div>
+                            ${order.orderType === 'non-vehicle' ? `
+                                <div class="detail-item full-width"><div class="label">Product Type</div><div class="value">${order.productType || '—'}</div></div>
+                            ` : ''}
+                            <div class="detail-item full-width">
+                                <div class="label">Requirements</div>
+                                <div class="order-requirements-list">${reqHtml}</div>
+                            </div>
+                            ${Object.keys(branding).some(k => branding[k]) ? `
+                                <div class="detail-item full-width">
+                                    <div class="label">Branding Details</div>
+                                    ${brandingHtml}
+                                </div>
+                            ` : ''}
+                            ${Object.keys(optional).some(k => optional[k]) ? `
+                                <div class="detail-item full-width">
+                                    <div class="label">Optional Features</div>
+                                    ${optionalHtml}
+                                </div>
+                            ` : ''}
+                            ${req.remarks ? `
+                                <div class="detail-item full-width">
+                                    <div class="label">Remarks</div>
+                                    <div class="value" style="font-size:0.85rem;font-weight:400;">${req.remarks}</div>
+                                </div>
+                            ` : ''}
+                            <div class="detail-item full-width" style="border-bottom:none;padding-top:0.5rem;font-size:0.7rem;color:var(--dark-gray);">
+                                <div>Created: ${new Date(order.createdAt).toLocaleString()}</div>
+                                ${order.updatedAt ? `<div>Updated: ${new Date(order.updatedAt).toLocaleString()}</div>` : ''}
+                                ${order.paymentReminderSent ? `<div>💬 Payment follow-up done</div>` : ''}
+                            </div>
+                        </div>
+                    `;
+
+                    this.modal.open({
+                        title: `📋 Order ${order.token || ''}`,
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => this.modal.close()
                     });
                 }
 
@@ -4699,6 +4867,9 @@
                 }
             },
 
+            // ==============================================================
+            // SUPERVISOR – FIXED: assignment popup shows ALL tasks
+            // ==============================================================
             Supervisor: class {
                 constructor(app) {
                     this.app = app;
@@ -4710,9 +4881,9 @@
                     this.workers = [];
                     this.priorityQueue = [];
                     this.departmentTypes = {};
-                    this.filterType = 'All';
                     this.vehiclePhotos = {};
                     this.allSales = [];
+                    this.filterType = 'All';
                 }
                 async render(container) {
                     container.innerHTML = `
@@ -4755,6 +4926,16 @@
                     document.getElementById('typeFilter').addEventListener('change', (e) => {
                         this.filterType = e.target.value;
                         this.renderQueue();
+                    });
+
+                    // --- FIX: Event delegation for assignment clicks ---
+                    const supTable = document.getElementById('supTable');
+                    supTable.addEventListener('click', (e) => {
+                        const target = e.target.closest('.assign-team');
+                        if (target) {
+                            e.preventDefault();
+                            this.assignTeam(target.dataset.vehicle);
+                        }
                     });
                 }
 
@@ -4906,10 +5087,13 @@
                                 `${r.productName || r.vehicleNumber} (${r.token})` :
                                 r.vehicleNumber;
 
-                            // === FIX: Show assigned worker names ===
+                            // Show assigned worker names
                             const workerNames = tasks.map(t => {
                                 const ids = (t.assignedWorkerId || '').split(',').filter(Boolean);
-                                return ids.map(id => this.workers.find(w => String(w.id) === id.trim())?.name || 'Unknown').join(', ');
+                                return ids.map(id => {
+                                    const worker = this.workers.find(w => String(w.id) === id.trim());
+                                    return worker?.name || 'Unknown';
+                                }).join(', ');
                             }).filter(Boolean);
                             const uniqueWorkers = [...new Set(workerNames)];
                             const workerDisplay = uniqueWorkers.length > 0
@@ -4939,8 +5123,7 @@
                             `;
                         }).join('')}</div>`;
 
-                    container.querySelectorAll('.assign-team').forEach(el => el.addEventListener('click', () =>
-                        this.assignTeam(el.dataset.vehicle)));
+                    // Events for other buttons (timeline, qc, delivery) remain
                     container.querySelectorAll('.view-timeline').forEach(el => el.addEventListener('click',
                         (e) => { e.stopPropagation();
                             this.viewTimeline(el.dataset.vehicle); }));
@@ -4982,43 +5165,116 @@
                         showCancel: false, onConfirm: () => this.modal.close() });
                 }
 
+                // ===== FIXED: assignTeam shows ALL tasks for the vehicle, with clear status =====
                 async assignTeam(vehicleNumber) {
-                    const tasks = this.data.filter(t => t.vehicleNumber === vehicleNumber || (t
-                            .vehicleNumber === '' &&
-                            t.salesOrderId && this.allSales.some(s => s.id === t.salesOrderId && (s
-                                .productName === vehicleNumber))));
-                    const pendingTasks = tasks.filter(t => t.status === 'pending' || (t.status ===
-                            'in_progress' && !t.assignedWorkerId));
-                    if (pendingTasks.length === 0) { this.toast.show('No pending tasks for this item.',
-                            'warning'); return; }
-                    const dept = pendingTasks[0].department || '';
+                    try {
+                        // Get all tasks for this vehicle
+                        const allTasks = this.data.filter(t => t.vehicleNumber === vehicleNumber || (t
+                                .vehicleNumber === '' &&
+                                t.salesOrderId && this.allSales.some(s => s.id === t.salesOrderId && (s
+                                    .productName === vehicleNumber))));
+
+                        if (allTasks.length === 0) {
+                            this.toast.show('No tasks found for this vehicle.', 'warning');
+                            return;
+                        }
+
+                        // Determine which tasks are assignable (pending or in_progress without assigned worker)
+                        const assignableTasks = allTasks.filter(t =>
+                            t.status === 'pending' ||
+                            (t.status === 'in_progress' && !t.assignedWorkerId)
+                        );
+
+                        if (assignableTasks.length === 0) {
+                            // All tasks are either completed or already assigned – show read-only popup
+                            this.showAssignPopup(vehicleNumber, allTasks, []);
+                            return;
+                        }
+
+                        this.showAssignPopup(vehicleNumber, allTasks, assignableTasks);
+                    } catch (error) {
+                        console.error(error);
+                        this.toast.show('Error opening assignment: ' + error.message, 'error');
+                    }
+                }
+
+                showAssignPopup(vehicleNumber, allTasks, assignableTasks) {
+                    const dept = assignableTasks.length > 0 ? assignableTasks[0].department || '' : (allTasks[0]
+                        ?.department || '');
+                    // Sort workers by department match - SAFE with null checks
                     const sortedWorkers = [...this.workers].sort((a, b) => {
                         const aMatch = a.department === dept ? 0 : 1;
                         const bMatch = b.department === dept ? 0 : 1;
-                        return aMatch - bMatch || a.name.localeCompare(b.name);
+                        const deptDiff = aMatch - bMatch;
+                        if (deptDiff !== 0) return deptDiff;
+                        const nameA = a.name || '';
+                        const nameB = b.name || '';
+                        return nameA.localeCompare(nameB);
                     });
-                    const workerCheckboxes = sortedWorkers.map(w =>
-                        `<label><input type="checkbox" name="worker_${w.id}" value="${w.id}" /> ${w.name} <span style="color:var(--dark-gray);font-size:0.8rem;">— ${w.department || 'no dept'} (${w.employeeType})</span></label>`
-                        ).join('') || '<p style="color:var(--dark-gray);">No workers set up yet.</p>';
+
+                    // Build worker checkboxes - SAFE with null checks
+                    const workerCheckboxes = sortedWorkers.map(w => {
+                        const workerName = w.name || 'Unknown Worker';
+                        const dept = w.department || 'no dept';
+                        const type = w.employeeType || 'Company';
+                        return `<label><input type="checkbox" name="worker_${w.id}" value="${w.id}" /> ${workerName} <span style="color:var(--dark-gray);font-size:0.8rem;">— ${dept} (${type})</span></label>`;
+                    }).join('') || '<p style="color:var(--dark-gray);">No workers set up yet.</p>';
+
+                    // Build task dropdown showing all tasks with status - SAFE with null checks
+                    const taskOptions = allTasks.map(t => {
+                        const isAssignable = assignableTasks.some(at => at.id === t.id);
+                        const alreadyAssigned = t.assignedWorkerId && t.assignedWorkerId.length > 0;
+                        let label = `${t.taskName} (${t.status})`;
+                        if (alreadyAssigned) {
+                            const workerIds = t.assignedWorkerId.split(',').filter(Boolean);
+                            const names = workerIds.map(id => {
+                                const worker = this.workers.find(w => String(w.id) === id.trim());
+                                return worker?.name || 'Unknown';
+                            }).join(', ');
+                            label += ` 👷 ${names}`;
+                        }
+                        if (!isAssignable && t.status !== 'completed') {
+                            label += ' ⛔ (already assigned)';
+                        }
+                        if (t.status === 'completed') {
+                            label += ' ✅ (done)';
+                        }
+                        return `<option value="${t.id}" ${isAssignable ? '' : 'disabled'}>${label}</option>`;
+                    }).join('');
+
+                    const hasAssignable = assignableTasks.length > 0;
 
                     const form = `
                         <form id="assignForm">
                             <div class="form-group"><label>Item</label><input type="text" value="${vehicleNumber}" disabled /></div>
-                            <div class="form-group"><label>Task</label><select name="taskId">${pendingTasks.map(t => `<option value="${t.id}" ${t.department===dept?'':''}>${t.taskName} (${t.department})</option>`).join('')}</select></div>
+                            <div class="form-group">
+                                <label>Task</label>
+                                <select name="taskId" ${!hasAssignable ? 'disabled' : ''}>
+                                    ${taskOptions}
+                                </select>
+                                ${!hasAssignable ? '<div style="font-size:0.75rem;color:var(--dark-gray);margin-top:0.2rem;">No assignable tasks — all are already assigned or completed.</div>' : ''}
+                            </div>
                             <div class="form-group">
                                 <label>Workers (tick one or more)</label>
                                 <div class="checkbox-group" style="max-height:220px;overflow-y:auto;display:block;">${workerCheckboxes}</div>
                             </div>
-                            <div class="form-group"><label>Estimated Hours</label><input type="number" name="estimatedHours" value="${pendingTasks[0]?.estimatedHours || 8}" step="0.5" /></div>
-                            <div class="form-group"><label><input type="checkbox" name="forceStart" /> Force Start (skip dependency)</label></div>
+                            <div class="form-group">
+                                <label>Estimated Hours</label>
+                                <input type="number" name="estimatedHours" value="${assignableTasks.length > 0 ? assignableTasks[0]?.estimatedHours || 8 : 8}" step="0.5" ${!hasAssignable ? 'disabled' : ''} />
+                            </div>
+                            <div class="form-group">
+                                <label><input type="checkbox" name="forceStart" ${!hasAssignable ? 'disabled' : ''} /> Force Start (skip dependency)</label>
+                            </div>
                         </form>
                     `;
 
                     this.modal.open({
                         title: `Assign Work - ${vehicleNumber}`,
                         body: form,
-                        confirmText: 'Assign',
+                        confirmText: hasAssignable ? 'Assign' : 'Close',
+                        showCancel: !hasAssignable,
                         onConfirm: async () => {
+                            if (!hasAssignable) { this.modal.close(); return; }
                             const fd = new FormData(document.getElementById('assignForm'));
                             const data = Object.fromEntries(fd.entries());
                             const taskId = data.taskId;
@@ -5026,22 +5282,31 @@
                             const selectedWorkerIds = sortedWorkers.filter(w => data[
                                     'worker_' + w.id])
                                 .map(w => w.id);
-                            if (selectedWorkerIds.length === 0) { this.toast.show(
-                                    'Select at least one worker', 'warning'); return; }
+                            if (selectedWorkerIds.length === 0) {
+                                this.toast.show('Select at least one worker', 'warning');
+                                return;
+                            }
                             if (task) {
-                                await DataService.updateProduction(taskId, {
-                                    assignedWorkerId: selectedWorkerIds.join(','),
-                                    estimatedHours: parseFloat(data.estimatedHours) || 8,
-                                    status: 'pending',
-                                    forceStart: !!data.forceStart
-                                });
-                                this.toast.show('Task assigned – worker(s) will see it',
-                                    'success');
-                                this.modal.close();
-                                await this.loadData();
-                                this.renderQueue();
-                                this.renderStats();
-                                this.renderAssignmentsOverview();
+                                this.loader.show();
+                                try {
+                                    await DataService.updateProduction(taskId, {
+                                        assignedWorkerId: selectedWorkerIds.join(','),
+                                        estimatedHours: parseFloat(data.estimatedHours) ||
+                                            8,
+                                        status: 'pending',
+                                        forceStart: !!data.forceStart
+                                    });
+                                    this.toast.show(
+                                        'Task assigned – worker(s) will see it',
+                                        'success');
+                                    this.modal.close();
+                                    await this.loadData();
+                                    this.renderQueue();
+                                    this.renderStats();
+                                    this.renderAssignmentsOverview();
+                                } catch (e) { this.toast.show('Failed: ' + (e
+                                        .message || e), 'error'); } finally { this
+                                        .loader.hide(); }
                             }
                         }
                     });
@@ -5208,7 +5473,6 @@
                             `<div class="no-assignments">No tasks assigned yet.</div>`;
                         return;
                     }
-                    // Group by vehicle
                     const groups = {};
                     assigned.forEach(t => {
                         const key = t.vehicleNumber || 'Non-Vehicle';
@@ -5233,7 +5497,7 @@
                 }
             },
 
-            // ========== UPDATED: FC Preparation Page ==========
+            // ========== FC Preparation Page ==========
             FCPrep: class {
                 constructor(app) {
                     this.app = app;
@@ -5273,37 +5537,26 @@
                         this.workers = workers;
                         this.fcTasks = fcTasks;
 
-                        // Filter inventory: not delivered, not already FC ready
                         let filtered = inventory.filter(v => v.inventoryStatus !== 'Delivered' && v.fcStatus !== 'ready');
 
-                        // Now filter based on production status
                         const finalList = [];
                         for (const v of filtered) {
-                            // Check if vehicle has any production tasks
                             const prodTasks = production.filter(p => p.vehicleNumber === v.vehicleNumber);
                             const hasProd = prodTasks.length > 0;
-
                             if (!hasProd) {
-                                // Not in production – include
                                 finalList.push(v);
                             } else {
-                                // In production – check if Tinkering, Mechanical, Painting are completed
                                 const requiredTasks = ['Tinkering', 'Mechanical', 'Painting'];
                                 const allCompleted = requiredTasks.every(taskName => {
                                     const task = prodTasks.find(p => p.taskName === taskName);
                                     return task && task.status === 'completed';
                                 });
                                 if (allCompleted) {
-                                    // They are done – include for FC prep
                                     finalList.push(v);
                                 }
-                                // else: skip – still in production and not ready for FC
                             }
                         }
-
                         this.inventory = finalList;
-
-                        // Build photo map
                         this.vehiclePhotos = {};
                         this.inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl ||
                                 ''; });
@@ -5315,7 +5568,7 @@
                     const container = document.getElementById('fcInventoryCards');
                     if (this.inventory.length === 0) {
                         container.innerHTML =
-                            `<p style="color:var(--dark-gray);">No vehicles available for FC preparation. Either they are in production (without completed Tinkering/Mechanical/Painting) or already FC ready.</p>`;
+                            `<p style="color:var(--dark-gray);">No vehicles available for FC preparation.</p>`;
                         return;
                     }
 
@@ -5382,7 +5635,6 @@
 
                     container.innerHTML = html;
 
-                    // Bind events
                     container.querySelectorAll('.manage-fc').forEach(btn => {
                         btn.addEventListener('click', (e) => {
                             e.stopPropagation();
@@ -5590,7 +5842,6 @@
                 }
             },
 
-            // ----- Assignments page (standalone) -----
             Assignments: class {
                 constructor(app) {
                     this.app = app;
@@ -5663,6 +5914,7 @@
                 }
             },
 
+            // ========== WORKER PAGE ==========
             Worker: class {
                 constructor(app) {
                     this.app = app;
@@ -5674,6 +5926,7 @@
                     this.assignedTasks = [];
                     this.currentUser = app.auth.getCurrentUser();
                     this.vehiclePhotos = {};
+                    this.workers = [];
                 }
                 async render(container) {
                     container.innerHTML = `
@@ -5687,11 +5940,13 @@
                 async loadData() {
                     this.loader.show();
                     try {
-                        const [inventory, production, fcTasks] = await Promise.all([
+                        const [inventory, production, fcTasks, workers] = await Promise.all([
                             DataService.getInventory(),
                             DataService.getProduction(),
-                            DataService.getFCTasks()
+                            DataService.getFCTasks(),
+                            DataService.getWorkers()
                         ]);
+                        this.workers = workers;
                         this.vehiclePhotos = {};
                         inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl ||
                                 ''; });
@@ -6114,7 +6369,6 @@
                 }
             },
 
-            // ----- ACCOUNTS PAGE with dynamic rows and Owner summary -----
             Accounts: class {
                 constructor(app) {
                     this.app = app;
@@ -6207,7 +6461,6 @@
                 }
 
                 showPurchaseForm(vehicleNumber) {
-                    // Build dynamic rows: description, quantity, amount
                     const rowTemplate = (desc = '', qty = 1, amount = '') => `
                         <div class="purchase-row">
                             <input type="text" class="purchase-desc" placeholder="Description (e.g. Steel)" value="${desc}" />
@@ -6351,7 +6604,6 @@
                 }
             },
 
-            // ----- LEADS (coming soon) -----
             Leads: class {
                 constructor(app) { this.app = app; }
                 render(container) {
