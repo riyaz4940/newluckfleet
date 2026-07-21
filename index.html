@@ -1522,337 +1522,6 @@
             font-size: 0.8rem;
         }
 
-        /* Supervisor Assignment Sidebar - removed, now standalone page */
-        /* We keep the styles for the assignments page */
-
-        /* Owner Accounts - Cost Cards */
-        .cost-card {
-            background: white;
-            border-radius: var(--radius);
-            padding: 0.8rem;
-            box-shadow: var(--shadow);
-            border-left: 4px solid var(--success);
-            margin-bottom: 0.6rem;
-        }
-        .cost-card .cost-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 0.4rem;
-        }
-        .cost-card .cost-vehicle {
-            font-weight: 700;
-            font-size: 1.05rem;
-            color: var(--primary-dark);
-        }
-        .cost-card .cost-total {
-            font-weight: 700;
-            font-size: 1.1rem;
-            color: var(--success);
-        }
-        .cost-card .cost-details {
-            font-size: 0.8rem;
-            color: var(--dark-gray);
-            margin-top: 0.3rem;
-        }
-        .cost-card .cost-breakdown {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.3rem 0.8rem;
-            margin-top: 0.3rem;
-        }
-        .cost-card .cost-breakdown .item {
-            background: var(--light-gray);
-            padding: 0.1rem 0.4rem;
-            border-radius: 10px;
-            font-size: 0.7rem;
-        }
-
-        /* ==============================================================
-           PAGINATION – Previous/Next arrows + page indicator (no numbers)
-           ============================================================== */
-        .pagination-container {
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding: 0.5rem 0;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .pagination-container .page-indicator {
-            font-size: 0.8rem;
-            color: var(--dark-gray);
-            padding: 0 0.5rem;
-            font-weight: 500;
-        }
-        .pagination-container button {
-            padding: 0.3rem 0.8rem;
-            border: 1px solid var(--gray);
-            border-radius: var(--radius);
-            background: white;
-            transition: 0.2s;
-            font-size: 0.8rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.3rem;
-            min-height: 36px;
-            min-width: 36px;
-            justify-content: center;
-        }
-        .pagination-container button:hover:not(:disabled) {
-            background: var(--primary-blue);
-            color: white;
-            border-color: var(--primary-blue);
-        }
-        .pagination-container button:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        /* ==============================================================
-           BOTTOM NAVIGATION (fixed, mobile‑first)
-           ============================================================== */
-        .bottom-nav {
-            display: none;
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: var(--bottom-nav-height);
-            background: white;
-            border-top: 1px solid var(--gray);
-            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.06);
-            z-index: 1200;
-            justify-content: space-around;
-            align-items: center;
-            padding: 0 0.25rem;
-        }
-        .bottom-nav .nav-btn {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 0.1rem;
-            color: var(--dark-gray);
-            font-size: 0.55rem;
-            padding: 0.2rem 0.4rem;
-            border-radius: var(--radius);
-            transition: 0.2s;
-            min-width: 48px;
-            min-height: 48px;
-            background: transparent;
-            border: none;
-            cursor: pointer;
-            flex: 1;
-            max-width: 72px;
-        }
-        .bottom-nav .nav-btn .material-icons {
-            font-size: 22px;
-        }
-        .bottom-nav .nav-btn.active {
-            color: var(--primary-blue);
-            font-weight: 600;
-        }
-        .bottom-nav .nav-btn.active .material-icons {
-            color: var(--primary-blue);
-        }
-        .bottom-nav .nav-btn .nav-label {
-            font-size: 0.5rem;
-            line-height: 1.2;
-            text-align: center;
-        }
-
-        @media (max-width: 768px) {
-            .bottom-nav {
-                display: flex;
-            }
-            .main-content {
-                padding-bottom: var(--bottom-nav-height);
-            }
-            .app-footer {
-                padding-bottom: calc(0.75rem + var(--bottom-nav-height));
-            }
-            .sup-sidebar {
-                max-width: 100%;
-                max-height: 300px;
-            }
-            .sup-layout {
-                flex-direction: column;
-            }
-            .sales-cards .inv-card .inv-actions {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 0.3rem;
-                margin-top: 0.3rem;
-            }
-        }
-
-        /* Animations */
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-            }
-            to {
-                opacity: 1;
-            }
-        }
-        @keyframes slideUp {
-            from {
-                transform: translateY(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
-        }
-        @keyframes slideInRight {
-            from {
-                transform: translateX(20px);
-                opacity: 0;
-            }
-            to {
-                transform: translateX(0);
-                opacity: 1;
-            }
-        }
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-
-        /* Placeholder page styles */
-        .placeholder-page {
-            text-align: center;
-            padding: 3rem 1.5rem;
-        }
-        .placeholder-page .material-icons {
-            font-size: 4rem;
-            color: var(--accent);
-            opacity: 0.5;
-            margin-bottom: 1rem;
-        }
-        .placeholder-page h2 {
-            color: var(--primary-dark);
-            margin-bottom: 0.5rem;
-        }
-        .placeholder-page p {
-            color: var(--dark-gray);
-            max-width: 400px;
-            margin: 0 auto;
-        }
-        .placeholder-page .coming-soon-badge {
-            display: inline-block;
-            background: var(--warning);
-            color: #333;
-            padding: 0.2rem 0.8rem;
-            border-radius: 20px;
-            font-weight: 600;
-            font-size: 0.7rem;
-            margin-top: 0.5rem;
-        }
-        /* Owner Accounts specific */
-        .owner-summary {
-            background: white;
-            border-radius: var(--radius);
-            padding: 0.8rem;
-            box-shadow: var(--shadow);
-            margin-bottom: 1rem;
-        }
-        .owner-summary .total-cost {
-            font-size: 1.8rem;
-            font-weight: 700;
-            color: var(--success);
-        }
-        .tabs-container {
-            display: flex;
-            gap: 0.5rem;
-            margin-bottom: 1rem;
-            border-bottom: 2px solid var(--gray);
-        }
-        .tab-btn {
-            padding: 0.4rem 1rem;
-            font-weight: 500;
-            color: var(--dark-gray);
-            border-bottom: 2px solid transparent;
-            transition: 0.2s;
-            font-size: 0.9rem;
-        }
-        .tab-btn.active {
-            color: var(--primary-blue);
-            border-bottom-color: var(--primary-blue);
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-
-        /* Dynamic purchase rows */
-        .purchase-row {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-            margin-bottom: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .purchase-row input {
-            flex: 1;
-            min-width: 80px;
-            padding: 0.3rem 0.5rem;
-            border: 1px solid var(--gray);
-            border-radius: var(--radius);
-            font-size: 0.85rem;
-        }
-        .purchase-row .remove-row {
-            color: var(--danger);
-            padding: 0.1rem 0.3rem;
-        }
-        .purchase-row .remove-row:hover {
-            background: var(--light-gray);
-            border-radius: 50%;
-        }
-        .add-row-btn {
-            margin-top: 0.5rem;
-            background: var(--light-gray);
-            padding: 0.2rem 0.8rem;
-            border-radius: var(--radius);
-            border: 1px dashed var(--gray);
-            font-size: 0.85rem;
-            color: var(--primary-blue);
-        }
-        .add-row-btn:hover {
-            background: var(--gray);
-        }
-
-        /* Sales card specific */
-        .sales-cards .inv-card .inv-actions {
-            display: none;
-            /* hidden by default, shown on mobile via media query */
-        }
-        .sales-cards .inv-card .inv-progress {
-            margin: 0.3rem 0;
-        }
-        .sales-cards .inv-card .inv-meta {
-            font-size: 0.8rem;
-            color: var(--dark-gray);
-            display: flex;
-            flex-wrap: wrap;
-            gap: 0.3rem 0.6rem;
-        }
-        .sales-cards .inv-card .inv-meta span {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.2rem;
-        }
-        .sales-cards .inv-card .inv-actions .btn-sm {
-            font-size: 0.75rem;
-            padding: 0.15rem 0.5rem;
-        }
-
         /* Assignments Overview page */
         .assignments-grid {
             display: grid;
@@ -2014,6 +1683,224 @@
         .order-requirements-list .req-tag.no {
             background: #f8d7da;
             color: #721c24;
+        }
+
+        /* ---- Stock Usage styles ---- */
+        .stock-usage-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+        .stock-usage-row input,
+        .stock-usage-row select {
+            flex: 1;
+            min-width: 80px;
+            padding: 0.3rem 0.5rem;
+            border: 1px solid var(--gray);
+            border-radius: var(--radius);
+            font-size: 0.85rem;
+        }
+        .stock-usage-row .remove-row {
+            color: var(--danger);
+            padding: 0.1rem 0.3rem;
+        }
+        .stock-summary-card {
+            background: white;
+            border-radius: var(--radius);
+            padding: 0.8rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 0.6rem;
+        }
+        .stock-summary-card .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+        }
+        .stock-summary-card .stock-vehicle {
+            font-weight: 700;
+            color: var(--primary-dark);
+        }
+        .stock-summary-card .stock-total-used {
+            font-weight: 600;
+            color: var(--danger);
+        }
+        .stock-summary-card .stock-remaining {
+            font-weight: 600;
+            color: var(--success);
+        }
+        /* In-production badge */
+        .badge-in-production {
+            background: #ffc107;
+            color: #333;
+            margin-left: 4px;
+        }
+
+        /* ========== Supervisor Toggle Styles ========== */
+        .view-toggle {
+            display: flex;
+            background: var(--light-gray);
+            border-radius: 30px;
+            padding: 3px;
+            border: 1px solid var(--gray);
+            margin: 0.3rem 0 0.5rem 0;
+            width: 100%;
+            max-width: 280px;
+            position: relative;
+        }
+        .view-toggle .toggle-option {
+            flex: 1;
+            padding: 0.4rem 0.8rem;
+            border-radius: 30px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            color: var(--dark-gray);
+            background: transparent;
+            border: none;
+            min-height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.3rem;
+        }
+        .view-toggle .toggle-option.active {
+            background: var(--primary-blue);
+            color: white;
+            box-shadow: 0 2px 8px rgba(26, 58, 92, 0.25);
+        }
+        .view-toggle .toggle-option .material-icons {
+            font-size: 18px;
+        }
+        .view-toggle .toggle-option:not(.active):hover {
+            background: rgba(0, 0, 0, 0.05);
+        }
+
+        .task-list-container {
+            margin-top: 0.4rem;
+            border-top: 1px solid #eee;
+            padding-top: 0.4rem;
+        }
+        .task-list-container .task-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0.3rem 0.2rem;
+            border-bottom: 1px solid #f5f5f5;
+            flex-wrap: wrap;
+            gap: 0.3rem;
+        }
+        .task-list-container .task-item:last-child {
+            border-bottom: none;
+        }
+        .task-list-container .task-name {
+            font-weight: 500;
+            font-size: 0.85rem;
+            color: var(--primary-dark);
+            flex: 1;
+            min-width: 100px;
+        }
+        .task-list-container .task-status {
+            font-size: 0.7rem;
+        }
+        .task-list-container .task-worker-name {
+            font-size: 0.75rem;
+            color: var(--primary-blue);
+            font-weight: 500;
+            background: #e8f0fe;
+            padding: 0.05rem 0.5rem;
+            border-radius: 12px;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.2rem;
+        }
+        .task-list-container .task-worker-name .material-icons {
+            font-size: 14px;
+        }
+        .task-list-container .task-action-btn {
+            padding: 0.15rem 0.5rem;
+            font-size: 0.7rem;
+            border-radius: 16px;
+            min-height: 28px;
+            min-width: 60px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.2rem;
+        }
+        .task-list-container .task-action-btn .material-icons {
+            font-size: 16px;
+        }
+        .task-list-container .task-action-btn.btn-assign {
+            background: var(--primary-blue);
+            color: white;
+        }
+        .task-list-container .task-action-btn.btn-assign:hover {
+            background: var(--primary-light);
+        }
+        .task-list-container .task-action-btn.btn-unassign {
+            background: var(--warning);
+            color: #333;
+        }
+        .task-list-container .task-action-btn.btn-unassign:hover {
+            background: #e6a800;
+        }
+        .task-list-container .task-action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .task-list-container .empty-state {
+            padding: 0.5rem 0;
+            text-align: center;
+            color: var(--dark-gray);
+            font-size: 0.8rem;
+        }
+        .task-list-container .empty-state .material-icons {
+            font-size: 1.2rem;
+            vertical-align: middle;
+            margin-right: 0.3rem;
+        }
+
+        @media (max-width: 480px) {
+            .view-toggle {
+                max-width: 100%;
+            }
+            .view-toggle .toggle-option {
+                font-size: 0.7rem;
+                padding: 0.3rem 0.5rem;
+                min-height: 32px;
+            }
+            .task-list-container .task-item {
+                flex-wrap: wrap;
+            }
+            .task-list-container .task-name {
+                font-size: 0.8rem;
+                min-width: 70px;
+            }
+            .task-list-container .task-action-btn {
+                font-size: 0.65rem;
+                min-height: 26px;
+                min-width: 50px;
+                padding: 0.1rem 0.4rem;
+            }
+        }
+        /* Supervisor Priority Badge */
+        .priority-high {
+            background: var(--danger);
+            color: white;
+        }
+        .priority-medium {
+            background: var(--warning);
+            color: #333;
+        }
+        .priority-low {
+            background: var(--success);
+            color: white;
         }
     </style>
 </head>
@@ -2397,14 +2284,12 @@
                     this.currentPage = 1;
                     this.render();
                 }
-                // New method: update the page indicator without resetting to page 1
                 updatePageIndicator(page) {
                     this.currentPage = page;
                     this.render();
                 }
                 render() {
                     const totalPages = Math.ceil(this.total / this.pageSize) || 1;
-                    // Clamp current page
                     if (this.currentPage < 1) this.currentPage = 1;
                     if (this.currentPage > totalPages) this.currentPage = totalPages;
                     const isFirst = this.currentPage <= 1;
@@ -2780,7 +2665,6 @@
                     updatedAt: now
                 };
                 await db.collection('fcTasks').doc(id).set(task);
-                // Update inventory fcStatus to 'in_progress' if not already
                 const invSnapshot = await db.collection('inventory').where('vehicleNumber', '==', data.vehicleNumber)
                     .get();
                 if (!invSnapshot.empty) {
@@ -2794,7 +2678,6 @@
 
             async updateFCTask(id, data) {
                 await db.collection('fcTasks').doc(id).update({ ...data, updatedAt: Utils.dateUtils.now() });
-                // If task completed, check if all tasks for vehicle are completed, then update fcStatus
                 const doc = await db.collection('fcTasks').doc(id).get();
                 const task = doc.data();
                 if (task && data.status === 'completed') {
@@ -2817,7 +2700,7 @@
                 return { success: true };
             },
 
-            // ========== Sales (fixed duplicate token & double-submit) ==========
+            // ========== Sales ==========
             async getSales() {
                 const snapshot = await db.collection('sales').orderBy('createdAt', 'desc').get();
                 const orders = [];
@@ -2826,14 +2709,13 @@
             },
 
             async addSales(data) {
-                // Generate a unique ID
                 const id = Utils.genId();
                 const now = Utils.dateUtils.now();
                 const isVehicle = data.orderType === 'vehicle';
+                const isSeatwork = data.orderType === 'seatwork';
                 const hasVehicle = isVehicle && data.vehicleNumber && data.vehicleNumber.trim() !== '';
-                const initialStatus = hasVehicle ? (data.status || 'confirmed') : 'awaiting_vehicle';
+                const initialStatus = (isVehicle && hasVehicle) ? (data.status || 'confirmed') : 'awaiting_vehicle';
 
-                // Create a unique token using the document ID (first 6 chars) + month+year
                 const month = new Date().getMonth();
                 const year = new Date().getFullYear();
                 const months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
@@ -2854,11 +2736,10 @@
                 };
                 await db.collection('sales').doc(id).set(order);
 
-                // Generate production tasks only if vehicle is linked
                 if (isVehicle && hasVehicle) {
                     await this._generateProductionTasks(id, data.vehicleNumber, data.customerName, data
                         .deliveryDate, JSON.parse(data.requirements || '{}'), 'vehicle');
-                } else if (!isVehicle) {
+                } else if (!isVehicle || isSeatwork) {
                     const productName = data.productName || data.productType || 'Non-Vehicle';
                     await this._generateProductionTasks(id, productName, data.customerName, data.deliveryDate,
                         JSON.parse(data.requirements || '{}'), 'non-vehicle');
@@ -3125,6 +3006,32 @@
 
             async deletePurchase(id) {
                 await db.collection('purchases').doc(id).delete();
+                return { success: true };
+            },
+
+            // ========== STOCK USAGE ==========
+            async getStockUsage() {
+                const snapshot = await db.collection('stockUsage').orderBy('createdAt', 'desc').get();
+                const items = [];
+                snapshot.forEach(doc => { items.push({ id: doc.id, ...doc.data() }); });
+                return items;
+            },
+
+            async addStockUsage(data) {
+                const id = data.id || Utils.genId();
+                const now = Utils.dateUtils.now();
+                const usage = {
+                    ...data,
+                    id,
+                    createdAt: now,
+                    updatedAt: now
+                };
+                await db.collection('stockUsage').doc(id).set(usage);
+                return { success: true, id };
+            },
+
+            async deleteStockUsage(id) {
+                await db.collection('stockUsage').doc(id).delete();
                 return { success: true };
             },
 
@@ -3412,6 +3319,7 @@
                     this.docTypes = ['RC Card', 'Form 29', 'Form 30', 'NOC', 'Insurance Copy',
                         'Pollution Certificate'
                     ];
+                    this.salesData = [];
                 }
 
                 async checkDuplicateVehicle(vehicleNumber, excludeId = null) {
@@ -3502,8 +3410,9 @@
                         }
                     }));
 
-                    const salesData = await DataService.getSales();
-                    const activeOrders = salesData.filter(o => o.status !== 'delivered' && o.vehicleNumber);
+                    // Get active production vehicles
+                    this.salesData = await DataService.getSales();
+                    const activeOrders = this.salesData.filter(o => o.status !== 'delivered' && o.vehicleNumber);
                     const inProductionVehicles = new Set(activeOrders.map(o => o.vehicleNumber));
 
                     // Helper for FC badge
@@ -3555,9 +3464,8 @@
                                 let statusHtml =
                                     `<span class="badge ${r.inventoryStatus==='Delivered'?'badge-archived':r.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${r.inventoryStatus}</span>`;
                                 if (isInProduction && r.inventoryStatus !== 'Delivered') {
-                                    statusHtml += ` <span class="badge badge-in-production">⚙️</span>`;
+                                    statusHtml += ` <span class="badge badge-in-production">⚙️ In Production</span>`;
                                 }
-                                // Add FC badge
                                 if (r.fcStatus === 'in_progress') statusHtml +=
                                     ` <span class="badge badge-fc-progress">🔧 Prep</span>`;
                                 else if (r.fcStatus === 'ready') statusHtml +=
@@ -3665,7 +3573,6 @@
                         }
                         return match;
                     });
-                    // Reset to page 1 when filters change
                     this.currentPage = 1;
                     this.pagination.setTotal(this.filteredData.length);
                     this.renderAll();
@@ -3677,9 +3584,6 @@
                     const pageData = this.filteredData.slice(start, end);
                     this.table.render(pageData);
                     this.renderCards(pageData);
-                    // Update page indicator WITHOUT resetting to page 1
-                    // The pagination's internal currentPage is already updated via onPageChange
-                    // We just need to make sure the indicator shows the correct page
                     this.pagination.updatePageIndicator(this.currentPage);
                 }
 
@@ -3690,6 +3594,9 @@
                             '<div class="text-center" style="padding:1rem;color:var(--dark-gray);">No vehicles match.</div>';
                         return;
                     }
+                    const activeOrders = this.salesData.filter(o => o.status !== 'delivered' && o.vehicleNumber);
+                    const inProductionSet = new Set(activeOrders.map(o => o.vehicleNumber));
+
                     const html = data.map(r => {
                         const statusColor = r.inventoryStatus === 'Delivered' ? 'badge-archived' :
                             r.inventoryStatus === 'Available' ? 'badge-completed' : 'badge-pending';
@@ -3700,6 +3607,10 @@
                             `<span class="badge badge-fc-progress">🔧 Prep</span>`;
                         else if (r.fcStatus === 'ready') fcBadgeHtml =
                             `<span class="badge badge-fc-ready">✅ FC Ready</span>`;
+                        let productionBadge = '';
+                        if (inProductionSet.has(r.vehicleNumber) && r.inventoryStatus !== 'Delivered') {
+                            productionBadge = `<span class="badge badge-in-production">⚙️ In Production</span>`;
+                        }
                         return `
                             <div class="inv-card" data-id="${r.id}">
                                 ${photoHtml}
@@ -3709,7 +3620,10 @@
                                 </div>
                                 <div class="inv-name">${r.vehicleName || '—'}</div>
                                 <div class="inv-model">${r.model || '—'}</div>
-                                ${fcBadgeHtml ? `<div style="margin-top:0.2rem;">${fcBadgeHtml}</div>` : ''}
+                                <div style="margin-top:0.2rem;display:flex;gap:0.3rem;flex-wrap:wrap;">
+                                    ${productionBadge}
+                                    ${fcBadgeHtml}
+                                </div>
                             </div>
                         `;
                     }).join('');
@@ -3741,7 +3655,6 @@
                         `<img style="width:100%;max-height:150px;object-fit:cover;border-radius:var(--radius);margin-top:0.5rem;" src="${vehicle.sidePhotoUrl}" />` :
                         '';
 
-                    // Show FC remarks if any
                     const fcRemarkHtml = vehicle.fcRemarks ? `
                             <div class="fc-remark-box">
                                 <strong>🔧 FC Preparation Remark:</strong> ${vehicle.fcRemarks}
@@ -3967,7 +3880,6 @@
                             });
                             data.documents = docs.join(', ');
                             data.otherDocuments = data.otherDocuments || '';
-                            // Set default FC status
                             data.fcStatus = 'not_started';
                             data.fcRemarks = '';
                             this.loader.show();
@@ -4059,7 +3971,7 @@
             },
 
             // ==============================================================
-            // SALES PAGE – fixed duplicate submission
+            // SALES PAGE – with Seatwork, Water Tank, Body Coach Material
             // ==============================================================
             Sales: class {
                 constructor(app) {
@@ -4079,7 +3991,7 @@
                     this.pagination = null;
                     this.filtersComp = null;
                     this.vehicles = [];
-                    this._submitting = false; // prevent double click
+                    this._submitting = false;
                 }
 
                 getActiveOrderVehicleSet() {
@@ -4117,14 +4029,13 @@
                     const user = this.app.auth.getCurrentUser();
                     const canEdit = ['owner', 'operations_manager'].includes(user?.role);
 
-                    // Table with a "View" action that shows details
                     this.table = new Components.Table(document.getElementById('salesTableContainer'), {
                         columns: [
                             { key: 'token', label: 'Token' },
                             { key: 'salesperson', label: 'Salesperson', render: (r) => r
                                     .salesperson || '<span style="color:var(--dark-gray);">—</span>' },
                             { key: 'vehicleNumber', label: 'Vehicle / Product', render: (r) => {
-                                    if (r.orderType === 'non-vehicle') {
+                                    if (r.orderType === 'non-vehicle' || r.orderType === 'seatwork') {
                                         return r.productName || r.productType || 'Non‑Vehicle';
                                     }
                                     return r.vehicleNumber ||
@@ -4249,7 +4160,7 @@
                         this.data = await DataService.getSales();
                         this.filteredData = [...this.data];
                     } catch (e) { this.toast.show('Failed to load sales: ' + (e.message || e),
-                        'error'); } finally { this.loader.hide(); }
+                            'error'); } finally { this.loader.hide(); }
                 }
 
                 applyFilters() {
@@ -4292,7 +4203,7 @@
                         const statusColor = r.status || 'draft';
                         const progress = r.progress || 0;
                         const isAwaiting = r.status === 'awaiting_vehicle';
-                        const vehicleDisplay = r.orderType === 'non-vehicle' ?
+                        const vehicleDisplay = (r.orderType === 'non-vehicle' || r.orderType === 'seatwork') ?
                             (r.productName || r.productType || 'Non‑Vehicle') :
                             (r.vehicleNumber || '<em style="color:var(--dark-gray);">To be purchased</em>');
                         let actionBtns =
@@ -4312,13 +4223,19 @@
                             actionBtns +=
                                 `<button class="btn-icon remind-sales" data-id="${r.id}" style="color:var(--warning);"><span class="material-icons">notifications_active</span></button>`;
                         }
+                        // Show order type badge
+                        let typeBadge = '';
+                        if (r.orderType === 'seatwork') typeBadge = '🪑 Seatwork';
+                        else if (r.orderType === 'non-vehicle') typeBadge = '📦 Non-Vehicle';
+                        else typeBadge = '🚗 Vehicle';
+
                         return `
                             <div class="inv-card" data-id="${r.id}">
                                 <div class="inv-header">
                                     <span class="inv-number">${r.token || '—'}</span>
                                     <span class="badge badge-${statusColor} inv-status">${statusColor.replace('_',' ')}</span>
                                 </div>
-                                <div class="inv-name">${r.customerName || '—'}</div>
+                                <div class="inv-name">${r.customerName || '—'} <span style="font-size:0.6rem;color:var(--dark-gray);">${typeBadge}</span></div>
                                 <div class="inv-model">${vehicleDisplay}</div>
                                 <div class="inv-meta">
                                     <span><span class="material-icons" style="font-size:14px;">person</span> ${r.salesperson || '—'}</span>
@@ -4334,7 +4251,6 @@
                     }).join('');
                     container.innerHTML = html;
 
-                    // Bind events for card actions
                     container.querySelectorAll('.view-order').forEach(btn => {
                         btn.addEventListener('click', (e) => { e.stopPropagation();
                             this.showOrderDetails(btn.dataset.id); });
@@ -4355,7 +4271,6 @@
                         btn.addEventListener('click', (e) => { e.stopPropagation();
                             this.showLinkVehicle(btn.dataset.id); });
                     });
-                    // Card click to show details
                     container.querySelectorAll('.inv-card').forEach(card => {
                         card.addEventListener('click', () => {
                             this.showOrderDetails(card.dataset.id);
@@ -4363,7 +4278,6 @@
                     });
                 }
 
-                // ---------- NEW: Full order detail view ----------
                 showOrderDetails(id) {
                     const order = this.data.find(o => o.id === id);
                     if (!order) { this.toast.show('Order not found', 'error'); return; }
@@ -4372,8 +4286,9 @@
                     try { req = JSON.parse(order.requirements || '{}'); } catch (e) { req = {}; }
                     const branding = req.brandingDetails || {};
                     const optional = req.optional || {};
+                    const bodyCoachMaterial = req.bodyCoachMaterial || 'N/A';
+                    const plumbingTankSize = req.plumbingTankSize || 'N/A';
 
-                    // Build requirements list
                     const reqKeys = ['tinkering', 'mechanical', 'dummyClosing', 'bodyCoach', 'insideKitchen',
                         'outsideKitchen', 'kitchenLayout', 'painting', 'acpWork', 'vehicleElectrical',
                         'coachElectrical', 'upsWiring', 'normalWiring', 'plumbing', 'canopy', 'tyreChange',
@@ -4424,14 +4339,23 @@
                         </div>
                     `;
 
-                    const vehicleDisplay = order.orderType === 'non-vehicle' ?
+                    const vehicleDisplay = (order.orderType === 'non-vehicle' || order.orderType === 'seatwork') ?
                         `${order.productName || order.productType || 'Non‑Vehicle'}` :
                         (order.vehicleNumber || '⏳ Awaiting vehicle purchase');
+
+                    // Show the new fields if they exist
+                    let extraDetails = '';
+                    if (order.orderType === 'seatwork') extraDetails +=
+                        `<div class="detail-item"><div class="label">Order Type</div><div class="value">🪑 Seatwork</div></div>`;
+                    if (bodyCoachMaterial !== 'N/A') extraDetails +=
+                        `<div class="detail-item"><div class="label">Body Coach Material</div><div class="value">${bodyCoachMaterial}</div></div>`;
+                    if (plumbingTankSize !== 'N/A') extraDetails +=
+                        `<div class="detail-item"><div class="label">Water Tank Size</div><div class="value">${plumbingTankSize}</div></div>`;
 
                     const html = `
                         <div class="order-detail-grid">
                             <div class="detail-item"><div class="label">Token</div><div class="value">${order.token || '—'}</div></div>
-                            <div class="detail-item"><div class="label">Order Type</div><div class="value">${order.orderType === 'vehicle' ? '🚗 Vehicle' : '🪑 Non‑Vehicle'}</div></div>
+                            ${extraDetails}
                             <div class="detail-item"><div class="label">Salesperson</div><div class="value">${order.salesperson || '—'}</div></div>
                             <div class="detail-item"><div class="label">Status</div><div class="value"><span class="badge badge-${order.status}">${order.status.replace('_',' ')}</span></div></div>
                             <div class="detail-item full-width"><div class="label">Vehicle / Product</div><div class="value">${vehicleDisplay}</div></div>
@@ -4442,7 +4366,7 @@
                             <div class="detail-item"><div class="label">Progress</div><div class="value">${order.progress || 0}%</div></div>
                             <div class="detail-item"><div class="label">Advance Amount</div><div class="value">₹${(order.advanceAmount || 0).toLocaleString()}</div></div>
                             <div class="detail-item"><div class="label">Paint Colour</div><div class="value">${order.paintColour || '—'}</div></div>
-                            ${order.orderType === 'non-vehicle' ? `
+                            ${(order.orderType === 'non-vehicle' || order.orderType === 'seatwork') ? `
                                 <div class="detail-item full-width"><div class="label">Product Type</div><div class="value">${order.productType || '—'}</div></div>
                             ` : ''}
                             <div class="detail-item full-width">
@@ -4497,7 +4421,8 @@
                     const chk = (key) => (isEdit ? !!req[key] : !!DEFAULTS[key]) ? 'checked' : '';
 
                     const orderType = order?.orderType || 'vehicle';
-                    const isNonVehicle = orderType === 'non-vehicle';
+                    const isVehicle = orderType === 'vehicle';
+                    const isSeatwork = orderType === 'seatwork';
                     const productType = order?.productType || '';
                     const productName = order?.productName || '';
 
@@ -4514,6 +4439,8 @@
                     }));
 
                     const productOptions = NON_VEHICLE_TYPES.map(pt => ({ value: pt, label: pt }));
+                    // Add Seatwork specific options or keep generic
+                    const seatworkOptions = ['Single Seat', 'Double Seat', 'Bench Seat', 'Custom Seat'];
 
                     const form = `
                         <form id="salesForm">
@@ -4521,11 +4448,12 @@
                                 <label>Order Type *</label>
                                 <div class="radio-picker">
                                     <label><input type="radio" name="orderType" value="vehicle" ${orderType==='vehicle'?'checked':''} /> Vehicle</label>
-                                    <label><input type="radio" name="orderType" value="non-vehicle" ${orderType==='non-vehicle'?'checked':''} /> Non‑Vehicle (Kiosk, Food Cart, etc.)</label>
+                                    <label><input type="radio" name="orderType" value="non-vehicle" ${orderType==='non-vehicle'?'checked':''} /> Non‑Vehicle (Kiosk, Cart, etc.)</label>
+                                    <label><input type="radio" name="orderType" value="seatwork" ${orderType==='seatwork'?'checked':''} /> 🪑 Seatwork</label>
                                 </div>
                             </div>
 
-                            <div id="vehicleSection" ${isNonVehicle?'style="display:none;"':''}>
+                            <div id="vehicleSection" ${isVehicle?'':'style="display:none;"'}>
                                 <div class="form-group">
                                     <label><input type="checkbox" id="vehiclePendingToggle" ${!order?.vehicleNumber && isEdit ? 'checked' : ''} /> Vehicle not in inventory yet – will be purchased later</label>
                                 </div>
@@ -4538,7 +4466,7 @@
                                 </div>
                             </div>
 
-                            <div id="nonVehicleSection" ${!isNonVehicle?'style="display:none;"':''}>
+                            <div id="nonVehicleSection" ${(isVehicle || isSeatwork)?'':'style="display:none;"'}>
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label>Product Type *</label>
@@ -4550,6 +4478,19 @@
                                         <label>Product Name (optional)</label>
                                         <input type="text" name="productName" value="${productName}" placeholder="e.g. Deluxe Kiosk" />
                                     </div>
+                                </div>
+                            </div>
+                            <div id="seatworkSection" ${isSeatwork?'':'style="display:none;"'}>
+                                <div class="form-group">
+                                    <label>Seat Type</label>
+                                    <select name="productType">
+                                        ${seatworkOptions.map(p => `<option value="${p}" ${p===productType?'selected':''}>${p}</option>`).join('')}
+                                        <option value="Other">Other</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>Product Name (optional)</label>
+                                    <input type="text" name="productName" value="${productName}" placeholder="e.g. Luxury Driver Seat" />
                                 </div>
                             </div>
 
@@ -4600,7 +4541,7 @@
                                     <label><input type="checkbox" name="ups" ${opt.ups?'checked':''} /> UPS</label>
                                     <label><input type="checkbox" name="camera" ${opt.camera?'checked':''} /> Camera</label>
                                 </div>
-                                <div class="checkbox-group" id="nonVehicleReqs" style="${isNonVehicle?'':'display:none;'}">
+                                <div class="checkbox-group" id="nonVehicleReqs" style="${(isVehicle || isSeatwork)?'':'display:none;'}">
                                     <label><input type="checkbox" name="bodyCoach" ${chk('bodyCoach')} /> Body Coach</label>
                                     <label><input type="checkbox" name="kitchenLayout" ${chk('kitchenLayout')} /> Kitchen Layout</label>
                                     <label><input type="checkbox" name="painting" ${chk('painting')} /> Painting</label>
@@ -4608,6 +4549,27 @@
                                     <label><input type="checkbox" name="coachElectrical" ${chk('coachElectrical')} /> Coach Electrical</label>
                                     <label><input type="checkbox" name="branding" ${chk('branding')} /> Branding / Stickering</label>
                                 </div>
+
+                                <!-- NEW: Body Coach Material & Plumbing Tank Size -->
+                                <div class="form-row">
+                                    <div class="form-group">
+                                        <label>Body Coach Material</label>
+                                        <select name="bodyCoachMaterial">
+                                            <option value="None">None</option>
+                                            <option value="SS" ${req.bodyCoachMaterial==='SS'?'selected':''}>SS</option>
+                                            <option value="MS" ${req.bodyCoachMaterial==='MS'?'selected':''}>MS</option>
+                                        </select>
+                                    </div>
+                                    <div class="form-group">
+                                        <label>Water Tank Size (Plumbing)</label>
+                                        <select name="plumbingTankSize">
+                                            <option value="None">None</option>
+                                            <option value="100 Lts" ${req.plumbingTankSize==='100 Lts'?'selected':''}>100 Lts</option>
+                                            <option value="200 Lts" ${req.plumbingTankSize==='200 Lts'?'selected':''}>200 Lts</option>
+                                        </select>
+                                    </div>
+                                </div>
+
                                 <div style="margin-top:0.5rem;">
                                     <label>Branding Details:</label>
                                     <div class="checkbox-group">
@@ -4642,7 +4604,6 @@
                         onConfirm: async () => {
                             if (this._submitting) return;
                             this._submitting = true;
-                            // Disable the confirm button to prevent double click
                             const confirmBtn = document.getElementById('modalConfirm');
                             if (confirmBtn) confirmBtn.disabled = true;
 
@@ -4652,6 +4613,7 @@
 
                                 const orderType = data.orderType || 'vehicle';
                                 const isVehicle = orderType === 'vehicle';
+                                const isSeatwork = orderType === 'seatwork';
                                 const vehiclePending = document.getElementById('vehiclePendingToggle')
                                     ?.checked || false;
 
@@ -4666,13 +4628,22 @@
                                         return;
                                     }
                                 } else {
-                                    const productType = data.productType;
-                                    const productName = data.productName || productType ||
+                                    let productType = data.productType;
+                                    let productName = data.productName || productType ||
                                         'Non-Vehicle';
-                                    if (!productType) {
-                                        this.toast.show('Please select a product type.',
-                                            'warning');
-                                        return;
+                                    if (isSeatwork) {
+                                        // For seatwork, productType might be from the seatwork dropdown
+                                        if (!productType) {
+                                            this.toast.show('Please select a seat type.',
+                                                'warning');
+                                            return;
+                                        }
+                                    } else {
+                                        if (!productType) {
+                                            this.toast.show('Please select a product type.',
+                                                'warning');
+                                            return;
+                                        }
                                     }
                                     data.productType = productType;
                                     data.productName = productName;
@@ -4708,7 +4679,9 @@
                                             .threeDLogo, acpBoard: !!data.acpBoard },
                                     optional: { solar: !!data.solar, ups: !!data.ups,
                                         camera: !!data.camera },
-                                    remarks: data.remarks || ''
+                                    remarks: data.remarks || '',
+                                    bodyCoachMaterial: data.bodyCoachMaterial || 'None',
+                                    plumbingTankSize: data.plumbingTankSize || 'None'
                                 };
 
                                 const orderData = {
@@ -4758,16 +4731,19 @@
                     const orderTypeRadios = document.querySelectorAll('input[name="orderType"]');
                     const vehicleSection = document.getElementById('vehicleSection');
                     const nonVehicleSection = document.getElementById('nonVehicleSection');
+                    const seatworkSection = document.getElementById('seatworkSection');
                     const vehicleReqs = document.getElementById('vehicleReqs');
                     const nonVehicleReqs = document.getElementById('nonVehicleReqs');
 
                     const toggleSections = () => {
-                        const isVehicle = document.querySelector('input[name="orderType"]:checked')
-                            ?.value === 'vehicle';
-                        vehicleSection.style.display = isVehicle ? '' : 'none';
-                        nonVehicleSection.style.display = isVehicle ? 'none' : '';
-                        vehicleReqs.style.display = isVehicle ? '' : 'none';
-                        nonVehicleReqs.style.display = isVehicle ? 'none' : '';
+                        const checked = document.querySelector('input[name="orderType"]:checked');
+                        const val = checked ? checked.value : 'vehicle';
+                        vehicleSection.style.display = (val === 'vehicle') ? '' : 'none';
+                        nonVehicleSection.style.display = (val === 'non-vehicle') ? '' : 'none';
+                        seatworkSection.style.display = (val === 'seatwork') ? '' : 'none';
+                        // Show relevant reqs
+                        vehicleReqs.style.display = (val === 'vehicle') ? '' : 'none';
+                        nonVehicleReqs.style.display = (val === 'vehicle') ? 'none' : '';
                     };
 
                     orderTypeRadios.forEach(r => r.addEventListener('change', toggleSections));
@@ -4883,7 +4859,7 @@
             },
 
             // ==============================================================
-            // SUPERVISOR – FIXED: assignment popup shows ALL tasks
+            // SUPERVISOR – with Priority, Delivery Date, Progress %, Toggle
             // ==============================================================
             Supervisor: class {
                 constructor(app) {
@@ -4899,7 +4875,9 @@
                     this.vehiclePhotos = {};
                     this.allSales = [];
                     this.filterType = 'All';
+                    this.toggleState = {};
                 }
+
                 async render(container) {
                     container.innerHTML = `
                         <div class="page-header"><h2>Supervisor</h2></div>
@@ -4913,7 +4891,7 @@
                                 </div>
                                 <div class="priority-queue">
                                     <div class="flex justify-between items-center" style="margin-bottom:0.8rem;">
-                                        <h3>Production Queue (sorted by delivery date)</h3>
+                                        <h3>Production Queue</h3>
                                         <div class="filter-group">
                                             <label>Worker Type:</label>
                                             <select id="typeFilter">
@@ -4943,7 +4921,6 @@
                         this.renderQueue();
                     });
 
-                    // --- FIX: Event delegation for assignment clicks ---
                     const supTable = document.getElementById('supTable');
                     supTable.addEventListener('click', (e) => {
                         const target = e.target.closest('.assign-team');
@@ -5011,6 +4988,14 @@
                         this.priorityQueue = Object.values(grouped);
                         this.priorityQueue.sort((a, b) => new Date(a.deliveryDate) - new Date(b
                             .deliveryDate));
+
+                        this.priorityQueue.forEach(v => {
+                            const key = v.vehicleNumber || v.productName;
+                            if (!this.toggleState[key]) {
+                                const hasUnassigned = v.tasks.some(t => !t.assignedWorkerId && t.status !== 'completed');
+                                this.toggleState[key] = hasUnassigned ? 'assign' : 'assigned';
+                            }
+                        });
                     } catch (e) { console.error(e);
                         this.toast.show('Failed to load data: ' + (e.message || e), 'error'); } finally { this
                             .loader.hide(); }
@@ -5097,23 +5082,63 @@
                             const p = tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : 0;
                             const days = Utils.dateUtils.daysUntil(r.deliveryDate);
                             const daysColor = days < 0 ? 'var(--danger)' : days < 3 ? 'var(--warning)' : 'var(--dark-gray)';
+                            let priorityLabel = 'Low';
+                            let priorityClass = 'priority-low';
+                            if (days <= 0) { priorityLabel = 'High'; priorityClass = 'priority-high'; }
+                            else if (days <= 7) { priorityLabel = 'Medium'; priorityClass = 'priority-medium'; }
+
                             const typeColor = r.employeeType === 'Contractual' ? '#dc3545' : '#28a745';
-                            const displayName = r.orderType === 'non-vehicle' ?
+                            const displayName = r.orderType === 'non-vehicle' || r.orderType === 'seatwork' ?
                                 `${r.productName || r.vehicleNumber} (${r.token})` :
                                 r.vehicleNumber;
 
-                            // Show assigned worker names
-                            const workerNames = tasks.map(t => {
-                                const ids = (t.assignedWorkerId || '').split(',').filter(Boolean);
-                                return ids.map(id => {
-                                    const worker = this.workers.find(w => String(w.id) === id.trim());
-                                    return worker?.name || 'Unknown';
-                                }).join(', ');
-                            }).filter(Boolean);
-                            const uniqueWorkers = [...new Set(workerNames)];
-                            const workerDisplay = uniqueWorkers.length > 0
-                                ? `<span class="assigned-worker-badge"><span class="material-icons">person</span> ${uniqueWorkers.join(', ')}</span>`
-                                : `<span class="unassigned-badge">👤 Unassigned</span>`;
+                            const key = r.vehicleNumber || r.productName;
+                            const currentMode = this.toggleState[key] || 'assign';
+
+                            let taskItems = [];
+                            if (currentMode === 'assign') {
+                                const unassignedTasks = tasks.filter(t => !t.assignedWorkerId && t.status !== 'completed');
+                                if (unassignedTasks.length === 0) {
+                                    taskItems.push(`<div class="empty-state"><span class="material-icons">check_circle</span> All tasks are assigned!</div>`);
+                                } else {
+                                    unassignedTasks.forEach(t => {
+                                        taskItems.push(`
+                                            <div class="task-item">
+                                                <span class="task-name">${t.taskName}</span>
+                                                <span class="task-status badge badge-${t.status}">${t.status}</span>
+                                                <button class="task-action-btn btn-assign assign-task-btn" data-taskid="${t.id}" data-vehicle="${r.vehicleNumber}">
+                                                    <span class="material-icons">assignment</span> Assign
+                                                </button>
+                                            </div>
+                                        `);
+                                    });
+                                }
+                            } else {
+                                const assignedTasks = tasks.filter(t => t.assignedWorkerId && t.assignedWorkerId.length > 0);
+                                if (assignedTasks.length === 0) {
+                                    taskItems.push(`<div class="empty-state"><span class="material-icons">info</span> No assigned tasks.</div>`);
+                                } else {
+                                    assignedTasks.forEach(t => {
+                                        const workerIds = t.assignedWorkerId.split(',').filter(Boolean);
+                                        const workerNames = workerIds.map(id => {
+                                            const w = this.workers.find(w => String(w.id) === id.trim());
+                                            return w?.name || 'Unknown';
+                                        }).join(', ');
+                                        taskItems.push(`
+                                            <div class="task-item">
+                                                <span class="task-name">${t.taskName}</span>
+                                                <span class="task-worker-name"><span class="material-icons">person</span> ${workerNames}</span>
+                                                <button class="task-action-btn btn-unassign unassign-task-btn" data-taskid="${t.id}" data-vehicle="${r.vehicleNumber}">
+                                                    <span class="material-icons">person_remove</span> Unassign
+                                                </button>
+                                            </div>
+                                        `);
+                                    });
+                                }
+                            }
+
+                            const unassignedCount = tasks.filter(t => !t.assignedWorkerId && t.status !== 'completed').length;
+                            const assignedCount = tasks.filter(t => t.assignedWorkerId && t.assignedWorkerId.length > 0).length;
 
                             let extraBtns = `<button class="btn btn-secondary btn-sm view-timeline" data-vehicle="${r.vehicleNumber || r.productName}"><span class="material-icons" style="font-size:16px;">timeline</span> Timeline</button>`;
                             if (r.status === 'pending_approval') extraBtns += `<button class="btn btn-sm qc-approve" data-vehicle="${r.vehicleNumber || r.productName}" style="background:var(--warning);color:#333;"><span class="material-icons" style="font-size:16px;">verified</span> QC Check</button>`;
@@ -5122,23 +5147,84 @@
                             return `
                                 <div class="worker-task-card">
                                     ${photoHtml}
-                                    <div class="task-info assign-team" data-vehicle="${r.vehicleNumber || r.productName}" style="cursor:pointer;" title="Tap to assign work">
-                                        <div class="task-vehicle-number">${displayName} <span class="material-icons" style="font-size:16px;color:var(--accent);vertical-align:middle;">touch_app</span></div>
+                                    <div class="task-info assign-team" data-vehicle="${r.vehicleNumber || r.productName}" style="cursor:pointer;">
+                                        <div class="task-vehicle-number" style="display:flex;flex-wrap:wrap;align-items:center;gap:0.3rem;">
+                                            <span style="font-size:1.2rem;">${displayName}</span>
+                                            <span class="badge ${priorityClass}" style="font-size:0.6rem;">${priorityLabel}</span>
+                                            <span style="font-size:0.7rem;color:var(--dark-gray);">${r.token}</span>
+                                        </div>
                                         <div class="task-name">${r.customerName}</div>
                                         <div class="task-meta">
                                             Delivery: ${Utils.dateUtils.format(r.deliveryDate)} — <span style="color:${daysColor};font-weight:600;">${days} day(s) left</span>
                                             &nbsp;•&nbsp; <span style="color:${typeColor};font-weight:600;">${r.employeeType || 'Company'}</span>
                                             &nbsp;•&nbsp; <span class="badge badge-${r.status}">${r.status}</span>
-                                            &nbsp;•&nbsp; ${workerDisplay}
                                         </div>
-                                        <div class="progress-bar" style="margin-top:0.4rem;"><div class="progress-fill" style="width:${p}%;"></div><span>${p}%</span></div>
+                                        <div class="progress-bar" style="margin-top:0.4rem;width:100%;"><div class="progress-fill" style="width:${p}%;"></div><span>${p}%</span></div>
+
+                                        <div class="view-toggle">
+                                            <button class="toggle-option ${currentMode === 'assign' ? 'active' : ''}" data-mode="assign" data-vehicle-key="${key}">
+                                                <span class="material-icons">assignment</span> Assign Tasks
+                                            </button>
+                                            <button class="toggle-option ${currentMode === 'assigned' ? 'active' : ''}" data-mode="assigned" data-vehicle-key="${key}">
+                                                <span class="material-icons">group</span> Assigned Workers
+                                            </button>
+                                        </div>
+
+                                        <div class="task-list-container">
+                                            ${taskItems.join('')}
+                                        </div>
                                     </div>
                                     <div class="task-actions" style="flex-wrap:wrap;">${extraBtns}</div>
                                 </div>
                             `;
                         }).join('')}</div>`;
 
-                    // Events for other buttons (timeline, qc, delivery) remain
+                    container.querySelectorAll('.toggle-option').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const mode = btn.dataset.mode;
+                            const key = btn.dataset.vehicleKey;
+                            this.toggleState[key] = mode;
+                            this.renderQueue();
+                        });
+                    });
+
+                    container.querySelectorAll('.assign-task-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            const vehicle = btn.dataset.vehicle;
+                            const task = this.data.find(t => t.id === taskId);
+                            if (task) this.assignSpecificTask(vehicle, taskId);
+                        });
+                    });
+
+                    container.querySelectorAll('.unassign-task-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            const vehicle = btn.dataset.vehicle;
+                            this.confirm.open({
+                                title: 'Unassign Worker',
+                                body: `Remove all workers from this task on ${vehicle}? The task will become pending.`,
+                                onConfirm: async () => {
+                                    this.loader.show();
+                                    try {
+                                        await DataService.updateProduction(taskId, {
+                                            assignedWorkerId: '',
+                                            status: 'pending'
+                                        });
+                                        this.toast.show('Worker unassigned', 'success');
+                                        await this.loadData();
+                                        this.renderQueue();
+                                        this.renderStats();
+                                        this.renderAssignmentsOverview();
+                                    } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); } finally { this.loader.hide(); }
+                                }
+                            });
+                        });
+                    });
+
                     container.querySelectorAll('.view-timeline').forEach(el => el.addEventListener('click',
                         (e) => { e.stopPropagation();
                             this.viewTimeline(el.dataset.vehicle); }));
@@ -5152,71 +5238,36 @@
                     }));
                 }
 
-                async viewTimeline(vehicleNumber) {
-                    const tasks = this.data.filter(t => t.vehicleNumber === vehicleNumber || (t
-                            .vehicleNumber === '' &&
-                            t.salesOrderId && this.allSales.some(s => s.id === t.salesOrderId && (s
-                                .productName === vehicleNumber))));
-                    if (tasks.length === 0) { this.toast.show('No tasks found for this item.',
-                            'warning'); return; }
-                    const firstTask = tasks[0];
-                    const salesOrder = this.allSales.find(s => s.id === firstTask.salesOrderId);
-                    const displayName = salesOrder?.orderType === 'non-vehicle' ?
-                        `${salesOrder.productName || 'Non-Vehicle'} (${salesOrder.token})` :
-                        vehicleNumber;
-
-                    const stepsHtml = tasks.map(t =>
-                        `<div class="step ${t.status==='completed'?'completed':t.status==='in_progress'||t.status==='pending_approval'?'active':''}">${t.taskName} (${t.status})</div>`
-                        ).join('');
-                    const photoUrl = (this.vehiclePhotos && this.vehiclePhotos[vehicleNumber]) || '';
-                    const html = `
-                        ${photoUrl ? `<img class="vehicle-photo-hero" src="${photoUrl}" />` : ''}
-                        <h4>${displayName} - ${firstTask.customerName}</h4>
-                        <p>Delivery: ${Utils.dateUtils.format(firstTask.deliveryDate)} (${Utils.dateUtils.daysUntil(firstTask.deliveryDate)} days left)</p>
-                        <div class="timeline-steps">${stepsHtml}</div>
-                        <div class="timeline-details"><p><strong>Total Tasks:</strong> ${tasks.length}</p><p><strong>Completed:</strong> ${tasks.filter(t=>t.status==='completed').length}</p></div>
-                    `;
-                    this.modal.open({ title: `Timeline - ${displayName}`, body: html, confirmText: 'Close',
-                        showCancel: false, onConfirm: () => this.modal.close() });
-                }
-
-                // ===== FIXED: assignTeam shows ALL tasks for the vehicle, with clear status =====
-                async assignTeam(vehicleNumber) {
+                async assignSpecificTask(vehicleNumber, taskId) {
                     try {
-                        // Get all tasks for this vehicle
                         const allTasks = this.data.filter(t => t.vehicleNumber === vehicleNumber || (t
                                 .vehicleNumber === '' &&
                                 t.salesOrderId && this.allSales.some(s => s.id === t.salesOrderId && (s
                                     .productName === vehicleNumber))));
 
-                        if (allTasks.length === 0) {
-                            this.toast.show('No tasks found for this vehicle.', 'warning');
+                        const task = allTasks.find(t => t.id === taskId);
+                        if (!task) { this.toast.show('Task not found', 'warning'); return; }
+
+                        if (task.assignedWorkerId && task.assignedWorkerId.length > 0) {
+                            this.toast.show('Task already has a worker assigned', 'warning');
+                            return;
+                        }
+                        if (task.status === 'completed') {
+                            this.toast.show('Task is already completed', 'warning');
                             return;
                         }
 
-                        // Determine which tasks are assignable (pending or in_progress without assigned worker)
-                        const assignableTasks = allTasks.filter(t =>
-                            t.status === 'pending' ||
-                            (t.status === 'in_progress' && !t.assignedWorkerId)
-                        );
-
-                        if (assignableTasks.length === 0) {
-                            // All tasks are either completed or already assigned – show read-only popup
-                            this.showAssignPopup(vehicleNumber, allTasks, []);
-                            return;
-                        }
-
-                        this.showAssignPopup(vehicleNumber, allTasks, assignableTasks);
+                        const assignableTasks = [task];
+                        this.showAssignPopup(vehicleNumber, allTasks, assignableTasks, taskId);
                     } catch (error) {
                         console.error(error);
-                        this.toast.show('Error opening assignment: ' + error.message, 'error');
+                        this.toast.show('Error: ' + error.message, 'error');
                     }
                 }
 
-                showAssignPopup(vehicleNumber, allTasks, assignableTasks) {
+                showAssignPopup(vehicleNumber, allTasks, assignableTasks, preselectedTaskId = null) {
                     const dept = assignableTasks.length > 0 ? assignableTasks[0].department || '' : (allTasks[0]
                         ?.department || '');
-                    // Sort workers by department match - SAFE with null checks
                     const sortedWorkers = [...this.workers].sort((a, b) => {
                         const aMatch = a.department === dept ? 0 : 1;
                         const bMatch = b.department === dept ? 0 : 1;
@@ -5227,7 +5278,6 @@
                         return nameA.localeCompare(nameB);
                     });
 
-                    // Build worker checkboxes - SAFE with null checks
                     const workerCheckboxes = sortedWorkers.map(w => {
                         const workerName = w.name || 'Unknown Worker';
                         const dept = w.department || 'no dept';
@@ -5235,7 +5285,6 @@
                         return `<label><input type="checkbox" name="worker_${w.id}" value="${w.id}" /> ${workerName} <span style="color:var(--dark-gray);font-size:0.8rem;">— ${dept} (${type})</span></label>`;
                     }).join('') || '<p style="color:var(--dark-gray);">No workers set up yet.</p>';
 
-                    // Build task dropdown showing all tasks with status - SAFE with null checks
                     const taskOptions = allTasks.map(t => {
                         const isAssignable = assignableTasks.some(at => at.id === t.id);
                         const alreadyAssigned = t.assignedWorkerId && t.assignedWorkerId.length > 0;
@@ -5254,7 +5303,8 @@
                         if (t.status === 'completed') {
                             label += ' ✅ (done)';
                         }
-                        return `<option value="${t.id}" ${isAssignable ? '' : 'disabled'}>${label}</option>`;
+                        const selectedAttr = (preselectedTaskId && t.id === preselectedTaskId) ? 'selected' : '';
+                        return `<option value="${t.id}" ${isAssignable ? '' : 'disabled'} ${selectedAttr}>${label}</option>`;
                     }).join('');
 
                     const hasAssignable = assignableTasks.length > 0;
@@ -5267,7 +5317,7 @@
                                 <select name="taskId" ${!hasAssignable ? 'disabled' : ''}>
                                     ${taskOptions}
                                 </select>
-                                ${!hasAssignable ? '<div style="font-size:0.75rem;color:var(--dark-gray);margin-top:0.2rem;">No assignable tasks — all are already assigned or completed.</div>' : ''}
+                                ${!hasAssignable ? '<div style="font-size:0.75rem;color:var(--dark-gray);margin-top:0.2rem;">No assignable tasks.</div>' : ''}
                             </div>
                             <div class="form-group">
                                 <label>Workers (tick one or more)</label>
@@ -5278,7 +5328,7 @@
                                 <input type="number" name="estimatedHours" value="${assignableTasks.length > 0 ? assignableTasks[0]?.estimatedHours || 8 : 8}" step="0.5" ${!hasAssignable ? 'disabled' : ''} />
                             </div>
                             <div class="form-group">
-                                <label><input type="checkbox" name="forceStart" ${!hasAssignable ? 'disabled' : ''} /> Force Start (skip dependency)</label>
+                                <label><input type="checkbox" name="forceStart" ${!hasAssignable ? 'disabled' : ''} /> Force Start</label>
                             </div>
                         </form>
                     `;
@@ -5311,9 +5361,7 @@
                                         status: 'pending',
                                         forceStart: !!data.forceStart
                                     });
-                                    this.toast.show(
-                                        'Task assigned – worker(s) will see it',
-                                        'success');
+                                    this.toast.show('Task assigned!', 'success');
                                     this.modal.close();
                                     await this.loadData();
                                     this.renderQueue();
@@ -5325,6 +5373,62 @@
                             }
                         }
                     });
+                }
+
+                async assignTeam(vehicleNumber) {
+                    try {
+                        const allTasks = this.data.filter(t => t.vehicleNumber === vehicleNumber || (t
+                                .vehicleNumber === '' &&
+                                t.salesOrderId && this.allSales.some(s => s.id === t.salesOrderId && (s
+                                    .productName === vehicleNumber))));
+
+                        if (allTasks.length === 0) { this.toast.show('No tasks found.',
+                                'warning'); return; }
+
+                        const assignableTasks = allTasks.filter(t =>
+                            t.status === 'pending' ||
+                            (t.status === 'in_progress' && !t.assignedWorkerId)
+                        );
+
+                        if (assignableTasks.length === 0) {
+                            this.toast.show('All tasks are already assigned or completed.',
+                                'info');
+                            return;
+                        }
+
+                        this.showAssignPopup(vehicleNumber, allTasks, assignableTasks);
+                    } catch (error) {
+                        console.error(error);
+                        this.toast.show('Error: ' + error.message, 'error');
+                    }
+                }
+
+                async viewTimeline(vehicleNumber) {
+                    const tasks = this.data.filter(t => t.vehicleNumber === vehicleNumber || (t
+                            .vehicleNumber === '' &&
+                            t.salesOrderId && this.allSales.some(s => s.id === t.salesOrderId && (s
+                                .productName === vehicleNumber))));
+                    if (tasks.length === 0) { this.toast.show('No tasks found.', 'warning'); return; }
+                    const firstTask = tasks[0];
+                    const salesOrder = this.allSales.find(s => s.id === firstTask.salesOrderId);
+                    const displayName = salesOrder?.orderType === 'non-vehicle' || salesOrder?.orderType ===
+                        'seatwork' ?
+                        `${salesOrder.productName || 'Non-Vehicle'} (${salesOrder.token})` :
+                        vehicleNumber;
+
+                    const stepsHtml = tasks.map(t =>
+                        `<div class="step ${t.status==='completed'?'completed':t.status==='in_progress'||t.status==='pending_approval'?'active':''}">${t.taskName} (${t.status})</div>`
+                        ).join('');
+                    const photoUrl = (this.vehiclePhotos && this.vehiclePhotos[vehicleNumber]) || '';
+                    const html = `
+                        ${photoUrl ? `<img class="vehicle-photo-hero" src="${photoUrl}" />` : ''}
+                        <h4>${displayName} - ${firstTask.customerName}</h4>
+                        <p>Delivery: ${Utils.dateUtils.format(firstTask.deliveryDate)} (${Utils.dateUtils.daysUntil(firstTask.deliveryDate)} days left)</p>
+                        <div class="timeline-steps">${stepsHtml}</div>
+                        <div class="timeline-details"><p><strong>Total:</strong> ${tasks.length}</p><p><strong>Completed:</strong> ${tasks.filter(t=>t.status==='completed').length}</p></div>
+                    `;
+                    this.modal.open({ title: `Timeline - ${displayName}`, body: html, confirmText: 'Close',
+                        showCancel: false, onConfirm: () => this.modal.close() });
                 }
 
                 async showQCApprove(vehicleNumber) {
@@ -5857,18 +5961,21 @@
                 }
             },
 
+            // ========== ASSIGNMENTS PAGE ==========
             Assignments: class {
                 constructor(app) {
                     this.app = app;
                     this.toast = new Components.Toast();
                     this.loader = new Components.Loader();
+                    this.modal = new Components.Modal();
+                    this.confirm = new Components.ConfirmationDialog();
                     this.data = [];
                     this.workers = [];
                 }
                 async render(container) {
                     container.innerHTML = `
                         <div class="page-header"><h2>👷 Assignments Overview</h2>
-                            <p style="color:var(--dark-gray);font-size:0.85rem;">Who's working on what – across production and FC preparation.</p>
+                            <p style="color:var(--dark-gray);font-size:0.85rem;">All tasks with assigned workers. Click "Unassign" to remove worker and make task available.</p>
                         </div>
                         <div id="assignmentsGrid" class="assignments-grid"></div>
                     `;
@@ -5912,20 +6019,61 @@
                                 ?.name || 'Unknown').join(', ');
                         }).filter(Boolean);
                         const uniqueWorkers = [...new Set(workerNames)];
-                        const taskStatuses = tasks.map(t => t.status).join(', ');
-                        const type = tasks[0].type || 'production';
+                        const taskListHtml = tasks.map(t => `
+                            <div class="fc-task-item" style="padding:0.2rem 0;border-bottom:1px solid #eee;">
+                                <span class="task-name">${t.taskName}</span>
+                                <span class="badge badge-${t.status}">${t.status}</span>
+                                <span class="task-worker">👷 ${t.assignedWorkerId ? this.workers.find(w => String(w.id) === t.assignedWorkerId)?.name || 'Unknown' : 'Unassigned'}</span>
+                                <button class="btn-icon unassign-assignment" data-taskid="${t.id}" data-vehicle="${vehicle}" style="color:var(--warning);" title="Unassign worker"><span class="material-icons">person_remove</span></button>
+                            </div>
+                        `).join('');
                         html += `
                             <div class="assignment-card">
                                 <div class="assign-vehicle">${vehicle}</div>
                                 <div class="assign-workers">
                                     ${uniqueWorkers.map(w => `<span class="assign-worker">👷 ${w}</span>`).join('')}
                                 </div>
-                                <div class="assign-tasks">${tasks.length} task(s) – ${taskStatuses}</div>
-                                <div class="assign-status"><span class="badge badge-${type === 'fc' ? 'info' : 'primary'}">${type === 'fc' ? 'FC Prep' : 'Production'}</span></div>
+                                <div class="assign-tasks">${tasks.length} task(s)</div>
+                                <div class="assign-status"><span class="badge badge-${tasks[0].type === 'fc' ? 'info' : 'primary'}">${tasks[0].type === 'fc' ? 'FC Prep' : 'Production'}</span></div>
+                                <div style="margin-top:0.4rem;">${taskListHtml}</div>
                             </div>
                         `;
                     }
                     container.innerHTML = html;
+
+                    container.querySelectorAll('.unassign-assignment').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            const vehicle = btn.dataset.vehicle;
+                            this.confirm.open({
+                                title: 'Unassign Worker',
+                                body: `Remove all workers from this task on ${vehicle}? The task will become pending and available for reassignment.`,
+                                onConfirm: async () => {
+                                    this.loader.show();
+                                    try {
+                                        const task = this.data.find(t => t.id === taskId);
+                                        if (task) {
+                                            if (task.type === 'fc') {
+                                                await DataService.updateFCTask(taskId, {
+                                                    assignedWorkerId: '',
+                                                    status: 'pending'
+                                                });
+                                            } else {
+                                                await DataService.updateProduction(taskId, {
+                                                    assignedWorkerId: '',
+                                                    status: 'pending'
+                                                });
+                                            }
+                                            this.toast.show('Worker unassigned', 'success');
+                                            await this.loadData();
+                                            this.renderGrid();
+                                        }
+                                    } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); } finally { this.loader.hide(); }
+                                }
+                            });
+                        });
+                    });
                 }
             },
 
@@ -5967,8 +6115,11 @@
                                 ''; });
                         const allTasks = [...production, ...fcTasks.map(t => ({ ...t, type: 'fc' }))];
                         const myId = String(this.currentUser?.id || this.currentUser?.uid || '');
-                        this.assignedTasks = allTasks.filter(t => (t.assignedWorkerId || '')
-                            .split(',').map(s => s.trim()).includes(myId));
+                        this.assignedTasks = allTasks.filter(t => {
+                            if (!t.assignedWorkerId) return false;
+                            const workerIds = t.assignedWorkerId.split(',').map(s => s.trim());
+                            return workerIds.includes(myId);
+                        });
                     } catch (e) { this.toast.show('Failed to load tasks: ' + (e.message || e),
                             'error'); } finally { this.loader.hide(); }
                 }
@@ -6218,6 +6369,7 @@
                 }
             },
 
+            // ========== USERS PAGE ==========
             Users: class {
                 constructor(app) {
                     this.app = app;
@@ -6384,6 +6536,7 @@
                 }
             },
 
+            // ========== ACCOUNTS PAGE ==========
             Accounts: class {
                 constructor(app) {
                     this.app = app;
@@ -6393,6 +6546,7 @@
                     this.confirm = new Components.ConfirmationDialog();
                     this.inventory = [];
                     this.purchases = [];
+                    this.stockUsage = [];
                     this.activeTab = 'purchase';
                 }
 
@@ -6402,13 +6556,16 @@
                         <div class="tabs-container">
                             <button class="tab-btn active" data-tab="purchase">📥 Purchase Entry</button>
                             <button class="tab-btn" data-tab="owner">💰 Owner Cost Summary</button>
+                            <button class="tab-btn" data-tab="stock">📦 Stock Usage</button>
                         </div>
                         <div id="purchaseTab" class="tab-content active"></div>
                         <div id="ownerTab" class="tab-content"></div>
+                        <div id="stockTab" class="tab-content"></div>
                     `;
                     await this.loadData();
                     this.renderPurchaseTab();
                     this.renderOwnerTab();
+                    this.renderStockTab();
                     this.bindTabs();
                 }
 
@@ -6417,6 +6574,7 @@
                     try {
                         this.inventory = await DataService.getInventory();
                         this.purchases = await DataService.getPurchases();
+                        this.stockUsage = await DataService.getStockUsage();
                     } catch (e) { this.toast.show('Failed to load data: ' + (e.message || e), 'error'); } finally { this
                             .loader.hide(); }
                 }
@@ -6545,6 +6703,7 @@
                                 await this.loadData();
                                 this.renderPurchaseTab();
                                 this.renderOwnerTab();
+                                this.renderStockTab();
                             } catch (e) { this.toast.show('Failed: ' + (e.message || e),
                                     'error'); } finally { this.loader.hide(); }
                         }
@@ -6616,6 +6775,175 @@
                         `;
                     });
                     container.innerHTML = html;
+                }
+
+                renderStockTab() {
+                    const container = document.getElementById('stockTab');
+                    const usageMap = {};
+                    this.stockUsage.forEach(u => {
+                        const key = u.vehicleNumber || 'Unassigned';
+                        if (!usageMap[key]) usageMap[key] = [];
+                        usageMap[key].push(u);
+                    });
+                    const purchaseMap = {};
+                    this.purchases.forEach(p => {
+                        const key = `${p.vehicleNumber || 'Unassigned'}-${p.materialType}`;
+                        if (!purchaseMap[key]) purchaseMap[key] = 0;
+                        purchaseMap[key] += p.quantity || 0;
+                    });
+
+                    let html = `<h3>Stock Usage per Vehicle</h3>
+                        <p style="color:var(--dark-gray);margin-bottom:0.8rem;">Track materials used for each vehicle. Remaining stock = purchased - used.</p>
+                        <div class="flex justify-between" style="margin-bottom:0.8rem;">
+                            <button id="addStockUsageBtn" class="btn btn-primary"><span class="material-icons">add</span> Log Usage</button>
+                        </div>
+                    `;
+
+                    if (Object.keys(usageMap).length === 0 && this.purchases.length === 0) {
+                        html += `<p style="color:var(--dark-gray);">No stock usage or purchases yet.</p>`;
+                        container.innerHTML = html;
+                        document.getElementById('addStockUsageBtn').addEventListener('click', () => this.showStockUsageForm());
+                        return;
+                    }
+
+                    const vehicleSet = new Set([...Object.keys(usageMap), ...this.purchases.map(p => p.vehicleNumber || 'Unassigned')]);
+                    vehicleSet.forEach(vehicle => {
+                        const usages = usageMap[vehicle] || [];
+                        const totalUsed = usages.reduce((sum, u) => sum + (u.quantity || 0), 0);
+                        const materialMap = {};
+                        this.purchases.filter(p => p.vehicleNumber === vehicle).forEach(p => {
+                            const key = p.materialType;
+                            if (!materialMap[key]) materialMap[key] = { purchased: 0, used: 0 };
+                            materialMap[key].purchased += p.quantity || 0;
+                        });
+                        usages.forEach(u => {
+                            const key = u.materialType;
+                            if (materialMap[key]) materialMap[key].used += u.quantity || 0;
+                        });
+                        const remainingHtml = Object.entries(materialMap).map(([mat, vals]) => {
+                            const remaining = vals.purchased - vals.used;
+                            return `<span class="item" style="background:#e2d6f3;color:#4b2e83;">${mat}: purchased ${vals.purchased}, used ${vals.used}, remaining ${remaining}</span>`;
+                        }).join(' ');
+
+                        const usageRows = usages.map(u => `
+                            <div class="fc-task-item" style="padding:0.2rem 0;">
+                                <span>${u.materialType}</span>
+                                <span>Qty: ${u.quantity}</span>
+                                <span>${u.remarks || ''}</span>
+                                <button class="btn-icon delete-usage" data-usageid="${u.id}" style="color:var(--danger);"><span class="material-icons">delete</span></button>
+                            </div>
+                        `).join('');
+
+                        html += `
+                            <div class="stock-summary-card">
+                                <div class="stock-header">
+                                    <span class="stock-vehicle">🚗 ${vehicle}</span>
+                                    <span class="stock-total-used">Total Used: ${totalUsed}</span>
+                                </div>
+                                <div class="stock-breakdown">${remainingHtml}</div>
+                                <div style="margin-top:0.3rem;">${usageRows}</div>
+                            </div>
+                        `;
+                    });
+
+                    container.innerHTML = html;
+
+                    document.getElementById('addStockUsageBtn').addEventListener('click', () => this.showStockUsageForm());
+
+                    container.querySelectorAll('.delete-usage').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const usageId = btn.dataset.usageid;
+                            this.confirm.open({
+                                title: 'Delete Usage Record',
+                                body: 'Remove this usage entry?',
+                                onConfirm: async () => {
+                                    this.loader.show();
+                                    try {
+                                        await DataService.deleteStockUsage(usageId);
+                                        this.toast.show('Usage record deleted', 'warning');
+                                        await this.loadData();
+                                        this.renderStockTab();
+                                    } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); } finally { this.loader.hide(); }
+                                }
+                            });
+                        });
+                    });
+                }
+
+                showStockUsageForm() {
+                    const vehicleOptions = this.inventory.filter(v => v.inventoryStatus !== 'Delivered').map(v => ({
+                        value: v.vehicleNumber,
+                        label: v.vehicleNumber
+                    }));
+                    const materialTypes = [...new Set(this.purchases.map(p => p.materialType).filter(Boolean))];
+                    const form = `
+                        <form id="stockUsageForm">
+                            <div class="form-group">
+                                <label>Vehicle *</label>
+                                <select name="vehicleNumber" required>
+                                    <option value="">-- Select --</option>
+                                    ${vehicleOptions.map(v => `<option value="${v.value}">${v.label}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Material Type *</label>
+                                <select name="materialType" required>
+                                    <option value="">-- Select --</option>
+                                    ${materialTypes.map(m => `<option value="${m}">${m}</option>`).join('')}
+                                    <option value="__other__">Other (type below)</option>
+                                </select>
+                                <input type="text" name="otherMaterial" placeholder="Specify other material" style="margin-top:0.3rem;display:none;" />
+                            </div>
+                            <div class="form-group">
+                                <label>Quantity Used *</label>
+                                <input type="number" name="quantity" step="0.01" min="0.01" required />
+                            </div>
+                            <div class="form-group">
+                                <label>Remarks (optional)</label>
+                                <input type="text" name="remarks" placeholder="e.g. Used for chassis" />
+                            </div>
+                        </form>
+                    `;
+
+                    this.modal.open({
+                        title: 'Log Stock Usage',
+                        body: form,
+                        confirmText: 'Save',
+                        onConfirm: async () => {
+                            const fd = new FormData(document.getElementById('stockUsageForm'));
+                            const data = Object.fromEntries(fd.entries());
+                            const vehicle = data.vehicleNumber;
+                            let material = data.materialType;
+                            if (material === '__other__') {
+                                material = data.otherMaterial.trim();
+                                if (!material) { this.toast.show('Please specify material', 'warning'); return; }
+                            }
+                            if (!vehicle || !material || !data.quantity) {
+                                this.toast.show('Fill all required fields', 'warning');
+                                return;
+                            }
+                            this.loader.show();
+                            try {
+                                await DataService.addStockUsage({
+                                    vehicleNumber: vehicle,
+                                    materialType: material,
+                                    quantity: parseFloat(data.quantity),
+                                    remarks: data.remarks || ''
+                                });
+                                this.toast.show('Usage logged', 'success');
+                                this.modal.close();
+                                await this.loadData();
+                                this.renderStockTab();
+                            } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); } finally { this.loader.hide(); }
+                        }
+                    });
+
+                    const materialSelect = document.querySelector('select[name="materialType"]');
+                    const otherInput = document.querySelector('input[name="otherMaterial"]');
+                    materialSelect.addEventListener('change', () => {
+                        otherInput.style.display = materialSelect.value === '__other__' ? 'block' : 'none';
+                    });
                 }
             },
 
