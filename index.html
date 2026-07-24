@@ -2224,6 +2224,220 @@
             color: var(--danger);
             font-weight: 600;
         }
+
+        /* ===== Voice Command Styles ===== */
+        .mic-btn {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--light-gray);
+            color: var(--dark-gray);
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            font-size: 22px;
+        }
+        .mic-btn:hover {
+            background: #d0d8e0;
+            color: var(--primary-dark);
+        }
+        .mic-btn.listening {
+            background: var(--danger);
+            color: white;
+            border-color: #ff6b6b;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        .mic-btn.processing {
+            background: var(--warning);
+            color: #333;
+            border-color: #ffc107;
+        }
+        .mic-btn .mic-tooltip {
+            position: absolute;
+            bottom: -28px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 0.6rem;
+            background: var(--primary-dark);
+            color: white;
+            padding: 0.1rem 0.5rem;
+            border-radius: 8px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s;
+        }
+        .mic-btn:hover .mic-tooltip {
+            opacity: 1;
+        }
+        .mic-btn .mic-badge {
+            position: absolute;
+            top: -4px;
+            right: -4px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: var(--success);
+            border: 2px solid white;
+            display: none;
+        }
+        .mic-btn.listening .mic-badge {
+            display: block;
+            background: #ff6b6b;
+        }
+
+        @keyframes pulse {
+            0%,
+            100% {
+                transform: scale(1);
+                box-shadow: 0 0 0 0 rgba(217, 83, 79, 0.4);
+            }
+            50% {
+                transform: scale(1.05);
+                box-shadow: 0 0 0 8px rgba(217, 83, 79, 0);
+            }
+        }
+
+        .voice-command-indicator {
+            position: fixed;
+            bottom: calc(var(--bottom-nav-height) + 10px);
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(11, 30, 51, 0.92);
+            color: white;
+            padding: 0.6rem 1.2rem;
+            border-radius: 30px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            backdrop-filter: blur(8px);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+            display: none;
+            align-items: center;
+            gap: 0.6rem;
+            z-index: 2500;
+            max-width: 90%;
+            text-align: center;
+            pointer-events: none;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .voice-command-indicator .material-icons {
+            font-size: 20px;
+            color: #ff6b6b;
+            animation: pulse 1.5s ease-in-out infinite;
+        }
+        .voice-command-indicator.show {
+            display: flex;
+        }
+
+        .command-help-overlay {
+            position: fixed;
+            bottom: calc(var(--bottom-nav-height) + 70px);
+            right: 16px;
+            background: white;
+            border-radius: var(--radius);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+            padding: 1rem;
+            max-width: 340px;
+            max-height: 60vh;
+            overflow-y: auto;
+            z-index: 2500;
+            display: none;
+            border: 1px solid var(--gray);
+        }
+        .command-help-overlay.show {
+            display: block;
+            animation: slideUp 0.25s ease;
+        }
+        .command-help-overlay h4 {
+            font-size: 0.85rem;
+            color: var(--primary-dark);
+            margin-bottom: 0.3rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .command-help-overlay .cmd-item {
+            font-size: 0.75rem;
+            padding: 0.15rem 0;
+            border-bottom: 1px solid #f5f5f5;
+            display: flex;
+            gap: 0.4rem;
+            align-items: baseline;
+        }
+        .command-help-overlay .cmd-item .cmd-icon {
+            color: var(--accent);
+            font-size: 14px;
+        }
+        .command-help-overlay .cmd-item .cmd-example {
+            color: var(--dark-gray);
+            font-style: italic;
+        }
+        .command-help-overlay .cmd-close {
+            position: sticky;
+            top: 0;
+            float: right;
+            color: var(--dark-gray);
+            background: white;
+            padding: 0.1rem;
+            border-radius: 50%;
+        }
+        .command-help-overlay .cmd-close:hover {
+            background: var(--light-gray);
+        }
+
+        /* ===== Assign/Unassign Toast Enhancements ===== */
+        .assign-result-detail {
+            font-size: 0.8rem;
+            padding: 0.2rem 0.4rem;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            margin-top: 0.2rem;
+        }
+
+        /* ===== Tab Grid for "Open All Tabs" ===== */
+        .tab-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .tab-grid .tab-card {
+            background: var(--light-gray);
+            border-radius: var(--radius);
+            padding: 0.8rem 0.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: 0.2s;
+            border: 2px solid transparent;
+        }
+        .tab-grid .tab-card:hover {
+            background: #e8f0fe;
+            border-color: var(--accent);
+        }
+        .tab-grid .tab-card .material-icons {
+            font-size: 1.8rem;
+            color: var(--primary-blue);
+        }
+        .tab-grid .tab-card .tab-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--primary-dark);
+            margin-top: 0.2rem;
+            display: block;
+        }
+        .tab-grid .tab-card .tab-badge {
+            font-size: 0.6rem;
+            color: var(--dark-gray);
+        }
+
+        @media (max-width: 480px) {
+            .tab-grid {
+                grid-template-columns: 1fr 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2239,7 +2453,7 @@
             </div>
             <nav class="sidebar-nav" id="sidebarNav"></nav>
             <div class="sidebar-footer">
-                <span class="sidebar-version">v4.1</span>
+                <span class="sidebar-version">v4.3</span>
                 <button id="logoutBtn" class="sidebar-logout" aria-label="Logout">
                     <span class="material-icons">logout</span>
                     <span>Logout</span>
@@ -2266,6 +2480,15 @@
                         <span class="material-icons search-icon">search</span>
                         <input type="text" id="globalSearch" placeholder="Search..." class="search-input" />
                     </div>
+                    <!-- MIC BUTTON -->
+                    <button id="micBtn" class="mic-btn" aria-label="Voice command" title="Click to speak a command">
+                        <span class="material-icons">mic</span>
+                        <span class="mic-badge"></span>
+                        <span class="mic-tooltip">Voice Command</span>
+                    </button>
+                    <button class="header-btn" id="helpBtn" aria-label="Help">
+                        <span class="material-icons">help_outline</span>
+                    </button>
                     <button class="header-btn" id="notifBtn" aria-label="Notifications">
                         <span class="material-icons">notifications</span>
                         <span class="notif-badge" id="notifBadge">0</span>
@@ -2297,6 +2520,26 @@
 
     <!-- ======== BOTTOM NAVIGATION (mobile) ======== -->
     <nav id="bottomNav" class="bottom-nav" role="navigation" aria-label="Bottom navigation"></nav>
+
+    <!-- VOICE INDICATOR -->
+    <div id="voiceIndicator" class="voice-command-indicator">
+        <span class="material-icons">mic</span>
+        <span id="voiceText">Listening...</span>
+    </div>
+
+    <!-- COMMAND HELP -->
+    <div id="commandHelp" class="command-help-overlay">
+        <button id="helpClose" class="cmd-close"><span class="material-icons">close</span></button>
+        <h4><span class="material-icons" style="font-size:18px;">record_voice_over</span> Voice Commands</h4>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>open all tabs</strong> <span class="cmd-example">"open all tabs"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>open [tab]</strong> <span class="cmd-example">"open supervisor", "open sales"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>assign</strong> <span class="cmd-example">"assign KA11B7007 for Body Coach to Mubarak"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>unassign</strong> <span class="cmd-example">"unassign KA11B7007 from Mubarak"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>how many tasks for</strong> <span class="cmd-example">"how many tasks for Mubarak"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>which stock to purchase</strong> <span class="cmd-example">"which stock to purchase"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>show delivered vehicles</strong> <span class="cmd-example">"show delivered vehicles"</span></span></div>
+        <div class="cmd-item"><span class="cmd-icon">📌</span> <span><strong>status / list / find / help</strong> <span class="cmd-example">"status" or "list vehicles"</span></span></div>
+    </div>
 
     <!-- MODAL -->
     <div id="modalOverlay" class="modal-overlay" style="display:none;" aria-modal="true" role="dialog">
@@ -3572,7 +3815,7 @@
         };
 
         // ==============================================================
-        // 6. PHOTO SERVICE
+        // 5b. PHOTO SERVICE
         // ==============================================================
         const PhotoService = {
             async uploadPhotoFile(data) {
@@ -3634,12 +3877,1533 @@
         };
 
         // ==============================================================
-        // 7. PAGES
+        // 5c. VOICE COMMAND PARSER – ENHANCED
+        // ==============================================================
+        class VoiceCommandParser {
+            constructor(app) {
+                this.app = app;
+                this.toast = new Components.Toast();
+                this.loader = new Components.Loader();
+                this.modal = new Components.Modal();
+                this.recognition = null;
+                this.isListening = false;
+                this.micBtn = document.getElementById('micBtn');
+                this.voiceIndicator = document.getElementById('voiceIndicator');
+                this.voiceText = document.getElementById('voiceText');
+                this.helpBtn = document.getElementById('helpBtn');
+                this.helpOverlay = document.getElementById('commandHelp');
+                this.helpClose = document.getElementById('helpClose');
+                this._initSpeech();
+                this._bindUI();
+            }
+
+            // ---- TAB NAME MAPPING ----
+            _getTabMap() {
+                const user = this.app.auth.getCurrentUser();
+                const tabs = {
+                    dashboard: { label: 'Dashboard', icon: 'dashboard', page: 'dashboard' },
+                    inventory: { label: 'Vehicle Inventory', icon: 'directions_car', page: 'inventory' },
+                    sales: { label: 'Sales Orders', icon: 'receipt', page: 'sales' },
+                    supervisor: { label: 'Supervisor', icon: 'supervisor_account', page: 'supervisor' },
+                    worker: { label: 'Worker', icon: 'construction', page: 'worker' },
+                    purchase_inventory: { label: 'Purchase Stock', icon: 'inventory_2', page: 'purchase_inventory' },
+                    leads: { label: 'Lead Tracker', icon: 'trending_up', page: 'leads' },
+                    fcprep: { label: 'FC Prep', icon: 'build', page: 'fcprep' },
+                    assignments: { label: 'Assignments', icon: 'group_work', page: 'assignments' },
+                };
+                if (user && ['owner', 'operations_manager'].includes(user.role)) {
+                    tabs.users = { label: 'Manage Users', icon: 'group', page: 'users' };
+                }
+                const result = {};
+                for (const [key, val] of Object.entries(tabs)) {
+                    if (this.app.auth.hasPermission(val.page)) {
+                        result[key] = val;
+                    }
+                }
+                return result;
+            }
+
+            _getTabAliases() {
+                return {
+                    'home': 'dashboard',
+                    'vehicles': 'inventory',
+                    'vehicle': 'inventory',
+                    'car': 'inventory',
+                    'orders': 'sales',
+                    'order': 'sales',
+                    'sup': 'supervisor',
+                    'super': 'supervisor',
+                    'work': 'worker',
+                    'my work': 'worker',
+                    'my tasks': 'worker',
+                    'stock': 'purchase_inventory',
+                    'purchase': 'purchase_inventory',
+                    'inventory stock': 'purchase_inventory',
+                    'lead': 'leads',
+                    'fc': 'fcprep',
+                    'fitness': 'fcprep',
+                    'assignment': 'assignments',
+                    'assignments overview': 'assignments',
+                    'users': 'users',
+                    'user': 'users',
+                    'manage users': 'users'
+                };
+            }
+
+            _getCurrentPage() {
+                return window.location.hash.slice(1) || 'dashboard';
+            }
+
+            _normalizeVehicleNumber(text) {
+                // Remove spaces, dashes, slashes, and convert to uppercase
+                return text.replace(/[\s\-/]/g, '').toUpperCase();
+            }
+
+            // ---- SPEECH INIT ----
+            _initSpeech() {
+                const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SR) {
+                    this.micBtn.title = 'Speech recognition not supported in this browser';
+                    this.micBtn.style.opacity = '0.4';
+                    this.micBtn.style.cursor = 'not-allowed';
+                    return;
+                }
+                this.recognition = new SR();
+                this.recognition.lang = 'en-IN';
+                this.recognition.continuous = false;
+                this.recognition.interimResults = true;
+                this.recognition.maxAlternatives = 3;
+
+                this.recognition.onstart = () => {
+                    this.isListening = true;
+                    this.micBtn.classList.add('listening');
+                    this.voiceIndicator.classList.add('show');
+                    this.voiceText.textContent = '🎤 Listening...';
+                };
+
+                this.recognition.onerror = (e) => {
+                    console.warn('Speech error:', e.error);
+                    if (e.error === 'not-allowed') {
+                        this.toast.show('Microphone access denied. Please allow mic permissions.', 'warning',
+                            5000);
+                    } else if (e.error !== 'aborted') {
+                        this.toast.show('Voice error: ' + e.error, 'warning');
+                    }
+                    this.stopListening();
+                };
+
+                this.recognition.onend = () => {
+                    this.stopListening();
+                };
+
+                this.recognition.onresult = (e) => {
+                    let interim = '';
+                    let final = '';
+                    for (let i = e.resultIndex; i < e.results.length; i++) {
+                        const transcript = e.results[i][0].transcript.trim();
+                        if (e.results[i].isFinal) {
+                            final = transcript;
+                        } else {
+                            interim += transcript + ' ';
+                        }
+                    }
+                    if (interim) {
+                        this.voiceText.textContent = '🗣️ ' + interim;
+                    }
+                    if (final) {
+                        this.voiceText.textContent = '✅ ' + final;
+                        this.processCommand(final);
+                        this.stopListening();
+                    }
+                };
+            }
+
+            _bindUI() {
+                this.micBtn.addEventListener('click', () => {
+                    if (this.isListening) {
+                        this.stopListening();
+                    } else {
+                        this.startListening();
+                    }
+                });
+
+                this.helpBtn.addEventListener('click', () => {
+                    this.helpOverlay.classList.toggle('show');
+                    if (this.isListening) this.stopListening();
+                });
+
+                this.helpClose.addEventListener('click', () => {
+                    this.helpOverlay.classList.remove('show');
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!this.helpOverlay.contains(e.target) && e.target !== this.helpBtn && !this
+                        .helpBtn.contains(e.target)) {
+                        this.helpOverlay.classList.remove('show');
+                    }
+                });
+            }
+
+            startListening() {
+                if (!this.recognition) { this.toast.show('Speech not supported', 'warning'); return; }
+                if (this.isListening) return;
+                try {
+                    this.recognition.start();
+                } catch (e) {
+                    this.stopListening();
+                    setTimeout(() => {
+                        try { this.recognition.start(); } catch (err) {}
+                    }, 200);
+                }
+            }
+
+            stopListening() {
+                this.isListening = false;
+                this.micBtn.classList.remove('listening');
+                this.voiceIndicator.classList.remove('show');
+                this.voiceText.textContent = 'Listening...';
+                try { if (this.recognition) this.recognition.stop(); } catch (e) {}
+            }
+
+            // ==============================================================
+            // COMMAND PROCESSING – ENHANCED
+            // ==============================================================
+            async processCommand(rawText) {
+                const text = rawText.toLowerCase().trim();
+                if (!text) return;
+
+                this.micBtn.classList.add('processing');
+                this.toast.show('⏳ Processing: "' + rawText + '"', 'info', 2000);
+
+                try {
+                    // ---- HELP ----
+                    const helpVariants = ['help', 'help me', 'what can i say', 'commands', 'show commands'];
+                    if (helpVariants.some(h => text === h)) {
+                        this.helpOverlay.classList.toggle('show');
+                        this.toast.show('📖 Help menu opened', 'success', 1500);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- NORMALIZE COMMAND ----
+                    const assignVariants = ['assign', 'a sign', 'ass in', 'ajwain', 'aswin', 'as sign', 'assigns',
+                        'assigne'
+                    ];
+                    const unassignVariants = ['unassign', 'un assign', 'un a sign', 'unassigned', 'un assign',
+                        'unajwain', 'un ajwain'
+                    ];
+                    const supervisorVariants = ['supervisor', 'soopervisor', 'supirvisor', 'super visor', 'superwiser'];
+                    const assignmentsVariants = ['assignments', 'assignment', 'assigments', 'asignments', 'assign ment'];
+
+                    let command = text;
+                    let isAssign = false;
+                    let isUnassign = false;
+                    let isSupervisor = false;
+                    let isAssignments = false;
+
+                    // Check for "open all tabs" / "open [tab]"
+                    const openAllMatch = text.match(/open\s+all\s+(?:the\s+)?tabs?/i) ||
+                        text.match(/show\s+all\s+(?:the\s+)?tabs?/i) ||
+                        text.match(/list\s+(?:all\s+)?(?:the\s+)?tabs?/i);
+                    if (openAllMatch) {
+                        await this._handleOpenAllTabs();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- "open [tab]" ----
+                    const openTabMatch = text.match(/open\s+(.+)/i) || text.match(/go\s+to\s+(.+)/i) ||
+                        text.match(/switch\s+to\s+(.+)/i) || text.match(/show\s+me\s+(.+)/i);
+                    if (openTabMatch) {
+                        const tabPhrase = openTabMatch[1].trim();
+                        const tabKey = this._resolveTabName(tabPhrase);
+                        if (tabKey) {
+                            await this._navigateTo(tabKey);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                        // If not a known tab, fall through to other commands
+                    }
+
+                    // Check for supervisor/assignments variants
+                    for (let v of supervisorVariants) {
+                        if (command.includes(v)) {
+                            isSupervisor = true;
+                            command = command.replace(v, 'supervisor').trim();
+                            break;
+                        }
+                    }
+                    for (let v of assignmentsVariants) {
+                        if (command.includes(v)) {
+                            isAssignments = true;
+                            command = command.replace(v, 'assignments').trim();
+                            break;
+                        }
+                    }
+
+                    // Check for assign/unassign variants
+                    if (!isSupervisor && !isAssignments) {
+                        for (let v of assignVariants) {
+                            if (command.startsWith(v) || command.includes(' ' + v + ' ')) {
+                                isAssign = true;
+                                command = command.replace(v, 'assign').trim();
+                                break;
+                            }
+                        }
+                        if (!isAssign) {
+                            for (let v of unassignVariants) {
+                                if (command.startsWith(v) || command.includes(' ' + v + ' ')) {
+                                    isUnassign = true;
+                                    command = command.replace(v, 'unassign').trim();
+                                    break;
+                                }
+                            }
+                        }
+                        if (!isAssign && !isUnassign) {
+                            if (command.includes('assign') && !command.includes('unassign')) {
+                                isAssign = true;
+                                command = command.replace(/assign/g, 'assign').trim();
+                            } else if (command.includes('unassign') || command.includes('un assign')) {
+                                isUnassign = true;
+                                command = command.replace(/unassign|un assign/g, 'unassign').trim();
+                            }
+                        }
+                    }
+
+                    // ---- OPEN SUPERVISOR ----
+                    if (isSupervisor || text.includes('supervisor') || text.includes('go to supervisor') ||
+                        text.includes('open supervisor')) {
+                        await this._navigateTo('supervisor');
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- OPEN ASSIGNMENTS ----
+                    if (isAssignments || text.includes('assignments') || text.includes('assignment overview') ||
+                        text.includes('open assignments')) {
+                        await this._navigateTo('assignments');
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- ASSIGN ----
+                    if (isAssign) {
+                        const assignMatch = command.match(/assign\s+(\S+?)\s+(?:for\s+)?(.+?)\s+to\s+(\S+)/i) ||
+                            command.match(/assign\s+(.+?)\s+on\s+(\S+?)\s+to\s+(\S+)/i) ||
+                            command.match(/assign\s+(\S+?)\s+(.+?)\s+to\s+(\S+)/i);
+                        if (assignMatch) {
+                            let vehicle, taskName, workerName;
+                            if (assignMatch.length === 4) {
+                                if (assignMatch[1].toUpperCase().includes('NL-') || assignMatch[1].toUpperCase()
+                                    .includes('KA') || assignMatch[1].toUpperCase().includes('MH')) {
+                                    vehicle = assignMatch[1].toUpperCase();
+                                    taskName = assignMatch[2].trim();
+                                    workerName = assignMatch[3].trim();
+                                } else if (assignMatch[3].toUpperCase().includes('NL-') || assignMatch[3]
+                                    .toUpperCase().includes('KA') || assignMatch[3].toUpperCase().includes(
+                                    'MH')) {
+                                    vehicle = assignMatch[3].toUpperCase();
+                                    taskName = assignMatch[2].trim();
+                                    workerName = assignMatch[1].trim();
+                                } else {
+                                    const parts = command.split(/\s+/);
+                                    const possibleVehicles = parts.filter(p => p.toUpperCase().includes('NL-') ||
+                                        p.toUpperCase().includes('KA') || p.toUpperCase().includes('MH'));
+                                    if (possibleVehicles.length === 1) {
+                                        vehicle = possibleVehicles[0].toUpperCase();
+                                        const idx = parts.indexOf(possibleVehicles[0]);
+                                        const before = parts.slice(1, idx).join(' ');
+                                        const after = parts.slice(idx + 1).join(' ');
+                                        const toIdx = after.indexOf(' to ');
+                                        if (toIdx > -1) {
+                                            taskName = after.substring(0, toIdx).trim();
+                                            workerName = after.substring(toIdx + 4).trim();
+                                        } else {
+                                            const last = parts[parts.length - 1];
+                                            workerName = last;
+                                            taskName = after.replace(new RegExp(last + '$'), '').trim();
+                                        }
+                                    } else {
+                                        this.toast.show(
+                                            'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
+                                            'warning', 5000);
+                                        this.micBtn.classList.remove('processing');
+                                        return;
+                                    }
+                                }
+                            } else {
+                                this.toast.show(
+                                    'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
+                                    'warning', 5000);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                            await this._handleAssign(vehicle, taskName, workerName);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        } else {
+                            // Try simpler assign: "assign [vehicle] to [worker]"
+                            const simpleMatch = command.match(/assign\s+(\S+?)\s+to\s+(\S+)/i);
+                            if (simpleMatch) {
+                                const vehicle = simpleMatch[1].toUpperCase();
+                                const workerName = simpleMatch[2].trim();
+                                // If no task specified, try to find a pending task for this vehicle
+                                await this._handleAssignWithAutoTask(vehicle, workerName);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                            this.toast.show(
+                                'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
+                                'warning', 5000);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                    }
+
+                    // ---- UNASSIGN ----
+                    if (isUnassign) {
+                        const unassignMatch = command.match(/unassign\s+(\S+?)\s+from\s+(\S+)/i) ||
+                            command.match(/unassign\s+(\S+?)\s+from\s+(\S+)/i);
+                        if (unassignMatch) {
+                            let vehicle, workerName;
+                            if (unassignMatch[1].toUpperCase().includes('NL-') || unassignMatch[1].toUpperCase()
+                                .includes('KA') || unassignMatch[1].toUpperCase().includes('MH')) {
+                                vehicle = unassignMatch[1].toUpperCase();
+                                workerName = unassignMatch[2].trim();
+                            } else if (unassignMatch[2].toUpperCase().includes('NL-') || unassignMatch[2]
+                                .toUpperCase().includes('KA') || unassignMatch[2].toUpperCase().includes(
+                                'MH')) {
+                                vehicle = unassignMatch[2].toUpperCase();
+                                workerName = unassignMatch[1].trim();
+                            } else {
+                                const parts = command.split(/\s+/);
+                                const possibleVehicles = parts.filter(p => p.toUpperCase().includes('NL-') ||
+                                    p.toUpperCase().includes('KA') || p.toUpperCase().includes('MH'));
+                                if (possibleVehicles.length === 1) {
+                                    vehicle = possibleVehicles[0].toUpperCase();
+                                    const idx = parts.indexOf(possibleVehicles[0]);
+                                    const after = parts.slice(idx + 1).join(' ');
+                                    const fromIdx = after.indexOf('from');
+                                    if (fromIdx > -1) {
+                                        workerName = after.substring(fromIdx + 5).trim();
+                                    } else {
+                                        workerName = parts[parts.length - 1].trim();
+                                    }
+                                } else {
+                                    this.toast.show(
+                                        'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
+                                        'warning', 5000);
+                                    this.micBtn.classList.remove('processing');
+                                    return;
+                                }
+                            }
+                            if (!vehicle || !workerName) {
+                                this.toast.show(
+                                    'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
+                                    'warning', 5000);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                            await this._handleUnassign(vehicle, workerName);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        } else {
+                            this.toast.show(
+                                'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
+                                'warning', 5000);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                    }
+
+                    // ---- CREATE SALES ORDER ----
+                    const orderMatch = command.match(/create\s+(?:sales\s+)?order\s+for\s+(\S+?)\s+on\s+(\S+)/i) ||
+                        command.match(/create\s+(?:sales\s+)?order\s+(\S+?)\s+on\s+(\S+)/i) ||
+                        command.match(/create\s+(?:sales\s+)?order\s+for\s+(\S+?)\s+(\S+)/i);
+                    if (orderMatch) {
+                        let customer, vehicle;
+                        if (orderMatch.length === 3) {
+                            if (orderMatch[2].toUpperCase().includes('NL-') || orderMatch[2].toUpperCase().includes(
+                                    'KA') || orderMatch[2].toUpperCase().includes('MH')) {
+                                customer = orderMatch[1].trim();
+                                vehicle = orderMatch[2].toUpperCase();
+                            } else if (orderMatch[1].toUpperCase().includes('NL-') || orderMatch[1].toUpperCase()
+                                .includes('KA') || orderMatch[1].toUpperCase().includes('MH')) {
+                                vehicle = orderMatch[1].toUpperCase();
+                                customer = orderMatch[2].trim();
+                            } else {
+                                customer = orderMatch[1].trim();
+                                vehicle = orderMatch[2].trim().toUpperCase();
+                            }
+                        } else {
+                            this.toast.show(
+                                'Could not parse order. Try: "create order for John on NL-101"',
+                                'warning', 5000);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                        if (!customer || !vehicle) {
+                            this.toast.show(
+                                'Could not parse order. Try: "create order for John on NL-101"',
+                                'warning', 5000);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                        await this._handleCreateOrder(customer, vehicle);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- HOW MANY TASKS FOR WORKER ----
+                    const countMatch = text.match(/how\s+many\s+(?:work|tasks)\s+(?:assigned\s+to|for)\s+(\S+)/i) ||
+                        text.match(/show\s+(?:me\s+)?tasks\s+for\s+(\S+)/i) ||
+                        text.match(/count\s+tasks\s+for\s+(\S+)/i) ||
+                        text.match(/tasks\s+for\s+(\S+)/i);
+                    if (countMatch) {
+                        const workerName = countMatch[1].trim();
+                        await this._handleCountWork(workerName);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- WHICH STOCK TO PURCHASE ----
+                    if (text.includes('stock to purchase') || text.includes('which stock') ||
+                        text.includes('what to buy') || text.includes('stock to buy') ||
+                        text.includes('low stock') || text.includes('inventory to purchase')) {
+                        await this._handleStockToPurchase();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- SHOW DELIVERED VEHICLES ----
+                    if (text.includes('delivered vehicles') || text.includes('show delivered') ||
+                        text.includes('show me delivered') || text.includes('delivered inventory')) {
+                        await this._handleShowDelivered();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- STATUS OF VEHICLE ----
+                    const statusMatch = text.match(/status\s+of\s+(\S+)/i);
+                    if (statusMatch) {
+                        const vehicle = statusMatch[1].toUpperCase();
+                        await this._handleVehicleStatus(vehicle);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- STATUS (fleet stats) ----
+                    if (text === 'status' || text === 'fleet status' || text === 'show status') {
+                        await this._handleFleetStatus();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- LIST VEHICLES ----
+                    if (text === 'list vehicles' || text === 'show vehicles' || text === 'list all vehicles' ||
+                        text === 'show all vehicles') {
+                        await this._handleListVehicles();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- LIST WORKERS ----
+                    if (text === 'list workers' || text === 'show workers' || text === 'list all workers' ||
+                        text === 'show all workers') {
+                        await this._handleListWorkers();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- FIND / SEARCH ----
+                    const findMatch = text.match(/find\s+(.+)/i) || text.match(/search\s+(.+)/i);
+                    if (findMatch) {
+                        const query = findMatch[1].trim();
+                        await this._handleSearch(query);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- SHOW ME ALL [filter] ----
+                    const showMatch = text.match(/show\s+me\s+(?:all\s+)?(.+)/i);
+                    if (showMatch) {
+                        const filterText = showMatch[1].trim();
+                        await this._handleShowMe(filterText);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- FALLBACK ----
+                    this.toast.show('🤔 Command not recognized. Say "help" for examples.', 'warning', 4000);
+                    this.micBtn.classList.remove('processing');
+
+                } catch (err) {
+                    console.error('Command error:', err);
+                    this.toast.show('❌ Error: ' + (err.message || err), 'error', 5000);
+                    this.micBtn.classList.remove('processing');
+                }
+            }
+
+            // ==============================================================
+            // COMMAND HANDLERS
+            // ==============================================================
+
+            // ---- RESOLVE TAB NAME ----
+            _resolveTabName(phrase) {
+                const aliases = this._getTabAliases();
+                const lower = phrase.toLowerCase().trim();
+                // Direct match
+                if (aliases[lower]) return aliases[lower];
+                // Check if phrase contains a tab name
+                const tabMap = this._getTabMap();
+                for (const [key, val] of Object.entries(tabMap)) {
+                    if (lower.includes(key) || key.includes(lower)) {
+                        return key;
+                    }
+                    if (lower.includes(val.label.toLowerCase())) {
+                        return key;
+                    }
+                }
+                // Check aliases
+                for (const [alias, target] of Object.entries(aliases)) {
+                    if (lower.includes(alias)) {
+                        return target;
+                    }
+                }
+                return null;
+            }
+
+            // ---- OPEN ALL TABS ----
+            async _handleOpenAllTabs() {
+                const tabMap = this._getTabMap();
+                const tabEntries = Object.entries(tabMap);
+
+                if (tabEntries.length === 0) {
+                    this.toast.show('No tabs available for your role.', 'warning');
+                    return;
+                }
+
+                let html = `
+                    <div style="margin-bottom:0.5rem;color:var(--dark-gray);font-size:0.85rem;">
+                        <span class="material-icons" style="font-size:18px;vertical-align:middle;">apps</span>
+                        You have ${tabEntries.length} tab(s) available. Tap any to open.
+                    </div>
+                    <div class="tab-grid">
+                `;
+
+                for (const [key, val] of tabEntries) {
+                    html += `
+                        <div class="tab-card" data-page="${key}">
+                            <span class="material-icons">${val.icon}</span>
+                            <span class="tab-label">${val.label}</span>
+                        </div>
+                    `;
+                }
+
+                html += `</div>`;
+
+                this.modal.open({
+                    title: '📂 All Tabs',
+                    body: html,
+                    confirmText: 'Close',
+                    showCancel: false,
+                    onConfirm: () => this.modal.close()
+                });
+
+                // Add click handlers for tab cards
+                document.querySelectorAll('.tab-card[data-page]').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const page = el.dataset.page;
+                        this.modal.close();
+                        this._navigateTo(page);
+                        this.toast.show(`🔀 Opening ${page}`, 'success', 1500);
+                    });
+                });
+
+                this.toast.show(`📂 Showing ${tabEntries.length} tabs`, 'success', 2000);
+            }
+
+            // ---- NAVIGATE ----
+            async _navigateTo(page) {
+                if (this.app.router) {
+                    this.app.router.navigate(page);
+                    this.toast.show(`🔀 Navigating to ${page}`, 'success', 1500);
+                } else {
+                    this.toast.show('Router not available', 'error');
+                }
+            }
+
+            // ---- HANDLE ASSIGN (Enhanced for Supervisor) ----
+            async _handleAssign(vehicle, taskName, workerName) {
+                this.loader.show();
+                try {
+                    const currentPage = this._getCurrentPage();
+                    const isSupervisor = currentPage === 'supervisor';
+
+                    // Normalize vehicle number
+                    const normVehicle = this._normalizeVehicleNumber(vehicle);
+
+                    let vehicleItem = null;
+                    let productionTasks = [];
+
+                    if (isSupervisor) {
+                        // Check production data first
+                        const production = await DataService.getProduction();
+                        productionTasks = production.filter(t =>
+                            t.vehicleNumber && this._normalizeVehicleNumber(t.vehicleNumber) === normVehicle
+                        );
+
+                        if (productionTasks.length > 0) {
+                            // Found in production — use supervisor assignment logic
+                            const task = productionTasks.find(t =>
+                                t.taskName.toLowerCase() === taskName.toLowerCase()
+                            ) || productionTasks[0];
+
+                            if (!task) {
+                                this.toast.show(`❌ Task "${taskName}" not found for ${vehicle} in production queue`,
+                                    'error', 4000);
+                                this.loader.hide();
+                                return;
+                            }
+
+                            if (task.assignedWorkerId && task.assignedWorkerId.length > 0) {
+                                this.toast.show(`⚠️ Task "${task.taskName}" already assigned. Unassign first.`,
+                                    'warning', 4000);
+                                this.loader.hide();
+                                return;
+                            }
+
+                            // Find worker
+                            const workers = await DataService.getWorkers();
+                            const worker = workers.find(w =>
+                                w.name.toLowerCase() === workerName.toLowerCase() ||
+                                w.name.toLowerCase().includes(workerName.toLowerCase())
+                            );
+
+                            if (!worker) {
+                                this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                                this.loader.hide();
+                                return;
+                            }
+
+                            // Assign using the supervisor's logic
+                            await DataService.updateProduction(task.id, {
+                                assignedWorkerId: worker.id,
+                                status: 'pending',
+                                estimatedHours: task.estimatedHours || '8 hours'
+                            });
+
+                            this.toast.show(`✅ Assigned "${task.taskName}" on ${vehicle} to ${worker.name}`,
+                                'success', 5000);
+                            this.loader.hide();
+
+                            // Refresh the supervisor page
+                            const router = this.app.router;
+                            if (router && router.currentPage && typeof router.currentPage.loadData ===
+                                'function') {
+                                await router.currentPage.loadData();
+                                if (typeof router.currentPage.renderQueue === 'function') router.currentPage
+                                    .renderQueue();
+                                if (typeof router.currentPage.renderStats === 'function') router.currentPage
+                                    .renderStats();
+                                if (typeof router.currentPage.renderAssignmentsOverview === 'function')
+                                    router.currentPage.renderAssignmentsOverview();
+                            }
+                            return;
+                        }
+                    }
+
+                    // Not in production or not in supervisor mode — check inventory
+                    const inventory = await DataService.getInventory();
+                    vehicleItem = inventory.find(v =>
+                        this._normalizeVehicleNumber(v.vehicleNumber) === normVehicle
+                    );
+
+                    if (!vehicleItem) {
+                        this.toast.show(
+                            `❌ Vehicle ${vehicle} not found in inventory. ${isSupervisor ? 'Check the production queue for this vehicle.' : ''}`,
+                            'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    // If we're in supervisor mode but vehicle not in production, suggest adding it
+                    if (isSupervisor) {
+                        this.toast.show(`ℹ️ ${vehicle} is in inventory but not in production. Add it to a sales order first.`,
+                            'info', 5000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    // Check if vehicle is in production (for non-supervisor pages)
+                    const prodCheck = await DataService.getProduction();
+                    const inProd = prodCheck.some(t =>
+                        t.vehicleNumber && this._normalizeVehicleNumber(t.vehicleNumber) === normVehicle
+                    );
+                    if (!inProd) {
+                        this.toast.show(
+                            `ℹ️ ${vehicle} is not in production. Create a sales order first.`,
+                            'info', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    this.toast.show(`ℹ️ ${vehicle} found in inventory. Use the Supervisor page to assign tasks.`,
+                        'info', 4000);
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Assignment failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- HANDLE ASSIGN WITH AUTO TASK ----
+            async _handleAssignWithAutoTask(vehicle, workerName) {
+                this.loader.show();
+                try {
+                    const currentPage = this._getCurrentPage();
+                    const isSupervisor = currentPage === 'supervisor';
+                    const normVehicle = this._normalizeVehicleNumber(vehicle);
+
+                    if (!isSupervisor) {
+                        this.toast.show('Please go to the Supervisor page to assign tasks.', 'warning', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t =>
+                        t.vehicleNumber && this._normalizeVehicleNumber(t.vehicleNumber) === normVehicle &&
+                        (!t.assignedWorkerId || t.assignedWorkerId.length === 0) &&
+                        t.status !== 'completed'
+                    );
+
+                    if (tasks.length === 0) {
+                        this.toast.show(`No pending tasks for ${vehicle} in production.`, 'warning', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w =>
+                        w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase())
+                    );
+
+                    if (!worker) {
+                        this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    // Assign all pending tasks for this vehicle to the worker
+                    let assignedCount = 0;
+                    for (const task of tasks) {
+                        await DataService.updateProduction(task.id, {
+                            assignedWorkerId: worker.id,
+                            status: 'pending'
+                        });
+                        assignedCount++;
+                    }
+
+                    this.toast.show(`✅ Assigned ${assignedCount} task(s) on ${vehicle} to ${worker.name}`,
+                        'success', 5000);
+                    this.loader.hide();
+
+                    // Refresh supervisor page
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
+                        if (typeof router.currentPage.renderStats === 'function') router.currentPage.renderStats();
+                        if (typeof router.currentPage.renderAssignmentsOverview === 'function') router
+                            .currentPage.renderAssignmentsOverview();
+                    }
+
+                } catch (err) {
+                    this.toast.show('❌ Assignment failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- UNASSIGN ----
+            async _handleUnassign(vehicle, workerName) {
+                this.loader.show();
+                try {
+                    const normVehicle = this._normalizeVehicleNumber(vehicle);
+                    const inventory = await DataService.getInventory();
+                    const vehicleItem = inventory.find(v =>
+                        this._normalizeVehicleNumber(v.vehicleNumber) === normVehicle
+                    );
+                    if (!vehicleItem) {
+                        this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w =>
+                        w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase())
+                    );
+                    if (!worker) {
+                        this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t =>
+                        t.vehicleNumber && this._normalizeVehicleNumber(t.vehicleNumber) === normVehicle &&
+                        t.assignedWorkerId && t.assignedWorkerId.includes(worker.id) &&
+                        t.status !== 'completed'
+                    );
+
+                    if (tasks.length === 0) {
+                        this.toast.show(`ℹ️ No tasks for ${worker.name} on ${vehicle}`, 'info', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    let count = 0;
+                    for (const task of tasks) {
+                        const workerIds = task.assignedWorkerId.split(',').filter(id => id.trim() !== worker.id)
+                            .map(id => id.trim());
+                        const newIds = workerIds.join(',');
+                        await DataService.updateProduction(task.id, {
+                            assignedWorkerId: newIds,
+                            status: newIds ? 'pending' : 'pending'
+                        });
+                        count++;
+                    }
+
+                    this.toast.show(`✅ Unassigned ${count} task(s) for ${worker.name} on ${vehicle}`, 'success',
+                        5000);
+                    this.loader.hide();
+
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
+                        if (typeof router.currentPage.renderStats === 'function') router.currentPage.renderStats();
+                        if (typeof router.currentPage.renderAssignmentsOverview === 'function') router
+                            .currentPage.renderAssignmentsOverview();
+                    }
+
+                } catch (err) {
+                    this.toast.show('❌ Unassign failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- COUNT WORK ----
+            async _handleCountWork(workerName) {
+                this.loader.show();
+                try {
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase()));
+                    if (!worker) {
+                        this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t =>
+                        t.assignedWorkerId && t.assignedWorkerId.includes(worker.id) &&
+                        t.status !== 'completed'
+                    );
+
+                    const total = tasks.length;
+                    const byStatus = {
+                        pending: tasks.filter(t => t.status === 'pending').length,
+                        in_progress: tasks.filter(t => t.status === 'in_progress').length,
+                        pending_approval: tasks.filter(t => t.status === 'pending_approval').length
+                    };
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="padding:0.5rem 0;">
+                            <h3>👷 ${worker.name}</h3>
+                            <p style="color:var(--dark-gray);">${worker.department || 'No department'} • ${worker.employeeType || 'Company'}</p>
+                            <div class="dashboard-stats" style="grid-template-columns:1fr 1fr 1fr;margin-top:0.5rem;">
+                                <div class="stat-card warning"><div class="stat-label">Pending</div><div class="stat-value">${byStatus.pending}</div></div>
+                                <div class="stat-card info"><div class="stat-label">In Progress</div><div class="stat-value">${byStatus.in_progress}</div></div>
+                                <div class="stat-card danger"><div class="stat-label">QC Pending</div><div class="stat-value">${byStatus.pending_approval}</div></div>
+                            </div>
+                            <div style="font-size:1.2rem;font-weight:700;text-align:center;padding:0.5rem 0;background:var(--light-gray);border-radius:var(--radius);">
+                                Total Active: <span style="color:var(--primary-blue);">${total}</span>
+                            </div>
+                            ${tasks.length > 0 ? `
+                                <div style="margin-top:0.5rem;max-height:150px;overflow-y:auto;font-size:0.8rem;">
+                                    ${tasks.map(t => `
+                                        <div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-bottom:1px solid #f5f5f5;">
+                                            <span>${t.taskName}</span>
+                                            <span style="font-size:0.7rem;">${t.vehicleNumber || '—'}</span>
+                                            <span class="badge badge-${t.status}">${t.status}</span>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            ` : '<p style="color:var(--dark-gray);margin-top:0.5rem;">No active tasks.</p>'}
+                        </div>
+                    `;
+
+                    modal.open({
+                        title: `📋 Work Summary — ${worker.name}`,
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- STOCK TO PURCHASE ----
+            async _handleStockToPurchase() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getPurchaseInventory();
+                    const lowStock = inventory.filter(item => (item.quantity || 0) < 3);
+
+                    if (lowStock.length === 0) {
+                        this.toast.show('✅ All stock items are sufficiently stocked.', 'success', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Product</th><th>Current Qty</th><th>Recommended Order</th></tr></thead>
+                                <tbody>
+                                    ${lowStock.map(item => `
+                                        <tr>
+                                            <td><strong>${item.productName}</strong></td>
+                                            <td style="color:var(--danger);">${item.quantity || 0}</td>
+                                            <td><span style="font-weight:600;">${Math.max(10, (item.quantity || 0) * 2)}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">
+                            ⚠️ ${lowStock.length} item(s) below safety stock (3 units).
+                        </div>
+                    `;
+
+                    modal.open({
+                        title: '🛒 Stock to Purchase',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- SHOW DELIVERED ----
+            async _handleShowDelivered() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const delivered = inventory.filter(v => v.inventoryStatus === 'Delivered');
+
+                    if (delivered.length === 0) {
+                        this.toast.show('ℹ️ No delivered vehicles found.', 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle No</th><th>Name</th><th>Model</th><th>FC Status</th></tr></thead>
+                                <tbody>
+                                    ${delivered.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td>${v.model || '—'}</td>
+                                            <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${delivered.length} delivered vehicles</div>
+                    `;
+
+                    modal.open({
+                        title: '📦 Delivered Vehicles',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- VEHICLE STATUS ----
+            async _handleVehicleStatus(vehicle) {
+                this.loader.show();
+                try {
+                    const normVehicle = this._normalizeVehicleNumber(vehicle);
+                    const inventory = await DataService.getInventory();
+                    const item = inventory.find(v => this._normalizeVehicleNumber(v.vehicleNumber) === normVehicle);
+                    if (!item) {
+                        this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t =>
+                        t.vehicleNumber && this._normalizeVehicleNumber(t.vehicleNumber) === normVehicle
+                    );
+                    const total = tasks.length;
+                    const completed = tasks.filter(t => t.status === 'completed').length;
+                    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+                    const modal = this.modal;
+                    const statusHtml = `
+                        <div class="vehicle-detail-card">
+                            <h3>🚗 ${item.vehicleNumber} — ${item.vehicleName || ''}</h3>
+                            <div class="detail-section">
+                                <div class="grid-2">
+                                    <div><span class="detail-label">Status</span><br><span class="badge ${item.inventoryStatus==='Delivered'?'badge-archived':'badge-completed'}">${item.inventoryStatus}</span></div>
+                                    <div><span class="detail-label">FC Status</span><br><span class="badge ${item.fcStatus==='ready'?'badge-fc-ready':item.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${item.fcStatus || 'Not started'}</span></div>
+                                    <div><span class="detail-label">Progress</span><br><span style="font-weight:600;font-size:1.2rem;">${progress}%</span></div>
+                                    <div><span class="detail-label">Tasks</span><br><span style="font-weight:600;">${completed}/${total} done</span></div>
+                                </div>
+                            </div>
+                            <div class="detail-section">
+                                <h4>Task List</h4>
+                                ${tasks.length === 0 ? '<p style="color:var(--dark-gray);">No production tasks.</p>' :
+                                    tasks.map(t => `
+                                        <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid #f5f5f5;font-size:0.85rem;">
+                                            <span>${t.taskName}</span>
+                                            <span class="badge badge-${t.status}">${t.status}</span>
+                                            ${t.assignedWorkerId ? `<span style="font-size:0.7rem;color:var(--dark-gray);">👷 ${t.assignedWorkerId.split(',').map(id => 'Worker').join(', ')}</span>` : ''}
+                                        </div>
+                                    `).join('')
+                                }
+                            </div>
+                            ${item.fcRemarks ? `<div class="fc-remark-box">📝 FC Remark: ${item.fcRemarks}</div>` : ''}
+                        </div>
+                    `;
+
+                    modal.open({
+                        title: `📊 Status - ${vehicle}`,
+                        body: statusHtml,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- FLEET STATUS ----
+            async _handleFleetStatus() {
+                this.loader.show();
+                try {
+                    const [inventory, production, sales] = await Promise.all([
+                        DataService.getInventory(),
+                        DataService.getProduction(),
+                        DataService.getSales()
+                    ]);
+
+                    const active = inventory.filter(v => v.inventoryStatus !== 'Delivered').length;
+                    const delivered = inventory.filter(v => v.inventoryStatus === 'Delivered').length;
+                    const inProd = production.filter(t => t.status === 'in_progress' || t.status === 'pending')
+                        .length;
+                    const completed = production.filter(t => t.status === 'completed').length;
+                    const pendingQC = production.filter(t => t.status === 'pending_approval').length;
+                    const totalOrders = sales.length;
+                    const activeOrders = sales.filter(s => s.status !== 'delivered').length;
+
+                    const modal = this.modal;
+                    const html = `
+                        <div class="dashboard-stats" style="grid-template-columns:1fr 1fr;">
+                            <div class="stat-card"><div class="stat-label">Active Vehicles</div><div class="stat-value">${active}</div><span class="material-icons stat-icon">directions_car</span></div>
+                            <div class="stat-card info"><div class="stat-label">Delivered/Archived</div><div class="stat-value">${delivered}</div><span class="material-icons stat-icon">archive</span></div>
+                            <div class="stat-card warning"><div class="stat-label">In Production</div><div class="stat-value">${inProd}</div><span class="material-icons stat-icon">build</span></div>
+                            <div class="stat-card success"><div class="stat-label">Completed</div><div class="stat-value">${completed}</div><span class="material-icons stat-icon">check_circle</span></div>
+                            <div class="stat-card danger"><div class="stat-label">Pending QC</div><div class="stat-value">${pendingQC}</div><span class="material-icons stat-icon">pending</span></div>
+                            <div class="stat-card info"><div class="stat-label">Active Orders</div><div class="stat-value">${activeOrders}</div><span class="material-icons stat-icon">receipt</span></div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--dark-gray);text-align:center;margin-top:0.5rem;">
+                            Total Orders: ${totalOrders} &nbsp;•&nbsp; Total Vehicles: ${inventory.length}
+                        </div>
+                    `;
+
+                    modal.open({
+                        title: '📊 Fleet Status',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- LIST VEHICLES ----
+            async _handleListVehicles() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const active = inventory.filter(v => v.inventoryStatus !== 'Delivered');
+
+                    if (active.length === 0) {
+                        this.toast.show('No active vehicles found.', 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle No</th><th>Name</th><th>Status</th><th>FC</th></tr></thead>
+                                <tbody>
+                                    ${active.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                            <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${active.length} vehicles</div>
+                    `;
+
+                    modal.open({
+                        title: '🚗 Active Vehicles',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- LIST WORKERS ----
+            async _handleListWorkers() {
+                this.loader.show();
+                try {
+                    const workers = await DataService.getWorkers();
+                    if (workers.length === 0) {
+                        this.toast.show('No workers found.', 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Name</th><th>Department</th><th>Type</th></tr></thead>
+                                <tbody>
+                                    ${workers.map(w => `
+                                        <tr>
+                                            <td><strong>${w.name}</strong></td>
+                                            <td>${w.department || '—'}</td>
+                                            <td><span class="badge ${w.employeeType==='Contractual'?'badge-pending':'badge-completed'}">${w.employeeType || 'Company'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${workers.length} workers</div>
+                    `;
+
+                    modal.open({
+                        title: '👷 Workers',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- CREATE ORDER ----
+            async _handleCreateOrder(customer, vehicle) {
+                this.loader.show();
+                try {
+                    const normVehicle = this._normalizeVehicleNumber(vehicle);
+                    const inventory = await DataService.getInventory();
+                    const vehicleItem = inventory.find(v => this._normalizeVehicleNumber(v.vehicleNumber) ===
+                        normVehicle);
+                    if (!vehicleItem) {
+                        this.toast.show(`❌ Vehicle ${vehicle} not found. Add it to inventory first.`, 'error', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const sales = await DataService.getSales();
+                    const existing = sales.find(s =>
+                        s.vehicleNumber && this._normalizeVehicleNumber(s.vehicleNumber) === normVehicle &&
+                        s.status !== 'delivered'
+                    );
+                    if (existing) {
+                        this.toast.show(`⚠️ ${vehicle} already has an active order (${existing.token})`, 'warning',
+                            4000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const now = Utils.dateUtils.now();
+                    const deliveryDate = new Date();
+                    deliveryDate.setDate(deliveryDate.getDate() + 14);
+                    const req = {
+                        tinkering: true,
+                        mechanical: true,
+                        dummyClosing: true,
+                        bodyCoach: true,
+                        painting: true,
+                        remarks: 'Auto-created via voice command'
+                    };
+
+                    const orderData = {
+                        orderType: 'vehicle',
+                        salesperson: SALESPEOPLE[0] || 'Ahmed',
+                        vehicleNumber: vehicle.toUpperCase(),
+                        customerName: customer,
+                        customerPhone: '',
+                        customerEmail: '',
+                        deliveryDate: deliveryDate.toISOString().slice(0, 10),
+                        advanceAmount: 0,
+                        paintColour: '',
+                        requirements: JSON.stringify(req),
+                        status: 'confirmed'
+                    };
+
+                    const result = await DataService.addSales(orderData);
+                    this.toast.show(`✅ Order created for ${customer} on ${vehicle} — Token: ${result.token}`,
+                        'success',
+                        5000);
+
+                    this.loader.hide();
+
+                    const router = this.app.router;
+                    if (router) router.navigate('sales');
+
+                } catch (err) {
+                    this.toast.show('❌ Failed to create order: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- SEARCH ----
+            async _handleSearch(query) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const results = inventory.filter(v => {
+                        const searchStr =
+                            `${v.vehicleNumber} ${v.vehicleName} ${v.model} ${v.category} ${v.bodyShape}`;
+                        return searchStr.toLowerCase().includes(query.toLowerCase());
+                    });
+
+                    if (results.length === 0) {
+                        this.toast.show(`🔍 No results for "${query}"`, 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    ${results.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td>${v.model || '—'}</td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Found ${results.length} vehicle(s)</div>
+                    `;
+
+                    modal.open({
+                        title: `🔍 Search: "${query}"`,
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Search failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+
+            // ---- SHOW ME ----
+            async _handleShowMe(filterText) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    let results = [];
+                    let title = '';
+
+                    const lower = filterText.toLowerCase();
+
+                    if (lower.includes('tata ace')) {
+                        results = inventory.filter(v =>
+                            v.vehicleName && v.vehicleName.toLowerCase().includes('tata ace')
+                        );
+                        title = 'Tata Ace Vehicles';
+                    } else if (lower.includes('fc ready') || lower.includes('fc is ready')) {
+                        results = inventory.filter(v => v.fcStatus === 'ready');
+                        title = 'Vehicles FC Ready';
+                    } else if (lower.includes('fc status in progress') || lower.includes('fc in progress')) {
+                        results = inventory.filter(v => v.fcStatus === 'in_progress');
+                        title = 'Vehicles FC In Progress';
+                    } else if (lower.includes('model')) {
+                        const modelMatch = filterText.match(/model\s+(\S+)/i);
+                        if (modelMatch) {
+                            const model = modelMatch[1];
+                            results = inventory.filter(v => v.model && v.model.toLowerCase().includes(model
+                            .toLowerCase()));
+                            title = `Vehicles Model ${model}`;
+                        } else {
+                            results = [];
+                        }
+                    } else if (lower.includes('available')) {
+                        results = inventory.filter(v => v.inventoryStatus === 'Available');
+                        title = 'Available Vehicles';
+                    } else if (lower.includes('delivered')) {
+                        results = inventory.filter(v => v.inventoryStatus === 'Delivered');
+                        title = 'Delivered / Archived Vehicles';
+                    } else {
+                        const keywords = filterText.split(/\s+/).filter(k => k.length > 2);
+                        if (keywords.length > 0) {
+                            results = inventory.filter(v => {
+                                const searchStr =
+                                    `${v.vehicleNumber} ${v.vehicleName} ${v.model} ${v.category} ${v.bodyShape} ${v.inventoryStatus} ${v.fcStatus}`
+                                    .toLowerCase();
+                                return keywords.every(k => searchStr.includes(k.toLowerCase()));
+                            });
+                            title = `Vehicles matching "${filterText}"`;
+                        } else {
+                            this.toast.show('Could not parse filter. Try: "show me all Tata Ace vehicles"',
+                                'warning',
+                                4000);
+                            this.loader.hide();
+                            return;
+                        }
+                    }
+
+                    if (results.length === 0) {
+                        this.toast.show(`ℹ️ No vehicles found for "${filterText}"`, 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th><th>FC</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    ${results.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td>${v.model || '—'}</td>
+                                            <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':v.inventoryStatus==='Delivered'?'badge-archived':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Found ${results.length} vehicle(s)</div>
+                    `;
+
+                    modal.open({
+                        title: `📋 ${title}`,
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    this.loader.hide();
+
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
+            }
+        }
+
+        // ==============================================================
+        // 6. PAGES – (All existing page classes, kept as is)
         // ==============================================================
 
-        const Pages = {};
-
-        // ---------- DASHBOARD (with Operations Manager Audit) ----------
+        // --------------------------------------------------------------
+        // DASHBOARD
+        // --------------------------------------------------------------
+        Pages = {};
         Pages.Dashboard = class {
             constructor(app) { this.app = app; }
             async render(container) {
@@ -3735,7 +5499,9 @@
             }
         };
 
-        // ---------- INVENTORY (Vehicle) ----------
+        // --------------------------------------------------------------
+        // INVENTORY – (kept as is from previous code)
+        // --------------------------------------------------------------
         Pages.Inventory = class {
             constructor(app) {
                 this.app = app;
@@ -3755,6 +5521,8 @@
                 this.filtersComp = null;
                 this.docTypes = ['RC Card', 'Form 29', 'Form 30', 'NOC', 'Insurance Copy', 'Pollution Certificate'];
                 this.salesData = [];
+                this._pendingFrontPhoto = null;
+                this._pendingSidePhoto = null;
             }
 
             async checkDuplicateVehicle(vehicleNumber, excludeId = null) {
@@ -3970,7 +5738,7 @@
                     }
                     this.filteredData = [...this.data];
                 } catch (e) { this.toast.show('Failed to load inventory: ' + (e.message || e),
-                    'error'); } finally { this.loader.hide(); }
+                        'error'); } finally { this.loader.hide(); }
             }
 
             applyFilters() {
@@ -4387,7 +6155,7 @@
                 item); }
         };
 
-        // ---------- SALES (with Body Coach SS/MS/Both, Water Tank 100/200 Ltr, Design Description) ----------
+        // ---- SALES (full but compact) ----
         Pages.Sales = class {
             constructor(app) {
                 this.app = app;
@@ -5274,7 +7042,7 @@
             }
         };
 
-        // ---------- SUPERVISOR (shows Design Description, Body Coach, Water Tank) ----------
+        // ---- SUPERVISOR (full, kept as is) ----
         Pages.Supervisor = class {
             constructor(app) {
                 this.app = app;
@@ -6062,7 +7830,7 @@
             }
         };
 
-        // ---------- WORKER ----------
+        // ---- WORKER (full, kept as is) ----
         Pages.Worker = class {
             constructor(app) {
                 this.app = app;
@@ -6353,7 +8121,7 @@
             }
         };
 
-        // ---------- PURCHASE INVENTORY (Stock) ----------
+        // ---- PURCHASE INVENTORY (full, kept) ----
         Pages.PurchaseInventory = class {
             constructor(app) {
                 this.app = app;
@@ -6805,7 +8573,7 @@
             }
         };
 
-        // ---------- LEADS ----------
+        // ---- LEADS (full, kept) ----
         Pages.Leads = class {
             constructor(app) {
                 this.app = app;
@@ -7025,7 +8793,7 @@
             }
         };
 
-        // ---------- USERS (for Owner & Ops Manager only) ----------
+        // ---- USERS (full, kept) ----
         Pages.Users = class {
             constructor(app) {
                 this.app = app;
@@ -7192,7 +8960,7 @@
             }
         };
 
-        // ---------- ASSIGNMENTS ----------
+        // ---- ASSIGNMENTS (full, kept) ----
         Pages.Assignments = class {
             constructor(app) {
                 this.app = app;
@@ -7330,7 +9098,7 @@
             }
         };
 
-        // ---------- FC PREP ----------
+        // ---- FCPREP (full, kept) ----
         Pages.FCPrep = class {
             constructor(app) {
                 this.app = app;
@@ -7676,7 +9444,7 @@
         };
 
         // ==============================================================
-        // 8. ROUTER
+        // 7. ROUTER
         // ==============================================================
         class Router {
             constructor(app) {
@@ -7779,7 +9547,7 @@
         }
 
         // ==============================================================
-        // 9. MAIN APP
+        // 8. MAIN APP
         // ==============================================================
         class App {
             constructor() {
@@ -7787,6 +9555,7 @@
                 this.user = null;
                 this.router = null;
                 this.toast = new Components.Toast();
+                this.voice = null;
             }
             async init() {
                 const isAuth = await this.auth.checkSession();
@@ -7817,6 +9586,10 @@
                 document.getElementById('userType').textContent = this.user.employeeType || 'Company';
                 document.getElementById('userType').className =
                     `user-type ${(this.user.employeeType || 'Company').toLowerCase()}`;
+
+                // Init Voice Command Parser
+                this.voice = new VoiceCommandParser(this);
+
                 this.toast.show(`Welcome, ${name}! (${this.user.employeeType || 'Company'})`, 'success');
             }
 
@@ -7864,7 +9637,6 @@
                 const allPages = ['dashboard', 'inventory', 'sales', 'supervisor', 'worker',
                     'purchase_inventory', 'leads', 'fcprep', 'assignments'
                 ];
-                // Only show Users page for owner and ops manager
                 const user = this.auth.getCurrentUser();
                 if (user && ['owner', 'operations_manager'].includes(user.role)) {
                     allPages.push('users');
@@ -7949,7 +9721,7 @@
         }
 
         // ==============================================================
-        // 10. BOOTSTRAP
+        // 9. BOOTSTRAP
         // ==============================================================
         document.addEventListener('DOMContentLoaded', () => {
             const app = new App();
