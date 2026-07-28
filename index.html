@@ -2827,11 +2827,11 @@
                 }
                 _bindEvents() {
                     const close = () => this.close();
-                    this.closeBtn.addEventListener('click', close);
-                    this.cancelBtn.addEventListener('click', close);
-                    this.overlay.addEventListener('click', (e) => { if (e.target === this.overlay) close(); });
-                    this.okBtn.addEventListener('click', () => { if (this.onConfirm) this.onConfirm();
-                        this.close(); });
+                    this.closeBtn.onclick = close;
+                    this.cancelBtn.onclick = close;
+                    this.overlay.onclick = (e) => { if (e.target === this.overlay) close(); };
+                    this.okBtn.onclick = () => { if (this.onConfirm) this.onConfirm();
+                        this.close(); };
                 }
                 open({ title, body, onConfirm }) {
                     this.title.textContent = title || 'Confirm';
@@ -3378,7 +3378,11 @@
 
             // ***** FIXED: updateSales now syncs production tasks without duplicating *****
             async updateSales(id, data) {
-                // First update the sales order
+                // Capture OLD data BEFORE updating, so comparisons below actually detect changes
+                const oldOrderSnap = await db.collection('sales').doc(id).get();
+                const oldData = oldOrderSnap.data();
+
+                // Now apply the update
                 await db.collection('sales').doc(id).update({ ...data, updatedAt: Utils.dateUtils.now() });
 
                 // If deliveryDate is being updated, update all production tasks for this order
@@ -3393,8 +3397,6 @@
                 }
 
                 // If vehicleNumber is being updated OR requirements changed, sync production tasks
-                const oldOrder = await db.collection('sales').doc(id).get();
-                const oldData = oldOrder.data();
                 if (data.vehicleNumber && data.vehicleNumber !== oldData.vehicleNumber) {
                     // Vehicle changed: delete all non-completed tasks and regenerate
                     await this._regenerateProductionTasks(id, data.vehicleNumber, data.customerName || oldData
@@ -3498,7 +3500,7 @@
                     'Delivery': ['QC']
                 };
 
-                let desiredTaskKeys = [];
+                let taskKeys = [];
                 if (orderType === 'vehicle') {
                     for (const key in taskMap) {
                         let shouldAdd = false;
@@ -4178,405 +4180,421 @@
                 return result;
             }
         };
-// ==============================================================
-// 5c. VOICE COMMAND PARSER – ENHANCED with Supervisor Search
-// ==============================================================
-class VoiceCommandParser {
-    constructor(app) {
-        this.app = app;
-        this.toast = new Components.Toast();
-        this.loader = new Components.Loader();
-        this.modal = new Components.Modal();
-        this.recognition = null;
-        this.isListening = false;
-        this.micBtn = document.getElementById('micBtn');
-        this.voiceIndicator = document.getElementById('voiceIndicator');
-        this.voiceText = document.getElementById('voiceText');
-        this.helpBtn = document.getElementById('helpBtn');
-        this.helpOverlay = document.getElementById('commandHelp');
-        this.helpClose = document.getElementById('helpClose');
-        this._initSpeech();
-        this._bindUI();
-    }
 
-    // ---- TAB NAME MAPPING ----
-    _getTabMap() {
-        const user = this.app.auth.getCurrentUser();
-        const tabs = {
-            dashboard: { label: 'Dashboard', icon: 'dashboard', page: 'dashboard' },
-            inventory: { label: 'Vehicle Inventory', icon: 'directions_car', page: 'inventory' },
-            sales: { label: 'Sales Orders', icon: 'receipt', page: 'sales' },
-            supervisor: { label: 'Supervisor', icon: 'supervisor_account', page: 'supervisor' },
-            worker: { label: 'Worker', icon: 'construction', page: 'worker' },
-            purchase_inventory: { label: 'Purchase Stock', icon: 'inventory_2', page: 'purchase_inventory' },
-            leads: { label: 'Lead Tracker', icon: 'trending_up', page: 'leads' },
-            fcprep: { label: 'FC Prep', icon: 'build', page: 'fcprep' },
-            assignments: { label: 'Assignments', icon: 'group_work', page: 'assignments' },
-        };
-        if (user && ['owner', 'operations_manager'].includes(user.role)) {
-            tabs.users = { label: 'Manage Users', icon: 'group', page: 'users' };
-        }
-        const result = {};
-        for (const [key, val] of Object.entries(tabs)) {
-            if (this.app.auth.hasPermission(val.page)) {
-                result[key] = val;
+        // ==============================================================
+        // 5c. VOICE COMMAND PARSER – ENHANCED with Supervisor Search
+        // ==============================================================
+        class VoiceCommandParser {
+            constructor(app) {
+                this.app = app;
+                this.toast = new Components.Toast();
+                this.loader = new Components.Loader();
+                this.modal = new Components.Modal();
+                this.recognition = null;
+                this.isListening = false;
+                this.micBtn = document.getElementById('micBtn');
+                this.voiceIndicator = document.getElementById('voiceIndicator');
+                this.voiceText = document.getElementById('voiceText');
+                this.helpBtn = document.getElementById('helpBtn');
+                this.helpOverlay = document.getElementById('commandHelp');
+                this.helpClose = document.getElementById('helpClose');
+                this._initSpeech();
+                this._bindUI();
             }
-        }
-        return result;
-    }
 
-    _getTabAliases() {
-        return {
-            'home': 'dashboard',
-            'vehicles': 'inventory',
-            'vehicle': 'inventory',
-            'car': 'inventory',
-            'orders': 'sales',
-            'order': 'sales',
-            'sup': 'supervisor',
-            'super': 'supervisor',
-            'work': 'worker',
-            'my work': 'worker',
-            'my tasks': 'worker',
-            'stock': 'purchase_inventory',
-            'purchase': 'purchase_inventory',
-            'inventory stock': 'purchase_inventory',
-            'lead': 'leads',
-            'fc': 'fcprep',
-            'fitness': 'fcprep',
-            'assignment': 'assignments',
-            'assignments overview': 'assignments',
-            'users': 'users',
-            'user': 'users',
-            'manage users': 'users'
-        };
-    }
-
-    _resolveTabName(phrase) {
-        const lower = phrase.toLowerCase().trim();
-        const aliases = this._getTabAliases();
-        const tabMap = this._getTabMap();
-
-        // Check direct match
-        if (tabMap[lower]) return lower;
-
-        // Check alias
-        if (aliases[lower]) {
-            const resolved = aliases[lower];
-            if (tabMap[resolved]) return resolved;
-        }
-
-        // Check partial match
-        for (const [key, val] of Object.entries(tabMap)) {
-            if (lower.includes(key) || key.includes(lower)) {
-                return key;
+            // ---- TAB NAME MAPPING ----
+            _getTabMap() {
+                const user = this.app.auth.getCurrentUser();
+                const tabs = {
+                    dashboard: { label: 'Dashboard', icon: 'dashboard', page: 'dashboard' },
+                    inventory: { label: 'Vehicle Inventory', icon: 'directions_car', page: 'inventory' },
+                    sales: { label: 'Sales Orders', icon: 'receipt', page: 'sales' },
+                    supervisor: { label: 'Supervisor', icon: 'supervisor_account', page: 'supervisor' },
+                    worker: { label: 'Worker', icon: 'construction', page: 'worker' },
+                    purchase_inventory: { label: 'Purchase Stock', icon: 'inventory_2', page: 'purchase_inventory' },
+                    leads: { label: 'Lead Tracker', icon: 'trending_up', page: 'leads' },
+                    fcprep: { label: 'FC Prep', icon: 'build', page: 'fcprep' },
+                    assignments: { label: 'Assignments', icon: 'group_work', page: 'assignments' },
+                };
+                if (user && ['owner', 'operations_manager'].includes(user.role)) {
+                    tabs.users = { label: 'Manage Users', icon: 'group', page: 'users' };
+                }
+                const result = {};
+                for (const [key, val] of Object.entries(tabs)) {
+                    if (this.app.auth.hasPermission(val.page)) {
+                        result[key] = val;
+                    }
+                }
+                return result;
             }
-        }
 
-        // Check label match
-        for (const [key, val] of Object.entries(tabMap)) {
-            if (val.label.toLowerCase().includes(lower) || lower.includes(val.label.toLowerCase())) {
-                return key;
+            _getTabAliases() {
+                return {
+                    'home': 'dashboard',
+                    'vehicles': 'inventory',
+                    'vehicle': 'inventory',
+                    'car': 'inventory',
+                    'orders': 'sales',
+                    'order': 'sales',
+                    'sup': 'supervisor',
+                    'super': 'supervisor',
+                    'work': 'worker',
+                    'my work': 'worker',
+                    'my tasks': 'worker',
+                    'stock': 'purchase_inventory',
+                    'purchase': 'purchase_inventory',
+                    'inventory stock': 'purchase_inventory',
+                    'lead': 'leads',
+                    'fc': 'fcprep',
+                    'fitness': 'fcprep',
+                    'assignment': 'assignments',
+                    'assignments overview': 'assignments',
+                    'users': 'users',
+                    'user': 'users',
+                    'manage users': 'users'
+                };
             }
-        }
 
-        return null;
-    }
+            _resolveTabName(phrase) {
+                const lower = phrase.toLowerCase().trim();
+                const aliases = this._getTabAliases();
+                const tabMap = this._getTabMap();
 
-    _normalizeVehicleNumber(text) {
-        return text.replace(/[\s\-/]/g, '').toUpperCase();
-    }
+                // Check direct match
+                if (tabMap[lower]) return lower;
 
-    // ---- SPEECH INIT ----
-    _initSpeech() {
-        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) {
-            this.micBtn.title = 'Speech recognition not supported in this browser';
-            this.micBtn.style.opacity = '0.4';
-            this.micBtn.style.cursor = 'not-allowed';
-            return;
-        }
-        this.recognition = new SR();
-        this.recognition.lang = 'en-IN';
-        this.recognition.continuous = false;
-        this.recognition.interimResults = true;
-        this.recognition.maxAlternatives = 3;
+                // Check alias
+                if (aliases[lower]) {
+                    const resolved = aliases[lower];
+                    if (tabMap[resolved]) return resolved;
+                }
 
-        this.recognition.onstart = () => {
-            this.isListening = true;
-            this.micBtn.classList.add('listening');
-            this.voiceIndicator.classList.add('show');
-            this.voiceText.textContent = '🎤 Listening...';
-        };
+                // Check partial match
+                for (const [key, val] of Object.entries(tabMap)) {
+                    if (lower.includes(key) || key.includes(lower)) {
+                        return key;
+                    }
+                }
 
-        this.recognition.onerror = (e) => {
-            console.warn('Speech error:', e.error);
-            if (e.error === 'not-allowed') {
-                this.toast.show('Microphone access denied. Please allow mic permissions.', 'warning', 5000);
-            } else if (e.error !== 'aborted') {
-                this.toast.show('Voice error: ' + e.error, 'warning');
+                // Check label match
+                for (const [key, val] of Object.entries(tabMap)) {
+                    if (val.label.toLowerCase().includes(lower) || lower.includes(val.label.toLowerCase())) {
+                        return key;
+                    }
+                }
+
+                return null;
             }
-            this.stopListening();
-        };
 
-        this.recognition.onend = () => {
-            this.stopListening();
-        };
+            _normalizeVehicleNumber(text) {
+                return text.replace(/[\s\-/]/g, '').toUpperCase();
+            }
 
-        this.recognition.onresult = (e) => {
-            let interim = '';
-            let final = '';
-            for (let i = e.resultIndex; i < e.results.length; i++) {
-                const transcript = e.results[i][0].transcript.trim();
-                if (e.results[i].isFinal) {
-                    final = transcript;
-                } else {
-                    interim += transcript + ' ';
+            // ---- SPEECH INIT ----
+            _initSpeech() {
+                const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+                if (!SR) {
+                    this.micBtn.title = 'Speech recognition not supported in this browser';
+                    this.micBtn.style.opacity = '0.4';
+                    this.micBtn.style.cursor = 'not-allowed';
+                    return;
+                }
+                this.recognition = new SR();
+                this.recognition.lang = 'en-IN';
+                this.recognition.continuous = false;
+                this.recognition.interimResults = true;
+                this.recognition.maxAlternatives = 3;
+
+                this.recognition.onstart = () => {
+                    this.isListening = true;
+                    this.micBtn.classList.add('listening');
+                    this.voiceIndicator.classList.add('show');
+                    this.voiceText.textContent = '🎤 Listening...';
+                };
+
+                this.recognition.onerror = (e) => {
+                    console.warn('Speech error:', e.error);
+                    if (e.error === 'not-allowed') {
+                        this.toast.show('Microphone access denied. Please allow mic permissions.', 'warning', 5000);
+                    } else if (e.error !== 'aborted') {
+                        this.toast.show('Voice error: ' + e.error, 'warning');
+                    }
+                    this.stopListening();
+                };
+
+                this.recognition.onend = () => {
+                    this.stopListening();
+                };
+
+                this.recognition.onresult = (e) => {
+                    let interim = '';
+                    let final = '';
+                    for (let i = e.resultIndex; i < e.results.length; i++) {
+                        const transcript = e.results[i][0].transcript.trim();
+                        if (e.results[i].isFinal) {
+                            final = transcript;
+                        } else {
+                            interim += transcript + ' ';
+                        }
+                    }
+                    if (interim) {
+                        this.voiceText.textContent = '🗣️ ' + interim;
+                    }
+                    if (final) {
+                        this.voiceText.textContent = '✅ ' + final;
+                        this.processCommand(final);
+                        this.stopListening();
+                    }
+                };
+            }
+
+            _bindUI() {
+                this.micBtn.addEventListener('click', () => {
+                    if (this.isListening) {
+                        this.stopListening();
+                    } else {
+                        this.startListening();
+                    }
+                });
+
+                this.helpBtn.addEventListener('click', () => {
+                    this.helpOverlay.classList.toggle('show');
+                    if (this.isListening) this.stopListening();
+                });
+
+                this.helpClose.addEventListener('click', () => {
+                    this.helpOverlay.classList.remove('show');
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!this.helpOverlay.contains(e.target) && e.target !== this.helpBtn && !this.helpBtn.contains(e.target)) {
+                        this.helpOverlay.classList.remove('show');
+                    }
+                });
+            }
+
+            startListening() {
+                if (!this.recognition) { this.toast.show('Speech not supported', 'warning'); return; }
+                if (this.isListening) return;
+                try {
+                    this.recognition.start();
+                } catch (e) {
+                    this.stopListening();
+                    setTimeout(() => {
+                        try { this.recognition.start(); } catch (err) {}
+                    }, 200);
                 }
             }
-            if (interim) {
-                this.voiceText.textContent = '🗣️ ' + interim;
-            }
-            if (final) {
-                this.voiceText.textContent = '✅ ' + final;
-                this.processCommand(final);
-                this.stopListening();
-            }
-        };
-    }
 
-    _bindUI() {
-        this.micBtn.addEventListener('click', () => {
-            if (this.isListening) {
-                this.stopListening();
-            } else {
-                this.startListening();
-            }
-        });
-
-        this.helpBtn.addEventListener('click', () => {
-            this.helpOverlay.classList.toggle('show');
-            if (this.isListening) this.stopListening();
-        });
-
-        this.helpClose.addEventListener('click', () => {
-            this.helpOverlay.classList.remove('show');
-        });
-
-        document.addEventListener('click', (e) => {
-            if (!this.helpOverlay.contains(e.target) && e.target !== this.helpBtn && !this.helpBtn.contains(e.target)) {
-                this.helpOverlay.classList.remove('show');
-            }
-        });
-    }
-
-    startListening() {
-        if (!this.recognition) { this.toast.show('Speech not supported', 'warning'); return; }
-        if (this.isListening) return;
-        try {
-            this.recognition.start();
-        } catch (e) {
-            this.stopListening();
-            setTimeout(() => {
-                try { this.recognition.start(); } catch (err) {}
-            }, 200);
-        }
-    }
-
-    stopListening() {
-        this.isListening = false;
-        this.micBtn.classList.remove('listening');
-        this.voiceIndicator.classList.remove('show');
-        this.voiceText.textContent = 'Listening...';
-        try { if (this.recognition) this.recognition.stop(); } catch (e) {}
-    }
-
-    // ==============================================================
-    // COMMAND PROCESSING – ENHANCED
-    // ==============================================================
-    async processCommand(rawText) {
-        const text = rawText.toLowerCase().trim();
-        if (!text) return;
-
-        this.micBtn.classList.add('processing');
-        this.toast.show('⏳ Processing: "' + rawText + '"', 'info', 2000);
-
-        try {
-            // ---- HELP ----
-            const helpVariants = ['help', 'help me', 'what can i say', 'commands', 'show commands'];
-            if (helpVariants.some(h => text === h)) {
-                this.helpOverlay.classList.toggle('show');
-                this.toast.show('📖 Help menu opened', 'success', 1500);
-                this.micBtn.classList.remove('processing');
-                return;
+            stopListening() {
+                this.isListening = false;
+                this.micBtn.classList.remove('listening');
+                this.voiceIndicator.classList.remove('show');
+                this.voiceText.textContent = 'Listening...';
+                try { if (this.recognition) this.recognition.stop(); } catch (e) {}
             }
 
-            // ---- NORMALIZE COMMAND ----
-            const assignVariants = ['assign', 'a sign', 'ass in', 'ajwain', 'aswin', 'as sign', 'assigns', 'assigne'];
-            const unassignVariants = ['unassign', 'un assign', 'un a sign', 'unassigned', 'un assign', 'unajwain', 'un ajwain'];
-            const supervisorVariants = ['supervisor', 'soopervisor', 'supirvisor', 'super visor', 'superwiser'];
-            const assignmentsVariants = ['assignments', 'assignment', 'assigments', 'asignments', 'assign ment'];
+            // ==============================================================
+            // COMMAND PROCESSING – ENHANCED
+            // ==============================================================
+            async processCommand(rawText) {
+                const text = rawText.toLowerCase().trim();
+                if (!text) return;
 
-            let command = text;
-            let isAssign = false;
-            let isUnassign = false;
-            let isSupervisor = false;
-            let isAssignments = false;
+                this.micBtn.classList.add('processing');
+                this.toast.show('⏳ Processing: "' + rawText + '"', 'info', 2000);
 
-            // Check for "open all tabs"
-            const openAllMatch = text.match(/open\s+all\s+(?:the\s+)?tabs?/i) ||
-                text.match(/show\s+all\s+(?:the\s+)?tabs?/i) ||
-                text.match(/list\s+(?:all\s+)?(?:the\s+)?tabs?/i);
-            if (openAllMatch) {
-                await this._handleOpenAllTabs();
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- "show me vehicle [number]" for supervisor ----
-            const showVehicleMatch = text.match(/show\s+me\s+(?:vehicle|truck|car)\s+(\S+)/i) ||
-                text.match(/show\s+(?:vehicle|truck|car)\s+(\S+)/i) ||
-                text.match(/find\s+(?:vehicle|truck|car)\s+(\S+)/i);
-            if (showVehicleMatch) {
-                const vehicleNumber = this._normalizeVehicleNumber(showVehicleMatch[1]);
-                await this._handleShowVehicle(vehicleNumber);
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- "show me customer [name]" for supervisor ----
-            const showCustomerMatch = text.match(/show\s+me\s+customer\s+(.+)/i) ||
-                text.match(/show\s+customer\s+(.+)/i) ||
-                text.match(/find\s+customer\s+(.+)/i) ||
-                text.match(/show\s+me\s+orders?\s+for\s+(.+)/i);
-            if (showCustomerMatch) {
-                const customerName = showCustomerMatch[1].trim();
-                await this._handleShowCustomer(customerName);
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- "show me all active" etc. ----
-            const showAllActive = text.match(/show\s+me\s+(?:all\s+)?active\s+(?:vehicles|orders)/i) ||
-                text.match(/show\s+active\s+(?:vehicles|orders)/i);
-            if (showAllActive) {
-                await this._handleShowActive();
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- "open [tab]" ----
-            const openTabMatch = text.match(/open\s+(.+)/i) || text.match(/go\s+to\s+(.+)/i) ||
-                text.match(/switch\s+to\s+(.+)/i) || text.match(/show\s+me\s+(.+)/i);
-            if (openTabMatch) {
-                const tabPhrase = openTabMatch[1].trim();
-                // Check if it's a vehicle or customer before navigating
-                const isVehicle = tabPhrase.match(/^[A-Z]{2}[\s\-/]?[0-9]{1,2}[\s\-/]?[A-Z]{0,2}[\s\-/]?[0-9]{4}$/i);
-                if (!isVehicle) {
-                    const tabKey = this._resolveTabName(tabPhrase);
-                    if (tabKey) {
-                        await this._navigateTo(tabKey);
+                try {
+                    // ---- HELP ----
+                    const helpVariants = ['help', 'help me', 'what can i say', 'commands', 'show commands'];
+                    if (helpVariants.some(h => text === h)) {
+                        this.helpOverlay.classList.toggle('show');
+                        this.toast.show('📖 Help menu opened', 'success', 1500);
                         this.micBtn.classList.remove('processing');
                         return;
                     }
-                }
-                // If not a tab, fall through to other commands
-            }
+// ---- PENDING APPROVALS ----
+if (text.includes('pending approvals') || text.includes('show pending') ||
+    text.includes('approvals') || text.includes('tasks pending') ||
+    text === 'approvals' || text === 'pending') {
+    await this._handlePendingApprovals();
+    this.micBtn.classList.remove('processing');
+    return;
+}
+                    // ---- NORMALIZE COMMAND ----
+                    const assignVariants = ['assign', 'a sign', 'ass in', 'ajwain', 'aswin', 'as sign', 'assigns', 'assigne'];
+                    const unassignVariants = ['unassign', 'un assign', 'un a sign', 'unassigned', 'un assign', 'unajwain', 'un ajwain'];
+                    const supervisorVariants = ['supervisor', 'soopervisor', 'supirvisor', 'super visor', 'superwiser'];
+                    const assignmentsVariants = ['assignments', 'assignment', 'assigments', 'asignments', 'assign ment'];
 
-            // Check for supervisor/assignments variants
-            for (let v of supervisorVariants) {
-                if (command.includes(v)) {
-                    isSupervisor = true;
-                    command = command.replace(v, 'supervisor').trim();
-                    break;
-                }
-            }
-            for (let v of assignmentsVariants) {
-                if (command.includes(v)) {
-                    isAssignments = true;
-                    command = command.replace(v, 'assignments').trim();
-                    break;
-                }
-            }
+                    let command = text;
+                    let isAssign = false;
+                    let isUnassign = false;
+                    let isSupervisor = false;
+                    let isAssignments = false;
 
-            // Check for assign/unassign variants
-            if (!isSupervisor && !isAssignments) {
-                for (let v of assignVariants) {
-                    if (command.startsWith(v) || command.includes(' ' + v + ' ')) {
-                        isAssign = true;
-                        command = command.replace(v, 'assign').trim();
-                        break;
+                    // Check for "open all tabs"
+                    const openAllMatch = text.match(/open\s+all\s+(?:the\s+)?tabs?/i) ||
+                        text.match(/show\s+all\s+(?:the\s+)?tabs?/i) ||
+                        text.match(/list\s+(?:all\s+)?(?:the\s+)?tabs?/i);
+                    if (openAllMatch) {
+                        await this._handleOpenAllTabs();
+                        this.micBtn.classList.remove('processing');
+                        return;
                     }
-                }
-                if (!isAssign) {
-                    for (let v of unassignVariants) {
-                        if (command.startsWith(v) || command.includes(' ' + v + ' ')) {
-                            isUnassign = true;
-                            command = command.replace(v, 'unassign').trim();
+
+                    // ---- "show me vehicle [number]" for supervisor ----
+                    const showVehicleMatch = text.match(/show\s+me\s+(?:vehicle|truck|car)\s+(\S+)/i) ||
+                        text.match(/show\s+(?:vehicle|truck|car)\s+(\S+)/i) ||
+                        text.match(/find\s+(?:vehicle|truck|car)\s+(\S+)/i);
+                    if (showVehicleMatch) {
+                        const vehicleNumber = this._normalizeVehicleNumber(showVehicleMatch[1]);
+                        await this._handleShowVehicle(vehicleNumber);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- "show me customer [name]" for supervisor ----
+                    const showCustomerMatch = text.match(/show\s+me\s+customer\s+(.+)/i) ||
+                        text.match(/show\s+customer\s+(.+)/i) ||
+                        text.match(/find\s+customer\s+(.+)/i) ||
+                        text.match(/show\s+me\s+orders?\s+for\s+(.+)/i);
+                    if (showCustomerMatch) {
+                        const customerName = showCustomerMatch[1].trim();
+                        await this._handleShowCustomer(customerName);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- "show me all active" etc. ----
+                    const showAllActive = text.match(/show\s+me\s+(?:all\s+)?active\s+(?:vehicles|orders)/i) ||
+                        text.match(/show\s+active\s+(?:vehicles|orders)/i);
+                    if (showAllActive) {
+                        await this._handleShowActive();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- "open [tab]" ----
+                    const openTabMatch = text.match(/open\s+(.+)/i) || text.match(/go\s+to\s+(.+)/i) ||
+                        text.match(/switch\s+to\s+(.+)/i) || text.match(/show\s+me\s+(.+)/i);
+                    if (openTabMatch) {
+                        const tabPhrase = openTabMatch[1].trim();
+                        // Check if it's a vehicle or customer before navigating
+                        const isVehicle = tabPhrase.match(/^[A-Z]{2}[\s\-/]?[0-9]{1,2}[\s\-/]?[A-Z]{0,2}[\s\-/]?[0-9]{4}$/i);
+                        if (!isVehicle) {
+                            const tabKey = this._resolveTabName(tabPhrase);
+                            if (tabKey) {
+                                await this._navigateTo(tabKey);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                        }
+                        // If not a tab, fall through to other commands
+                    }
+
+                    // Check for supervisor/assignments variants
+                    for (let v of supervisorVariants) {
+                        if (command.includes(v)) {
+                            isSupervisor = true;
+                            command = command.replace(v, 'supervisor').trim();
                             break;
                         }
                     }
-                }
-                if (!isAssign && !isUnassign) {
-                    if (command.includes('assign') && !command.includes('unassign')) {
-                        isAssign = true;
-                        command = command.replace(/assign/g, 'assign').trim();
-                    } else if (command.includes('unassign') || command.includes('un assign')) {
-                        isUnassign = true;
-                        command = command.replace(/unassign|un assign/g, 'unassign').trim();
+                    for (let v of assignmentsVariants) {
+                        if (command.includes(v)) {
+                            isAssignments = true;
+                            command = command.replace(v, 'assignments').trim();
+                            break;
+                        }
                     }
-                }
-            }
 
-            // ---- OPEN SUPERVISOR ----
-            if (isSupervisor || text.includes('supervisor') || text.includes('go to supervisor') ||
-                text.includes('open supervisor')) {
-                await this._navigateTo('supervisor');
-                this.micBtn.classList.remove('processing');
-                return;
-            }
+                    // Check for assign/unassign variants
+                    if (!isSupervisor && !isAssignments) {
+                        for (let v of assignVariants) {
+                            if (command.startsWith(v) || command.includes(' ' + v + ' ')) {
+                                isAssign = true;
+                                command = command.replace(v, 'assign').trim();
+                                break;
+                            }
+                        }
+                        if (!isAssign) {
+                            for (let v of unassignVariants) {
+                                if (command.startsWith(v) || command.includes(' ' + v + ' ')) {
+                                    isUnassign = true;
+                                    command = command.replace(v, 'unassign').trim();
+                                    break;
+                                }
+                            }
+                        }
+                        if (!isAssign && !isUnassign) {
+                            if (command.includes('assign') && !command.includes('unassign')) {
+                                isAssign = true;
+                                command = command.replace(/assign/g, 'assign').trim();
+                            } else if (command.includes('unassign') || command.includes('un assign')) {
+                                isUnassign = true;
+                                command = command.replace(/unassign|un assign/g, 'unassign').trim();
+                            }
+                        }
+                    }
 
-            // ---- OPEN ASSIGNMENTS ----
-            if (isAssignments || text.includes('assignments') || text.includes('assignment overview') ||
-                text.includes('open assignments')) {
-                await this._navigateTo('assignments');
-                this.micBtn.classList.remove('processing');
-                return;
-            }
+                    // ---- OPEN SUPERVISOR ----
+                    if (isSupervisor || text.includes('supervisor') || text.includes('go to supervisor') ||
+                        text.includes('open supervisor')) {
+                        await this._navigateTo('supervisor');
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
 
-            // ---- ASSIGN ----
-            if (isAssign) {
-                const assignMatch = command.match(/assign\s+(\S+?)\s+(?:for\s+)?(.+?)\s+to\s+(\S+)/i) ||
-                    command.match(/assign\s+(.+?)\s+on\s+(\S+?)\s+to\s+(\S+)/i) ||
-                    command.match(/assign\s+(\S+?)\s+(.+?)\s+to\s+(\S+)/i);
-                if (assignMatch) {
-                    let vehicle, taskName, workerName;
-                    if (assignMatch.length === 4) {
-                        if (assignMatch[1].toUpperCase().includes('NL-') || assignMatch[1].toUpperCase().includes('KA') || assignMatch[1].toUpperCase().includes('MH')) {
-                            vehicle = assignMatch[1].toUpperCase();
-                            taskName = assignMatch[2].trim();
-                            workerName = assignMatch[3].trim();
-                        } else if (assignMatch[3].toUpperCase().includes('NL-') || assignMatch[3].toUpperCase().includes('KA') || assignMatch[3].toUpperCase().includes('MH')) {
-                            vehicle = assignMatch[3].toUpperCase();
-                            taskName = assignMatch[2].trim();
-                            workerName = assignMatch[1].trim();
-                        } else {
-                            const parts = command.split(/\s+/);
-                            const possibleVehicles = parts.filter(p => p.toUpperCase().includes('NL-') ||
-                                p.toUpperCase().includes('KA') || p.toUpperCase().includes('MH'));
-                            if (possibleVehicles.length === 1) {
-                                vehicle = possibleVehicles[0].toUpperCase();
-                                const idx = parts.indexOf(possibleVehicles[0]);
-                                const before = parts.slice(1, idx).join(' ');
-                                const after = parts.slice(idx + 1).join(' ');
-                                const toIdx = after.indexOf(' to ');
-                                if (toIdx > -1) {
-                                    taskName = after.substring(0, toIdx).trim();
-                                    workerName = after.substring(toIdx + 4).trim();
+                    // ---- OPEN ASSIGNMENTS ----
+                    if (isAssignments || text.includes('assignments') || text.includes('assignment overview') ||
+                        text.includes('open assignments')) {
+                        await this._navigateTo('assignments');
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- ASSIGN ----
+                    if (isAssign) {
+                        const assignMatch = command.match(/assign\s+(\S+?)\s+(?:for\s+)?(.+?)\s+to\s+(\S+)/i) ||
+                            command.match(/assign\s+(.+?)\s+on\s+(\S+?)\s+to\s+(\S+)/i) ||
+                            command.match(/assign\s+(\S+?)\s+(.+?)\s+to\s+(\S+)/i);
+                        if (assignMatch) {
+                            let vehicle, taskName, workerName;
+                            if (assignMatch.length === 4) {
+                                if (assignMatch[1].toUpperCase().includes('NL-') || assignMatch[1].toUpperCase().includes('KA') || assignMatch[1].toUpperCase().includes('MH')) {
+                                    vehicle = assignMatch[1].toUpperCase();
+                                    taskName = assignMatch[2].trim();
+                                    workerName = assignMatch[3].trim();
+                                } else if (assignMatch[3].toUpperCase().includes('NL-') || assignMatch[3].toUpperCase().includes('KA') || assignMatch[3].toUpperCase().includes('MH')) {
+                                    vehicle = assignMatch[3].toUpperCase();
+                                    taskName = assignMatch[2].trim();
+                                    workerName = assignMatch[1].trim();
                                 } else {
-                                    const last = parts[parts.length - 1];
-                                    workerName = last;
-                                    taskName = after.replace(new RegExp(last + '$'), '').trim();
+                                    const parts = command.split(/\s+/);
+                                    const possibleVehicles = parts.filter(p => p.toUpperCase().includes('NL-') ||
+                                        p.toUpperCase().includes('KA') || p.toUpperCase().includes('MH'));
+                                    if (possibleVehicles.length === 1) {
+                                        vehicle = possibleVehicles[0].toUpperCase();
+                                        const idx = parts.indexOf(possibleVehicles[0]);
+                                        const before = parts.slice(1, idx).join(' ');
+                                        const after = parts.slice(idx + 1).join(' ');
+                                        const toIdx = after.indexOf(' to ');
+                                        if (toIdx > -1) {
+                                            taskName = after.substring(0, toIdx).trim();
+                                            workerName = after.substring(toIdx + 4).trim();
+                                        } else {
+                                            const last = parts[parts.length - 1];
+                                            workerName = last;
+                                            taskName = after.replace(new RegExp(last + '$'), '').trim();
+                                        }
+                                    } else {
+                                        this.toast.show(
+                                            'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
+                                            'warning', 5000);
+                                        this.micBtn.classList.remove('processing');
+                                        return;
+                                    }
                                 }
                             } else {
                                 this.toast.show(
@@ -4585,61 +4603,71 @@ class VoiceCommandParser {
                                 this.micBtn.classList.remove('processing');
                                 return;
                             }
-                        }
-                    } else {
-                        this.toast.show(
-                            'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
-                            'warning', 5000);
-                        this.micBtn.classList.remove('processing');
-                        return;
-                    }
-                    await this._handleAssign(vehicle, taskName, workerName);
-                    this.micBtn.classList.remove('processing');
-                    return;
-                } else {
-                    // Try simpler assign: "assign [vehicle] to [worker]"
-                    const simpleMatch = command.match(/assign\s+(\S+?)\s+to\s+(\S+)/i);
-                    if (simpleMatch) {
-                        const vehicle = simpleMatch[1].toUpperCase();
-                        const workerName = simpleMatch[2].trim();
-                        await this._handleAssignWithAutoTask(vehicle, workerName);
-                        this.micBtn.classList.remove('processing');
-                        return;
-                    }
-                    this.toast.show(
-                        'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
-                        'warning', 5000);
-                    this.micBtn.classList.remove('processing');
-                    return;
-                }
-            }
-
-            // ---- UNASSIGN ----
-            if (isUnassign) {
-                const unassignMatch = command.match(/unassign\s+(\S+?)\s+from\s+(\S+)/i) ||
-                    command.match(/unassign\s+(\S+?)\s+from\s+(\S+)/i);
-                if (unassignMatch) {
-                    let vehicle, workerName;
-                    if (unassignMatch[1].toUpperCase().includes('NL-') || unassignMatch[1].toUpperCase().includes('KA') || unassignMatch[1].toUpperCase().includes('MH')) {
-                        vehicle = unassignMatch[1].toUpperCase();
-                        workerName = unassignMatch[2].trim();
-                    } else if (unassignMatch[2].toUpperCase().includes('NL-') || unassignMatch[2].toUpperCase().includes('KA') || unassignMatch[2].toUpperCase().includes('MH')) {
-                        vehicle = unassignMatch[2].toUpperCase();
-                        workerName = unassignMatch[1].trim();
-                    } else {
-                        const parts = command.split(/\s+/);
-                        const possibleVehicles = parts.filter(p => p.toUpperCase().includes('NL-') ||
-                            p.toUpperCase().includes('KA') || p.toUpperCase().includes('MH'));
-                        if (possibleVehicles.length === 1) {
-                            vehicle = possibleVehicles[0].toUpperCase();
-                            const idx = parts.indexOf(possibleVehicles[0]);
-                            const after = parts.slice(idx + 1).join(' ');
-                            const fromIdx = after.indexOf('from');
-                            if (fromIdx > -1) {
-                                workerName = after.substring(fromIdx + 5).trim();
-                            } else {
-                                workerName = parts[parts.length - 1].trim();
+                            await this._handleAssign(vehicle, taskName, workerName);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        } else {
+                            // Try simpler assign: "assign [vehicle] to [worker]"
+                            const simpleMatch = command.match(/assign\s+(\S+?)\s+to\s+(\S+)/i);
+                            if (simpleMatch) {
+                                const vehicle = simpleMatch[1].toUpperCase();
+                                const workerName = simpleMatch[2].trim();
+                                await this._handleAssignWithAutoTask(vehicle, workerName);
+                                this.micBtn.classList.remove('processing');
+                                return;
                             }
+                            this.toast.show(
+                                'Could not parse assign. Try: "assign KA11B7007 for Body Coach to Mubarak"',
+                                'warning', 5000);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                    }
+
+                    // ---- UNASSIGN ----
+                    if (isUnassign) {
+                        const unassignMatch = command.match(/unassign\s+(\S+?)\s+from\s+(\S+)/i) ||
+                            command.match(/unassign\s+(\S+?)\s+from\s+(\S+)/i);
+                        if (unassignMatch) {
+                            let vehicle, workerName;
+                            if (unassignMatch[1].toUpperCase().includes('NL-') || unassignMatch[1].toUpperCase().includes('KA') || unassignMatch[1].toUpperCase().includes('MH')) {
+                                vehicle = unassignMatch[1].toUpperCase();
+                                workerName = unassignMatch[2].trim();
+                            } else if (unassignMatch[2].toUpperCase().includes('NL-') || unassignMatch[2].toUpperCase().includes('KA') || unassignMatch[2].toUpperCase().includes('MH')) {
+                                vehicle = unassignMatch[2].toUpperCase();
+                                workerName = unassignMatch[1].trim();
+                            } else {
+                                const parts = command.split(/\s+/);
+                                const possibleVehicles = parts.filter(p => p.toUpperCase().includes('NL-') ||
+                                    p.toUpperCase().includes('KA') || p.toUpperCase().includes('MH'));
+                                if (possibleVehicles.length === 1) {
+                                    vehicle = possibleVehicles[0].toUpperCase();
+                                    const idx = parts.indexOf(possibleVehicles[0]);
+                                    const after = parts.slice(idx + 1).join(' ');
+                                    const fromIdx = after.indexOf('from');
+                                    if (fromIdx > -1) {
+                                        workerName = after.substring(fromIdx + 5).trim();
+                                    } else {
+                                        workerName = parts[parts.length - 1].trim();
+                                    }
+                                } else {
+                                    this.toast.show(
+                                        'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
+                                        'warning', 5000);
+                                    this.micBtn.classList.remove('processing');
+                                    return;
+                                }
+                            }
+                            if (!vehicle || !workerName) {
+                                this.toast.show(
+                                    'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
+                                    'warning', 5000);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                            await this._handleUnassign(vehicle, workerName);
+                            this.micBtn.classList.remove('processing');
+                            return;
                         } else {
                             this.toast.show(
                                 'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
@@ -4648,1015 +4676,997 @@ class VoiceCommandParser {
                             return;
                         }
                     }
-                    if (!vehicle || !workerName) {
-                        this.toast.show(
-                            'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
-                            'warning', 5000);
+
+                    // ---- START MY TASK ----
+                    if (text.includes('start my task') || text.includes('start work') ||
+                        text.includes('start task') || text.includes('begin work') ||
+                        text.includes('begin my task')) {
+                        await this._handleStartTask(null);
                         this.micBtn.classList.remove('processing');
                         return;
                     }
-                    await this._handleUnassign(vehicle, workerName);
+
+                    // ---- START SPECIFIC TASK ----
+                    const startSpecificMatch = text.match(/start\s+(.+?)(?:\s+task|\s+work)?$/i) ||
+                        text.match(/begin\s+(.+?)(?:\s+task|\s+work)?$/i);
+                    if (startSpecificMatch && !text.includes('my task') && !text.includes('my work')) {
+                        const taskName = startSpecificMatch[1].trim();
+                        await this._handleStartTask(taskName);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- END MY TASK ----
+                    if (text.includes('end my task') || text.includes('complete my task') ||
+                        text.includes('finish my task') || text.includes('end work') ||
+                        text.includes('complete work') || text.includes('finish work') ||
+                        text.includes('done with my task') || text.includes('stop work')) {
+                        await this._handleEndTask(null);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- END SPECIFIC TASK ----
+                    const endSpecificMatch = text.match(/end\s+(.+?)(?:\s+task|\s+work)?$/i) ||
+                        text.match(/complete\s+(.+?)(?:\s+task|\s+work)?$/i) ||
+                        text.match(/finish\s+(.+?)(?:\s+task|\s+work)?$/i);
+                    if (endSpecificMatch && !text.includes('my task') && !text.includes('my work')) {
+                        const taskName = endSpecificMatch[1].trim();
+                        await this._handleEndTask(taskName);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- SHOW PENDING WORKS ----
+                    const pendingMatch = text.match(/show\s+pending\s+works?\s+for\s+(.+)/i) ||
+                        text.match(/pending\s+works?\s+for\s+(.+)/i) ||
+                        text.match(/show\s+me\s+pending\s+works?\s+for\s+(.+)/i);
+                    if (pendingMatch) {
+                        const customerName = pendingMatch[1].trim();
+                        await this._handleShowPendingWorks(customerName);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- ADD NEW VEHICLE ----
+                    if (text.includes('add new vehicle') || text.includes('add vehicle') ||
+                        text.includes('new vehicle') || text.includes('create vehicle') ||
+                        text.includes('add a vehicle') || text.includes('create new vehicle')) {
+                        await this._handleAddVehicle();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- CREATE SALES ORDER ----
+                    if (text.includes('create order') || text.includes('create sales order')) {
+                        const orderMatch = text.match(/create\s+(?:sales\s+)?order\s+for\s+(\S+?)\s+on\s+(\S+)/i) ||
+                            text.match(/create\s+(?:sales\s+)?order\s+(\S+?)\s+on\s+(\S+)/i) ||
+                            text.match(/create\s+(?:sales\s+)?order\s+for\s+(\S+?)\s+(\S+)/i);
+                        if (orderMatch) {
+                            let customer, vehicle;
+                            if (orderMatch.length === 3) {
+                                if (orderMatch[2].toUpperCase().includes('NL-') || orderMatch[2].toUpperCase().includes('KA') || orderMatch[2].toUpperCase().includes('MH')) {
+                                    customer = orderMatch[1].trim();
+                                    vehicle = orderMatch[2].toUpperCase();
+                                } else if (orderMatch[1].toUpperCase().includes('NL-') || orderMatch[1].toUpperCase().includes('KA') || orderMatch[1].toUpperCase().includes('MH')) {
+                                    vehicle = orderMatch[1].toUpperCase();
+                                    customer = orderMatch[2].trim();
+                                } else {
+                                    customer = orderMatch[1].trim();
+                                    vehicle = orderMatch[2].trim().toUpperCase();
+                                }
+                            } else {
+                                this.toast.show('Could not parse order. Try: "create order for John on NL-101"', 'warning', 5000);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                            if (!customer || !vehicle) {
+                                this.toast.show('Could not parse order. Try: "create order for John on NL-101"', 'warning', 5000);
+                                this.micBtn.classList.remove('processing');
+                                return;
+                            }
+                            await this._handleCreateOrder(customer, vehicle);
+                            this.micBtn.classList.remove('processing');
+                            return;
+                        }
+                    }
+
+                    // ---- HOW MANY TASKS FOR WORKER ----
+                    const countMatch = text.match(/how\s+many\s+(?:work|tasks)\s+(?:assigned\s+to|for)\s+(\S+)/i) ||
+                        text.match(/show\s+(?:me\s+)?tasks\s+for\s+(\S+)/i) ||
+                        text.match(/count\s+tasks\s+for\s+(\S+)/i) ||
+                        text.match(/tasks\s+for\s+(\S+)/i);
+                    if (countMatch) {
+                        const workerName = countMatch[1].trim();
+                        await this._handleCountWork(workerName);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- WHICH STOCK TO PURCHASE ----
+                    if (text.includes('stock to purchase') || text.includes('which stock') ||
+                        text.includes('what to buy') || text.includes('stock to buy') ||
+                        text.includes('low stock') || text.includes('inventory to purchase')) {
+                        await this._handleStockToPurchase();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- SHOW DELIVERED VEHICLES ----
+                    if (text.includes('delivered vehicles') || text.includes('show delivered') ||
+                        text.includes('show me delivered') || text.includes('delivered inventory')) {
+                        await this._handleShowDelivered();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- STATUS OF VEHICLE ----
+                    const statusMatch = text.match(/status\s+of\s+(\S+)/i);
+                    if (statusMatch) {
+                        const vehicle = statusMatch[1].toUpperCase();
+                        await this._handleVehicleStatus(vehicle);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- STATUS (fleet stats) ----
+                    if (text === 'status' || text === 'fleet status' || text === 'show status') {
+                        await this._handleFleetStatus();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- LIST VEHICLES ----
+                    if (text === 'list vehicles' || text === 'show vehicles' || text === 'list all vehicles' ||
+                        text === 'show all vehicles') {
+                        await this._handleListVehicles();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- LIST WORKERS ----
+                    if (text === 'list workers' || text === 'show workers' || text === 'list all workers' ||
+                        text === 'show all workers') {
+                        await this._handleListWorkers();
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- FIND / SEARCH ----
+                    const findMatch = text.match(/find\s+(.+)/i) || text.match(/search\s+(.+)/i);
+                    if (findMatch) {
+                        const query = findMatch[1].trim();
+                        // Check if it's a vehicle number
+                        if (query.match(/^[A-Z]{2}[\s\-/]?[0-9]{1,2}[\s\-/]?[A-Z]{0,2}[\s\-/]?[0-9]{4}$/i)) {
+                            await this._handleShowVehicle(query);
+                        } else {
+                            await this._handleSearch(query);
+                        }
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- SHOW ME ALL [filter] ----
+                    const showMatch = text.match(/show\s+me\s+(?:all\s+)?(.+)/i);
+                    if (showMatch) {
+                        const filterText = showMatch[1].trim();
+                        await this._handleShowMe(filterText);
+                        this.micBtn.classList.remove('processing');
+                        return;
+                    }
+
+                    // ---- FALLBACK ----
+                    this.toast.show('🤔 Command not recognized. Say "help" for examples.', 'warning', 4000);
                     this.micBtn.classList.remove('processing');
-                    return;
-                } else {
-                    this.toast.show(
-                        'Could not parse unassign. Try: "unassign KA11B7007 from Mubarak"',
-                        'warning', 5000);
+
+                } catch (err) {
+                    console.error('Command error:', err);
+                    this.toast.show('❌ Error: ' + (err.message || err), 'error', 5000);
                     this.micBtn.classList.remove('processing');
-                    return;
                 }
             }
 
-            // ---- START MY TASK ----
-            if (text.includes('start my task') || text.includes('start work') ||
-                text.includes('start task') || text.includes('begin work') ||
-                text.includes('begin my task')) {
-                await this._handleStartTask(null);
-                this.micBtn.classList.remove('processing');
-                return;
+            // ==============================================================
+            // NEW: "SHOW ME VEHICLE" - filters supervisor by vehicle number
+            // ==============================================================
+            async _handleShowVehicle(vehicleNumber) {
+                this.loader.show();
+                try {
+                    // Navigate to supervisor if not already there
+                    const currentPage = this._getCurrentPage();
+                    if (currentPage !== 'supervisor') {
+                        await this._navigateTo('supervisor');
+                        // Wait for supervisor to load
+                        await new Promise(resolve => setTimeout(resolve, 600));
+                    }
+
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        if (typeof router.currentPage.renderQueue === 'function') {
+                            // Set the search term in the supervisor page
+                            const page = router.currentPage;
+                            if (page.searchTerm !== undefined) {
+                                page.searchTerm = vehicleNumber;
+                                page.renderQueue();
+                                this.toast.show(`🔍 Filtered to vehicle: ${vehicleNumber}`, 'success', 3000);
+                            }
+                        }
+                    } else {
+                        this.toast.show('Please navigate to Supervisor manually and search for the vehicle.', 'info', 3000);
+                    }
+                    this.loader.hide();
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
             }
 
-            // ---- START SPECIFIC TASK ----
-            const startSpecificMatch = text.match(/start\s+(.+?)(?:\s+task|\s+work)?$/i) ||
-                text.match(/begin\s+(.+?)(?:\s+task|\s+work)?$/i);
-            if (startSpecificMatch && !text.includes('my task') && !text.includes('my work')) {
-                const taskName = startSpecificMatch[1].trim();
-                await this._handleStartTask(taskName);
-                this.micBtn.classList.remove('processing');
-                return;
+            // ==============================================================
+            // NEW: "SHOW ME CUSTOMER" - filters supervisor by customer name
+            // ==============================================================
+            async _handleShowCustomer(customerName) {
+                this.loader.show();
+                try {
+                    const currentPage = this._getCurrentPage();
+                    if (currentPage !== 'supervisor') {
+                        await this._navigateTo('supervisor');
+                        await new Promise(resolve => setTimeout(resolve, 600));
+                    }
+
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        const page = router.currentPage;
+                        if (page.searchTerm !== undefined) {
+                            page.searchTerm = customerName;
+                            page.renderQueue();
+                            this.toast.show(`🔍 Filtered to customer: ${customerName}`, 'success', 3000);
+                        }
+                    } else {
+                        this.toast.show('Please navigate to Supervisor manually and search for the customer.', 'info', 3000);
+                    }
+                    this.loader.hide();
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
             }
 
-            // ---- END MY TASK ----
-            if (text.includes('end my task') || text.includes('complete my task') ||
-                text.includes('finish my task') || text.includes('end work') ||
-                text.includes('complete work') || text.includes('finish work') ||
-                text.includes('done with my task') || text.includes('stop work')) {
-                await this._handleEndTask(null);
-                this.micBtn.classList.remove('processing');
-                return;
+            // ==============================================================
+            // NEW: "SHOW ME ACTIVE" - shows active vehicles/orders
+            // ==============================================================
+            async _handleShowActive() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const active = inventory.filter(v => v.inventoryStatus !== 'Delivered');
+                    if (active.length === 0) {
+                        this.toast.show('ℹ️ No active vehicles found.', 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <h3>🚗 Active Vehicles (${active.length})</h3>
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Status</th><th>FC</th></tr></thead>
+                                <tbody>
+                                    ${active.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                            <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    modal.open({ title: '🚗 Active Vehicles', body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) {
+                    this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide();
+                }
             }
 
-            // ---- END SPECIFIC TASK ----
-            const endSpecificMatch = text.match(/end\s+(.+?)(?:\s+task|\s+work)?$/i) ||
-                text.match(/complete\s+(.+?)(?:\s+task|\s+work)?$/i) ||
-                text.match(/finish\s+(.+?)(?:\s+task|\s+work)?$/i);
-            if (endSpecificMatch && !text.includes('my task') && !text.includes('my work')) {
-                const taskName = endSpecificMatch[1].trim();
-                await this._handleEndTask(taskName);
-                this.micBtn.classList.remove('processing');
-                return;
+            // ==============================================================
+            // "OPEN ALL TABS" - show all available tabs
+            // ==============================================================
+            async _handleOpenAllTabs() {
+                const tabMap = this._getTabMap();
+                const html = `
+                    <div style="max-height:50vh;overflow-y:auto;">
+                        <h3>📋 Available Tabs</h3>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem;">
+                            ${Object.entries(tabMap).map(([key, val]) => `
+                                <div style="background:var(--light-gray);padding:0.4rem 0.6rem;border-radius:var(--radius);display:flex;align-items:center;gap:0.4rem;cursor:pointer;" onclick="window.__app.router.navigate('${val.page}'); document.getElementById('modalOverlay').style.display='none';">
+                                    <span class="material-icons" style="font-size:18px;">${val.icon}</span>
+                                    <span>${val.label}</span>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Say "open [tab name]" to navigate.</div>
+                    </div>
+                `;
+                this.modal.open({ title: '📋 All Tabs', body: html, confirmText: 'Close', showCancel: false,
+                    onConfirm: () => this.modal.close() });
+                this.toast.show('📋 Tab list opened', 'success', 1500);
+            }
+
+            // ==============================================================
+            // NAVIGATE
+            // ==============================================================
+            async _navigateTo(page) {
+                if (this.app.router) {
+                    this.app.router.navigate(page);
+                    this.toast.show(`🔀 Navigating to ${page}`, 'success', 1500);
+                } else {
+                    this.toast.show('Router not available', 'error');
+                }
+            }
+
+            _getCurrentPage() {
+                return window.location.hash.slice(1) || 'dashboard';
+            }
+
+            // ==============================================================
+            // COMMAND HANDLERS (all existing handlers)
+            // ==============================================================
+
+            // ---- START TASK ----
+            async _handleStartTask(taskName) {
+                this.loader.show();
+                try {
+                    const currentUser = this.app.auth.getCurrentUser();
+                    if (!currentUser) { this.toast.show('Please log in first', 'error');
+                        this.loader.hide(); return; }
+                    const userId = currentUser.id || currentUser.uid || '';
+                    const production = await DataService.getProduction();
+                    let tasks = production.filter(t =>
+                        t.assignedWorkerId && t.assignedWorkerId.includes(userId) &&
+                        t.status === 'pending'
+                    );
+                    if (tasks.length === 0) { this.toast.show('No pending tasks assigned to you.', 'info', 3000);
+                        this.loader.hide(); return; }
+                    let task = tasks[0];
+                    if (taskName) {
+                        const found = tasks.find(t => t.taskName.toLowerCase() === taskName.toLowerCase());
+                        if (found) task = found;
+                        else { this.toast.show(`No pending task "${taskName}" assigned to you.`, 'warning', 3000);
+                            this.loader.hide(); return; }
+                    }
+                    if (!task.beforePhotoUploaded) {
+                        this.toast.show('⚠️ Upload a "Before" photo first using Work Log.', 'warning', 4000);
+                        this.loader.hide();
+                        if (this.app.router) this.app.router.navigate('worker');
+                        return;
+                    }
+                    await DataService.startWork(task.id);
+                    this.toast.show(`✅ Started "${task.taskName}" on ${task.vehicleNumber}`, 'success', 4000);
+                    this.loader.hide();
+                    if (this.app.router) {
+                        if (this.app.router.currentPage && typeof this.app.router.currentPage.loadData === 'function') {
+                            await this.app.router.currentPage.loadData();
+                            if (typeof this.app.router.currentPage.renderTasks === 'function') this.app.router.currentPage.renderTasks();
+                        }
+                        this.app.router.navigate('worker');
+                    }
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+
+            // ---- END TASK ----
+            async _handleEndTask(taskName) {
+                this.loader.show();
+                try {
+                    const currentUser = this.app.auth.getCurrentUser();
+                    if (!currentUser) { this.toast.show('Please log in first', 'error');
+                        this.loader.hide(); return; }
+                    const userId = currentUser.id || currentUser.uid || '';
+                    const production = await DataService.getProduction();
+                    let tasks = production.filter(t =>
+                        t.assignedWorkerId && t.assignedWorkerId.includes(userId) &&
+                        t.status === 'in_progress'
+                    );
+                    if (tasks.length === 0) { this.toast.show('No tasks in progress assigned to you.', 'info', 3000);
+                        this.loader.hide(); return; }
+                    let task = tasks[0];
+                    if (taskName) {
+                        const found = tasks.find(t => t.taskName.toLowerCase() === taskName.toLowerCase());
+                        if (found) task = found;
+                        else { this.toast.show(`No task "${taskName}" in progress assigned to you.`, 'warning', 3000);
+                            this.loader.hide(); return; }
+                    }
+                    if (!task.afterPhotoUploaded) {
+                        this.toast.show('⚠️ Upload an "After" photo first using Work Log.', 'warning', 4000);
+                        this.loader.hide();
+                        if (this.app.router) this.app.router.navigate('worker');
+                        return;
+                    }
+                    await DataService.completeWork(task.id, 'Completed via voice command');
+                    this.toast.show(`✅ Completed "${task.taskName}" – sent for QC approval`, 'success', 4000);
+                    this.loader.hide();
+                    if (this.app.router) {
+                        if (this.app.router.currentPage && typeof this.app.router.currentPage.loadData === 'function') {
+                            await this.app.router.currentPage.loadData();
+                            if (typeof this.app.router.currentPage.renderTasks === 'function') this.app.router.currentPage.renderTasks();
+                        }
+                        this.app.router.navigate('worker');
+                    }
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+
+            // ---- ASSIGN ----
+            async _handleAssign(vehicle, taskName, workerName) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
+                    if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase()));
+                    if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const production = await DataService.getProduction();
+                    const task = production.find(t =>
+                        t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
+                        t.taskName.toLowerCase() === taskName.toLowerCase()
+                    );
+                    if (!task) { this.toast.show(`❌ Task "${taskName}" not found for ${vehicle}`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    if (task.assignedWorkerId && task.assignedWorkerId.length > 0) {
+                        this.toast.show(`⚠️ Task already assigned. Unassign first.`, 'warning', 4000);
+                        this.loader.hide();
+                        return;
+                    }
+                    await DataService.updateProduction(task.id, { assignedWorkerId: worker.id, status: 'pending' });
+                    this.toast.show(`✅ Assigned "${taskName}" on ${vehicle} to ${worker.name}`, 'success', 5000);
+                    this.loader.hide();
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
+                        if (typeof router.currentPage.renderTasks === 'function') router.currentPage.renderTasks();
+                    }
+                } catch (err) { this.toast.show('❌ Assignment failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+
+            // ---- ASSIGN WITH AUTO TASK ----
+            async _handleAssignWithAutoTask(vehicle, workerName) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
+                    if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase()));
+                    if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const production = await DataService.getProduction();
+                    const pendingTasks = production.filter(t =>
+                        t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
+                        !t.assignedWorkerId &&
+                        t.status !== 'completed'
+                    );
+                    if (pendingTasks.length === 0) {
+                        this.toast.show(`ℹ️ No pending tasks for ${vehicle} to assign.`, 'info', 3000);
+                        this.loader.hide();
+                        return;
+                    }
+                    const task = pendingTasks[0];
+                    await DataService.updateProduction(task.id, { assignedWorkerId: worker.id, status: 'pending' });
+                    this.toast.show(`✅ Assigned "${task.taskName}" on ${vehicle} to ${worker.name}`, 'success', 5000);
+                    this.loader.hide();
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
+                        if (typeof router.currentPage.renderTasks === 'function') router.currentPage.renderTasks();
+                    }
+                } catch (err) { this.toast.show('❌ Assignment failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+
+            // ---- UNASSIGN ----
+            async _handleUnassign(vehicle, workerName) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
+                    if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase()));
+                    if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t =>
+                        t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
+                        t.assignedWorkerId && t.assignedWorkerId.includes(worker.id) &&
+                        t.status !== 'completed'
+                    );
+                    if (tasks.length === 0) { this.toast.show(`ℹ️ No tasks for ${worker.name} on ${vehicle}`, 'info', 4000);
+                        this.loader.hide(); return; }
+                    for (const task of tasks) {
+                        const workerIds = task.assignedWorkerId.split(',').filter(id => id.trim() !== worker.id).map(id => id.trim());
+                        await DataService.updateProduction(task.id, { assignedWorkerId: workerIds.join(','),
+                            status: workerIds.length ? 'pending' : 'pending' });
+                    }
+                    this.toast.show(`✅ Unassigned ${tasks.length} task(s) for ${worker.name} on ${vehicle}`, 'success', 5000);
+                    this.loader.hide();
+                    const router = this.app.router;
+                    if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
+                        await router.currentPage.loadData();
+                        if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
+                        if (typeof router.currentPage.renderTasks === 'function') router.currentPage.renderTasks();
+                    }
+                } catch (err) { this.toast.show('❌ Unassign failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
             // ---- SHOW PENDING WORKS ----
-            const pendingMatch = text.match(/show\s+pending\s+works?\s+for\s+(.+)/i) ||
-                text.match(/pending\s+works?\s+for\s+(.+)/i) ||
-                text.match(/show\s+me\s+pending\s+works?\s+for\s+(.+)/i);
-            if (pendingMatch) {
-                const customerName = pendingMatch[1].trim();
-                await this._handleShowPendingWorks(customerName);
-                this.micBtn.classList.remove('processing');
-                return;
+            async _handleShowPendingWorks(customerName) {
+                this.loader.show();
+                try {
+                    const sales = await DataService.getSales();
+                    const orders = sales.filter(s => s.customerName && s.customerName.toLowerCase().includes(customerName.toLowerCase()));
+                    if (orders.length === 0) { this.toast.show(`ℹ️ No orders found for customer "${customerName}"`, 'info', 3000);
+                        this.loader.hide(); return; }
+                    const production = await DataService.getProduction();
+                    const pendingTasks = production.filter(p => {
+                        const sale = orders.find(o => o.vehicleNumber === p.vehicleNumber);
+                        return sale && p.status !== 'completed';
+                    });
+                    if (pendingTasks.length === 0) { this.toast.show(`✅ All tasks completed for ${customerName}`, 'success', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <h3>Pending Works for ${customerName}</h3>
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Task</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    ${pendingTasks.map(t => `
+                                        <tr>
+                                            <td><strong>${t.vehicleNumber}</strong></td>
+                                            <td>${t.taskName}</td>
+                                            <td><span class="badge badge-${t.status}">${t.status}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                    modal.open({ title: `📋 Pending Works`, body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
-            // ---- ADD NEW VEHICLE ----
-            if (text.includes('add new vehicle') || text.includes('add vehicle') ||
-                text.includes('new vehicle') || text.includes('create vehicle') ||
-                text.includes('add a vehicle') || text.includes('create new vehicle')) {
-                await this._handleAddVehicle();
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- CREATE SALES ORDER ----
-            if (text.includes('create order') || text.includes('create sales order')) {
-                const orderMatch = text.match(/create\s+(?:sales\s+)?order\s+for\s+(\S+?)\s+on\s+(\S+)/i) ||
-                    text.match(/create\s+(?:sales\s+)?order\s+(\S+?)\s+on\s+(\S+)/i) ||
-                    text.match(/create\s+(?:sales\s+)?order\s+for\s+(\S+?)\s+(\S+)/i);
-                if (orderMatch) {
-                    let customer, vehicle;
-                    if (orderMatch.length === 3) {
-                        if (orderMatch[2].toUpperCase().includes('NL-') || orderMatch[2].toUpperCase().includes('KA') || orderMatch[2].toUpperCase().includes('MH')) {
-                            customer = orderMatch[1].trim();
-                            vehicle = orderMatch[2].toUpperCase();
-                        } else if (orderMatch[1].toUpperCase().includes('NL-') || orderMatch[1].toUpperCase().includes('KA') || orderMatch[1].toUpperCase().includes('MH')) {
-                            vehicle = orderMatch[1].toUpperCase();
-                            customer = orderMatch[2].trim();
+            // ---- ADD VEHICLE ----
+            async _handleAddVehicle() {
+                this.toast.show('🚗 Opening Add Vehicle form...', 'info', 2000);
+                if (this.app.router) {
+                    this.app.router.navigate('inventory');
+                    setTimeout(() => {
+                        const page = this.app.router.currentPage;
+                        if (page && page.constructor && page.constructor.name === 'Inventory' && typeof page.showForm === 'function') {
+                            page.showForm();
+                            this.toast.show('📝 Add Vehicle form opened', 'success', 3000);
                         } else {
-                            customer = orderMatch[1].trim();
-                            vehicle = orderMatch[2].trim().toUpperCase();
+                            this.toast.show('Please click the "Add Vehicle" button on the inventory page', 'info', 3000);
                         }
-                    } else {
-                        this.toast.show('Could not parse order. Try: "create order for John on NL-101"', 'warning', 5000);
-                        this.micBtn.classList.remove('processing');
-                        return;
-                    }
-                    if (!customer || !vehicle) {
-                        this.toast.show('Could not parse order. Try: "create order for John on NL-101"', 'warning', 5000);
-                        this.micBtn.classList.remove('processing');
-                        return;
-                    }
-                    await this._handleCreateOrder(customer, vehicle);
-                    this.micBtn.classList.remove('processing');
-                    return;
+                    }, 600);
+                } else {
+                    this.toast.show('Router not available. Please navigate to Inventory manually.', 'error');
                 }
             }
 
-            // ---- HOW MANY TASKS FOR WORKER ----
-            const countMatch = text.match(/how\s+many\s+(?:work|tasks)\s+(?:assigned\s+to|for)\s+(\S+)/i) ||
-                text.match(/show\s+(?:me\s+)?tasks\s+for\s+(\S+)/i) ||
-                text.match(/count\s+tasks\s+for\s+(\S+)/i) ||
-                text.match(/tasks\s+for\s+(\S+)/i);
-            if (countMatch) {
-                const workerName = countMatch[1].trim();
-                await this._handleCountWork(workerName);
-                this.micBtn.classList.remove('processing');
-                return;
+            // ---- CREATE ORDER ----
+            async _handleCreateOrder(customer, vehicle) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
+                    if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found. Add it to inventory first.`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const sales = await DataService.getSales();
+                    const existing = sales.find(s =>
+                        s.vehicleNumber && s.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
+                        s.status !== 'delivered'
+                    );
+                    if (existing) { this.toast.show(`⚠️ ${vehicle} already has an active order (${existing.token})`, 'warning', 4000);
+                        this.loader.hide(); return; }
+                    const deliveryDate = new Date();
+                    deliveryDate.setDate(deliveryDate.getDate() + 14);
+                    const req = { tinkering: true, mechanical: true, dummyClosing: true, bodyCoach: true, painting: true,
+                        remarks: 'Auto-created via voice command' };
+                    const orderData = {
+                        orderType: 'vehicle',
+                        salesperson: SALESPEOPLE[0] || 'Ahmed',
+                        vehicleNumber: vehicle.toUpperCase(),
+                        customerName: customer,
+                        customerPhone: '',
+                        customerEmail: '',
+                        deliveryDate: deliveryDate.toISOString().slice(0, 10),
+                        advanceAmount: 0,
+                        paintColour: '',
+                        requirements: JSON.stringify(req),
+                        status: 'confirmed'
+                    };
+                    const result = await DataService.addSales(orderData);
+                    this.toast.show(`✅ Order created for ${customer} on ${vehicle} — Token: ${result.token}`, 'success', 5000);
+                    this.loader.hide();
+                    if (this.app.router) this.app.router.navigate('sales');
+                } catch (err) { this.toast.show('❌ Failed to create order: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
-            // ---- WHICH STOCK TO PURCHASE ----
-            if (text.includes('stock to purchase') || text.includes('which stock') ||
-                text.includes('what to buy') || text.includes('stock to buy') ||
-                text.includes('low stock') || text.includes('inventory to purchase')) {
-                await this._handleStockToPurchase();
-                this.micBtn.classList.remove('processing');
-                return;
+            // ---- COUNT WORK ----
+            async _handleCountWork(workerName) {
+                this.loader.show();
+                try {
+                    const workers = await DataService.getWorkers();
+                    const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
+                        w.name.toLowerCase().includes(workerName.toLowerCase()));
+                    if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t =>
+                        t.assignedWorkerId && t.assignedWorkerId.includes(worker.id) &&
+                        t.status !== 'completed'
+                    );
+                    const total = tasks.length;
+                    const byStatus = {
+                        pending: tasks.filter(t => t.status === 'pending').length,
+                        in_progress: tasks.filter(t => t.status === 'in_progress').length,
+                        pending_approval: tasks.filter(t => t.status === 'pending_approval').length
+                    };
+                    const modal = this.modal;
+                    const html = `
+                        <div style="padding:0.5rem 0;">
+                            <h3>👷 ${worker.name}</h3>
+                            <p style="color:var(--dark-gray);">${worker.department||'No dept'} • ${worker.employeeType||'Company'}</p>
+                            <div class="dashboard-stats" style="grid-template-columns:1fr 1fr 1fr;">
+                                <div class="stat-card warning"><div class="stat-label">Pending</div><div class="stat-value">${byStatus.pending}</div></div>
+                                <div class="stat-card info"><div class="stat-label">In Progress</div><div class="stat-value">${byStatus.in_progress}</div></div>
+                                <div class="stat-card danger"><div class="stat-label">QC Pending</div><div class="stat-value">${byStatus.pending_approval}</div></div>
+                            </div>
+                            <div style="font-size:1.2rem;font-weight:700;text-align:center;padding:0.5rem;background:var(--light-gray);border-radius:var(--radius);">
+                                Total Active: <span style="color:var(--primary-blue);">${total}</span>
+                            </div>
+                            ${tasks.length > 0 ? `<div style="margin-top:0.5rem;max-height:150px;overflow-y:auto;font-size:0.8rem;">${tasks.map(t => `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-bottom:1px solid #f5f5f5;"><span>${t.taskName}</span><span style="font-size:0.7rem;">${t.vehicleNumber||'—'}</span><span class="badge badge-${t.status}">${t.status}</span></div>`).join('')}</div>` : '<p style="color:var(--dark-gray);margin-top:0.5rem;">No active tasks.</p>'}
+                        </div>
+                    `;
+                    modal.open({ title: `📋 Work Summary — ${worker.name}`, body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
-            // ---- SHOW DELIVERED VEHICLES ----
-            if (text.includes('delivered vehicles') || text.includes('show delivered') ||
-                text.includes('show me delivered') || text.includes('delivered inventory')) {
-                await this._handleShowDelivered();
-                this.micBtn.classList.remove('processing');
-                return;
+            // ---- STOCK TO PURCHASE ----
+            async _handleStockToPurchase() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getPurchaseInventory();
+                    const lowStock = inventory.filter(item => (item.quantity || 0) < 3);
+                    if (lowStock.length === 0) { this.toast.show('✅ All stock items are sufficiently stocked.', 'success', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Product</th><th>Qty</th><th>Recommended Order</th></tr></thead>
+                                <tbody>
+                                    ${lowStock.map(item => `<tr><td><strong>${item.productName}</strong></td><td style="color:var(--danger);">${item.quantity||0}</td><td><span style="font-weight:600;">${Math.max(10,(item.quantity||0)*2)}</span></td></tr>`).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">⚠️ ${lowStock.length} item(s) below safety stock (3 units).</div>
+                        </div>
+                    `;
+                    modal.open({ title: '🛒 Stock to Purchase', body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
-            // ---- STATUS OF VEHICLE ----
-            const statusMatch = text.match(/status\s+of\s+(\S+)/i);
-            if (statusMatch) {
-                const vehicle = statusMatch[1].toUpperCase();
-                await this._handleVehicleStatus(vehicle);
-                this.micBtn.classList.remove('processing');
-                return;
+            // ---- SHOW DELIVERED ----
+            async _handleShowDelivered() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const delivered = inventory.filter(v => v.inventoryStatus === 'Delivered');
+                    if (delivered.length === 0) { this.toast.show('ℹ️ No delivered vehicles.', 'info', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th></tr></thead>
+                                <tbody>
+                                    ${delivered.map(v => `<tr><td><strong>${v.vehicleNumber}</strong></td><td>${v.vehicleName||'—'}</td><td>${v.model||'—'}</td></tr>`).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${delivered.length} delivered</div>
+                        </div>
+                    `;
+                    modal.open({ title: '📦 Delivered Vehicles', body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
-            // ---- STATUS (fleet stats) ----
-            if (text === 'status' || text === 'fleet status' || text === 'show status') {
-                await this._handleFleetStatus();
-                this.micBtn.classList.remove('processing');
-                return;
+            // ---- VEHICLE STATUS ----
+            async _handleVehicleStatus(vehicle) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const item = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
+                    if (!item) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
+                        this.loader.hide(); return; }
+                    const production = await DataService.getProduction();
+                    const tasks = production.filter(t => t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
+                    const total = tasks.length;
+                    const completed = tasks.filter(t => t.status === 'completed').length;
+                    const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+                    const modal = this.modal;
+                    const statusHtml = `
+                        <div class="vehicle-detail-card">
+                            <h3>🚗 ${item.vehicleNumber} — ${item.vehicleName || ''}</h3>
+                            <div class="detail-section">
+                                <div class="grid-2">
+                                    <div><span class="detail-label">Status</span><br><span class="badge ${item.inventoryStatus==='Delivered'?'badge-archived':'badge-completed'}">${item.inventoryStatus}</span></div>
+                                    <div><span class="detail-label">FC Status</span><br><span class="badge ${item.fcStatus==='ready'?'badge-fc-ready':item.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${item.fcStatus || 'Not started'}</span></div>
+                                    <div><span class="detail-label">Progress</span><br><span style="font-weight:600;font-size:1.2rem;">${progress}%</span></div>
+                                    <div><span class="detail-label">Tasks</span><br><span style="font-weight:600;">${completed}/${total} done</span></div>
+                                </div>
+                            </div>
+                            <div class="detail-section">
+                                <h4>Task List</h4>
+                                ${tasks.length === 0 ? '<p style="color:var(--dark-gray);">No production tasks.</p>' :
+                                    tasks.map(t => `
+                                        <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid #f5f5f5;font-size:0.85rem;">
+                                            <span>${t.taskName}</span>
+                                            <span class="badge badge-${t.status}">${t.status}</span>
+                                            ${t.assignedWorkerId ? `<span style="font-size:0.7rem;color:var(--dark-gray);">👷 ${t.assignedWorkerId.split(',').map(id => 'Worker').join(', ')}</span>` : ''}
+                                        </div>
+                                    `).join('')
+                                }
+                            </div>
+                            ${item.fcRemarks ? `<div class="fc-remark-box">📝 FC Remark: ${item.fcRemarks}</div>` : ''}
+                        </div>
+                    `;
+                    modal.open({ title: `📊 Status - ${vehicle}`, body: statusHtml, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+
+            // ---- FLEET STATUS ----
+            async _handleFleetStatus() {
+                this.loader.show();
+                try {
+                    const [inventory, production, sales] = await Promise.all([
+                        DataService.getInventory(),
+                        DataService.getProduction(),
+                        DataService.getSales()
+                    ]);
+                    const active = inventory.filter(v => v.inventoryStatus !== 'Delivered').length;
+                    const delivered = inventory.filter(v => v.inventoryStatus === 'Delivered').length;
+                    const inProd = production.filter(t => t.status === 'in_progress' || t.status === 'pending').length;
+                    const completed = production.filter(t => t.status === 'completed').length;
+                    const pendingQC = production.filter(t => t.status === 'pending_approval').length;
+                    const activeOrders = sales.filter(s => s.status !== 'delivered').length;
+                    const totalOrders = sales.length;
+                    const modal = this.modal;
+                    const html = `
+                        <div class="dashboard-stats" style="grid-template-columns:1fr 1fr;">
+                            <div class="stat-card"><div class="stat-label">Active Vehicles</div><div class="stat-value">${active}</div><span class="material-icons stat-icon">directions_car</span></div>
+                            <div class="stat-card info"><div class="stat-label">Delivered/Archived</div><div class="stat-value">${delivered}</div><span class="material-icons stat-icon">archive</span></div>
+                            <div class="stat-card warning"><div class="stat-label">In Production</div><div class="stat-value">${inProd}</div><span class="material-icons stat-icon">build</span></div>
+                            <div class="stat-card success"><div class="stat-label">Completed</div><div class="stat-value">${completed}</div><span class="material-icons stat-icon">check_circle</span></div>
+                            <div class="stat-card danger"><div class="stat-label">Pending QC</div><div class="stat-value">${pendingQC}</div><span class="material-icons stat-icon">pending</span></div>
+                            <div class="stat-card info"><div class="stat-label">Active Orders</div><div class="stat-value">${activeOrders}</div><span class="material-icons stat-icon">receipt</span></div>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--dark-gray);text-align:center;margin-top:0.5rem;">
+                            Total Orders: ${totalOrders} &nbsp;•&nbsp; Total Vehicles: ${inventory.length}
+                        </div>
+                    `;
+                    modal.open({ title: '📊 Fleet Status', body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
             // ---- LIST VEHICLES ----
-            if (text === 'list vehicles' || text === 'show vehicles' || text === 'list all vehicles' ||
-                text === 'show all vehicles') {
-                await this._handleListVehicles();
-                this.micBtn.classList.remove('processing');
-                return;
+            async _handleListVehicles() {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const active = inventory.filter(v => v.inventoryStatus !== 'Delivered');
+                    if (active.length === 0) { this.toast.show('No active vehicles found.', 'info', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Status</th><th>FC</th></tr></thead>
+                                <tbody>
+                                    ${active.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                            <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${active.length} vehicles</div>
+                        </div>
+                    `;
+                    modal.open({ title: '🚗 Active Vehicles', body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
             // ---- LIST WORKERS ----
-            if (text === 'list workers' || text === 'show workers' || text === 'list all workers' ||
-                text === 'show all workers') {
-                await this._handleListWorkers();
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- FIND / SEARCH ----
-            const findMatch = text.match(/find\s+(.+)/i) || text.match(/search\s+(.+)/i);
-            if (findMatch) {
-                const query = findMatch[1].trim();
-                // Check if it's a vehicle number
-                if (query.match(/^[A-Z]{2}[\s\-/]?[0-9]{1,2}[\s\-/]?[A-Z]{0,2}[\s\-/]?[0-9]{4}$/i)) {
-                    await this._handleShowVehicle(query);
-                } else {
-                    await this._handleSearch(query);
-                }
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- SHOW ME ALL [filter] ----
-            const showMatch = text.match(/show\s+me\s+(?:all\s+)?(.+)/i);
-            if (showMatch) {
-                const filterText = showMatch[1].trim();
-                await this._handleShowMe(filterText);
-                this.micBtn.classList.remove('processing');
-                return;
-            }
-
-            // ---- FALLBACK ----
-            this.toast.show('🤔 Command not recognized. Say "help" for examples.', 'warning', 4000);
-            this.micBtn.classList.remove('processing');
-
-        } catch (err) {
-            console.error('Command error:', err);
-            this.toast.show('❌ Error: ' + (err.message || err), 'error', 5000);
-            this.micBtn.classList.remove('processing');
-        }
-    }
-
-    // ==============================================================
-    // NEW: "SHOW ME VEHICLE" - filters supervisor by vehicle number
-    // ==============================================================
-    async _handleShowVehicle(vehicleNumber) {
-        this.loader.show();
-        try {
-            // Navigate to supervisor if not already there
-            const currentPage = this._getCurrentPage();
-            if (currentPage !== 'supervisor') {
-                await this._navigateTo('supervisor');
-                // Wait for supervisor to load
-                await new Promise(resolve => setTimeout(resolve, 600));
-            }
-
-            const router = this.app.router;
-            if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
-                await router.currentPage.loadData();
-                if (typeof router.currentPage.renderQueue === 'function') {
-                    // Set the search term in the supervisor page
-                    const page = router.currentPage;
-                    if (page.searchTerm !== undefined) {
-                        page.searchTerm = vehicleNumber;
-                        page.renderQueue();
-                        this.toast.show(`🔍 Filtered to vehicle: ${vehicleNumber}`, 'success', 3000);
-                    }
-                }
-            } else {
-                this.toast.show('Please navigate to Supervisor manually and search for the vehicle.', 'info', 3000);
-            }
-            this.loader.hide();
-        } catch (err) {
-            this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide();
-        }
-    }
-
-    // ==============================================================
-    // NEW: "SHOW ME CUSTOMER" - filters supervisor by customer name
-    // ==============================================================
-    async _handleShowCustomer(customerName) {
-        this.loader.show();
-        try {
-            const currentPage = this._getCurrentPage();
-            if (currentPage !== 'supervisor') {
-                await this._navigateTo('supervisor');
-                await new Promise(resolve => setTimeout(resolve, 600));
-            }
-
-            const router = this.app.router;
-            if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
-                await router.currentPage.loadData();
-                const page = router.currentPage;
-                if (page.searchTerm !== undefined) {
-                    page.searchTerm = customerName;
-                    page.renderQueue();
-                    this.toast.show(`🔍 Filtered to customer: ${customerName}`, 'success', 3000);
-                }
-            } else {
-                this.toast.show('Please navigate to Supervisor manually and search for the customer.', 'info', 3000);
-            }
-            this.loader.hide();
-        } catch (err) {
-            this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide();
-        }
-    }
-
-    // ==============================================================
-    // NEW: "SHOW ME ACTIVE" - shows active vehicles/orders
-    // ==============================================================
-    async _handleShowActive() {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const active = inventory.filter(v => v.inventoryStatus !== 'Delivered');
-            if (active.length === 0) {
-                this.toast.show('ℹ️ No active vehicles found.', 'info', 3000);
-                this.loader.hide();
-                return;
-            }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <h3>🚗 Active Vehicles (${active.length})</h3>
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Vehicle</th><th>Name</th><th>Status</th><th>FC</th></tr></thead>
-                        <tbody>
-                            ${active.map(v => `
-                                <tr>
-                                    <td><strong>${v.vehicleNumber}</strong></td>
-                                    <td>${v.vehicleName || '—'}</td>
-                                    <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
-                                    <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            modal.open({ title: '🚗 Active Vehicles', body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) {
-            this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide();
-        }
-    }
-
-    // ==============================================================
-    // "OPEN ALL TABS" - show all available tabs
-    // ==============================================================
-    async _handleOpenAllTabs() {
-        const tabMap = this._getTabMap();
-        const html = `
-            <div style="max-height:50vh;overflow-y:auto;">
-                <h3>📋 Available Tabs</h3>
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-top:0.5rem;">
-                    ${Object.entries(tabMap).map(([key, val]) => `
-                        <div style="background:var(--light-gray);padding:0.4rem 0.6rem;border-radius:var(--radius);display:flex;align-items:center;gap:0.4rem;cursor:pointer;" onclick="window.__app.router.navigate('${val.page}'); document.getElementById('modalOverlay').style.display='none';">
-                            <span class="material-icons" style="font-size:18px;">${val.icon}</span>
-                            <span>${val.label}</span>
+            async _handleListWorkers() {
+                this.loader.show();
+                try {
+                    const workers = await DataService.getWorkers();
+                    if (workers.length === 0) { this.toast.show('No workers found.', 'info', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Name</th><th>Department</th><th>Type</th></tr></thead>
+                                <tbody>
+                                    ${workers.map(w => `
+                                        <tr>
+                                            <td><strong>${w.name}</strong></td>
+                                            <td>${w.department || '—'}</td>
+                                            <td><span class="badge ${w.employeeType==='Contractual'?'badge-pending':'badge-completed'}">${w.employeeType || 'Company'}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${workers.length} workers</div>
                         </div>
-                    `).join('')}
-                </div>
-                <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Say "open [tab name]" to navigate.</div>
-            </div>
-        `;
-        this.modal.open({ title: '📋 All Tabs', body: html, confirmText: 'Close', showCancel: false,
-            onConfirm: () => this.modal.close() });
-        this.toast.show('📋 Tab list opened', 'success', 1500);
-    }
-
-    // ==============================================================
-    // NAVIGATE
-    // ==============================================================
-    async _navigateTo(page) {
-        if (this.app.router) {
-            this.app.router.navigate(page);
-            this.toast.show(`🔀 Navigating to ${page}`, 'success', 1500);
-        } else {
-            this.toast.show('Router not available', 'error');
-        }
-    }
-
-    _getCurrentPage() {
-        return window.location.hash.slice(1) || 'dashboard';
-    }
-
-    // ==============================================================
-    // COMMAND HANDLERS (all existing handlers)
-    // ==============================================================
-
-    // ---- START TASK ----
-    async _handleStartTask(taskName) {
-        this.loader.show();
-        try {
-            const currentUser = this.app.auth.getCurrentUser();
-            if (!currentUser) { this.toast.show('Please log in first', 'error');
-                this.loader.hide(); return; }
-            const userId = currentUser.id || currentUser.uid || '';
-            const production = await DataService.getProduction();
-            let tasks = production.filter(t =>
-                t.assignedWorkerId && t.assignedWorkerId.includes(userId) &&
-                t.status === 'pending'
-            );
-            if (tasks.length === 0) { this.toast.show('No pending tasks assigned to you.', 'info', 3000);
-                this.loader.hide(); return; }
-            let task = tasks[0];
-            if (taskName) {
-                const found = tasks.find(t => t.taskName.toLowerCase() === taskName.toLowerCase());
-                if (found) task = found;
-                else { this.toast.show(`No pending task "${taskName}" assigned to you.`, 'warning', 3000);
-                    this.loader.hide(); return; }
-            }
-            if (!task.beforePhotoUploaded) {
-                this.toast.show('⚠️ Upload a "Before" photo first using Work Log.', 'warning', 4000);
-                this.loader.hide();
-                if (this.app.router) this.app.router.navigate('worker');
-                return;
-            }
-            await DataService.startWork(task.id);
-            this.toast.show(`✅ Started "${task.taskName}" on ${task.vehicleNumber}`, 'success', 4000);
-            this.loader.hide();
-            if (this.app.router) {
-                if (this.app.router.currentPage && typeof this.app.router.currentPage.loadData === 'function') {
-                    await this.app.router.currentPage.loadData();
-                    if (typeof this.app.router.currentPage.renderTasks === 'function') this.app.router.currentPage.renderTasks();
-                }
-                this.app.router.navigate('worker');
-            }
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- END TASK ----
-    async _handleEndTask(taskName) {
-        this.loader.show();
-        try {
-            const currentUser = this.app.auth.getCurrentUser();
-            if (!currentUser) { this.toast.show('Please log in first', 'error');
-                this.loader.hide(); return; }
-            const userId = currentUser.id || currentUser.uid || '';
-            const production = await DataService.getProduction();
-            let tasks = production.filter(t =>
-                t.assignedWorkerId && t.assignedWorkerId.includes(userId) &&
-                t.status === 'in_progress'
-            );
-            if (tasks.length === 0) { this.toast.show('No tasks in progress assigned to you.', 'info', 3000);
-                this.loader.hide(); return; }
-            let task = tasks[0];
-            if (taskName) {
-                const found = tasks.find(t => t.taskName.toLowerCase() === taskName.toLowerCase());
-                if (found) task = found;
-                else { this.toast.show(`No task "${taskName}" in progress assigned to you.`, 'warning', 3000);
-                    this.loader.hide(); return; }
-            }
-            if (!task.afterPhotoUploaded) {
-                this.toast.show('⚠️ Upload an "After" photo first using Work Log.', 'warning', 4000);
-                this.loader.hide();
-                if (this.app.router) this.app.router.navigate('worker');
-                return;
-            }
-            await DataService.completeWork(task.id, 'Completed via voice command');
-            this.toast.show(`✅ Completed "${task.taskName}" – sent for QC approval`, 'success', 4000);
-            this.loader.hide();
-            if (this.app.router) {
-                if (this.app.router.currentPage && typeof this.app.router.currentPage.loadData === 'function') {
-                    await this.app.router.currentPage.loadData();
-                    if (typeof this.app.router.currentPage.renderTasks === 'function') this.app.router.currentPage.renderTasks();
-                }
-                this.app.router.navigate('worker');
-            }
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- ASSIGN ----
-    async _handleAssign(vehicle, taskName, workerName) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
-            if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const workers = await DataService.getWorkers();
-            const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
-                w.name.toLowerCase().includes(workerName.toLowerCase()));
-            if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const production = await DataService.getProduction();
-            const task = production.find(t =>
-                t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
-                t.taskName.toLowerCase() === taskName.toLowerCase()
-            );
-            if (!task) { this.toast.show(`❌ Task "${taskName}" not found for ${vehicle}`, 'error', 4000);
-                this.loader.hide(); return; }
-            if (task.assignedWorkerId && task.assignedWorkerId.length > 0) {
-                this.toast.show(`⚠️ Task already assigned. Unassign first.`, 'warning', 4000);
-                this.loader.hide();
-                return;
-            }
-            await DataService.updateProduction(task.id, { assignedWorkerId: worker.id, status: 'pending' });
-            this.toast.show(`✅ Assigned "${taskName}" on ${vehicle} to ${worker.name}`, 'success', 5000);
-            this.loader.hide();
-            const router = this.app.router;
-            if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
-                await router.currentPage.loadData();
-                if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
-                if (typeof router.currentPage.renderTasks === 'function') router.currentPage.renderTasks();
-            }
-        } catch (err) { this.toast.show('❌ Assignment failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- ASSIGN WITH AUTO TASK ----
-    async _handleAssignWithAutoTask(vehicle, workerName) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
-            if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const workers = await DataService.getWorkers();
-            const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
-                w.name.toLowerCase().includes(workerName.toLowerCase()));
-            if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const production = await DataService.getProduction();
-            const pendingTasks = production.filter(t =>
-                t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
-                !t.assignedWorkerId &&
-                t.status !== 'completed'
-            );
-            if (pendingTasks.length === 0) {
-                this.toast.show(`ℹ️ No pending tasks for ${vehicle} to assign.`, 'info', 3000);
-                this.loader.hide();
-                return;
-            }
-            const task = pendingTasks[0];
-            await DataService.updateProduction(task.id, { assignedWorkerId: worker.id, status: 'pending' });
-            this.toast.show(`✅ Assigned "${task.taskName}" on ${vehicle} to ${worker.name}`, 'success', 5000);
-            this.loader.hide();
-            const router = this.app.router;
-            if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
-                await router.currentPage.loadData();
-                if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
-                if (typeof router.currentPage.renderTasks === 'function') router.currentPage.renderTasks();
-            }
-        } catch (err) { this.toast.show('❌ Assignment failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- UNASSIGN ----
-    async _handleUnassign(vehicle, workerName) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
-            if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const workers = await DataService.getWorkers();
-            const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
-                w.name.toLowerCase().includes(workerName.toLowerCase()));
-            if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const production = await DataService.getProduction();
-            const tasks = production.filter(t =>
-                t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
-                t.assignedWorkerId && t.assignedWorkerId.includes(worker.id) &&
-                t.status !== 'completed'
-            );
-            if (tasks.length === 0) { this.toast.show(`ℹ️ No tasks for ${worker.name} on ${vehicle}`, 'info', 4000);
-                this.loader.hide(); return; }
-            for (const task of tasks) {
-                const workerIds = task.assignedWorkerId.split(',').filter(id => id.trim() !== worker.id).map(id => id.trim());
-                await DataService.updateProduction(task.id, { assignedWorkerId: workerIds.join(','),
-                    status: workerIds.length ? 'pending' : 'pending' });
-            }
-            this.toast.show(`✅ Unassigned ${tasks.length} task(s) for ${worker.name} on ${vehicle}`, 'success', 5000);
-            this.loader.hide();
-            const router = this.app.router;
-            if (router && router.currentPage && typeof router.currentPage.loadData === 'function') {
-                await router.currentPage.loadData();
-                if (typeof router.currentPage.renderQueue === 'function') router.currentPage.renderQueue();
-                if (typeof router.currentPage.renderTasks === 'function') router.currentPage.renderTasks();
-            }
-        } catch (err) { this.toast.show('❌ Unassign failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- SHOW PENDING WORKS ----
-    async _handleShowPendingWorks(customerName) {
-        this.loader.show();
-        try {
-            const sales = await DataService.getSales();
-            const orders = sales.filter(s => s.customerName && s.customerName.toLowerCase().includes(customerName.toLowerCase()));
-            if (orders.length === 0) { this.toast.show(`ℹ️ No orders found for customer "${customerName}"`, 'info', 3000);
-                this.loader.hide(); return; }
-            const production = await DataService.getProduction();
-            const pendingTasks = production.filter(p => {
-                const sale = orders.find(o => o.vehicleNumber === p.vehicleNumber);
-                return sale && p.status !== 'completed';
-            });
-            if (pendingTasks.length === 0) { this.toast.show(`✅ All tasks completed for ${customerName}`, 'success', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <h3>Pending Works for ${customerName}</h3>
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Vehicle</th><th>Task</th><th>Status</th></tr></thead>
-                        <tbody>
-                            ${pendingTasks.map(t => `
-                                <tr>
-                                    <td><strong>${t.vehicleNumber}</strong></td>
-                                    <td>${t.taskName}</td>
-                                    <td><span class="badge badge-${t.status}">${t.status}</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                </div>
-            `;
-            modal.open({ title: `📋 Pending Works`, body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- ADD VEHICLE ----
-    async _handleAddVehicle() {
-        this.toast.show('🚗 Opening Add Vehicle form...', 'info', 2000);
-        if (this.app.router) {
-            this.app.router.navigate('inventory');
-            setTimeout(() => {
-                const page = this.app.router.currentPage;
-                if (page && page.constructor && page.constructor.name === 'Inventory' && typeof page.showForm === 'function') {
-                    page.showForm();
-                    this.toast.show('📝 Add Vehicle form opened', 'success', 3000);
-                } else {
-                    this.toast.show('Please click the "Add Vehicle" button on the inventory page', 'info', 3000);
-                }
-            }, 600);
-        } else {
-            this.toast.show('Router not available. Please navigate to Inventory manually.', 'error');
-        }
-    }
-
-    // ---- CREATE ORDER ----
-    async _handleCreateOrder(customer, vehicle) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const vehicleItem = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
-            if (!vehicleItem) { this.toast.show(`❌ Vehicle ${vehicle} not found. Add it to inventory first.`, 'error', 4000);
-                this.loader.hide(); return; }
-            const sales = await DataService.getSales();
-            const existing = sales.find(s =>
-                s.vehicleNumber && s.vehicleNumber.toUpperCase() === vehicle.toUpperCase() &&
-                s.status !== 'delivered'
-            );
-            if (existing) { this.toast.show(`⚠️ ${vehicle} already has an active order (${existing.token})`, 'warning', 4000);
-                this.loader.hide(); return; }
-            const deliveryDate = new Date();
-            deliveryDate.setDate(deliveryDate.getDate() + 14);
-            const req = { tinkering: true, mechanical: true, dummyClosing: true, bodyCoach: true, painting: true,
-                remarks: 'Auto-created via voice command' };
-            const orderData = {
-                orderType: 'vehicle',
-                salesperson: SALESPEOPLE[0] || 'Ahmed',
-                vehicleNumber: vehicle.toUpperCase(),
-                customerName: customer,
-                customerPhone: '',
-                customerEmail: '',
-                deliveryDate: deliveryDate.toISOString().slice(0, 10),
-                advanceAmount: 0,
-                paintColour: '',
-                requirements: JSON.stringify(req),
-                status: 'confirmed'
-            };
-            const result = await DataService.addSales(orderData);
-            this.toast.show(`✅ Order created for ${customer} on ${vehicle} — Token: ${result.token}`, 'success', 5000);
-            this.loader.hide();
-            if (this.app.router) this.app.router.navigate('sales');
-        } catch (err) { this.toast.show('❌ Failed to create order: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- COUNT WORK ----
-    async _handleCountWork(workerName) {
-        this.loader.show();
-        try {
-            const workers = await DataService.getWorkers();
-            const worker = workers.find(w => w.name.toLowerCase() === workerName.toLowerCase() ||
-                w.name.toLowerCase().includes(workerName.toLowerCase()));
-            if (!worker) { this.toast.show(`❌ Worker "${workerName}" not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const production = await DataService.getProduction();
-            const tasks = production.filter(t =>
-                t.assignedWorkerId && t.assignedWorkerId.includes(worker.id) &&
-                t.status !== 'completed'
-            );
-            const total = tasks.length;
-            const byStatus = {
-                pending: tasks.filter(t => t.status === 'pending').length,
-                in_progress: tasks.filter(t => t.status === 'in_progress').length,
-                pending_approval: tasks.filter(t => t.status === 'pending_approval').length
-            };
-            const modal = this.modal;
-            const html = `
-                <div style="padding:0.5rem 0;">
-                    <h3>👷 ${worker.name}</h3>
-                    <p style="color:var(--dark-gray);">${worker.department||'No dept'} • ${worker.employeeType||'Company'}</p>
-                    <div class="dashboard-stats" style="grid-template-columns:1fr 1fr 1fr;">
-                        <div class="stat-card warning"><div class="stat-label">Pending</div><div class="stat-value">${byStatus.pending}</div></div>
-                        <div class="stat-card info"><div class="stat-label">In Progress</div><div class="stat-value">${byStatus.in_progress}</div></div>
-                        <div class="stat-card danger"><div class="stat-label">QC Pending</div><div class="stat-value">${byStatus.pending_approval}</div></div>
-                    </div>
-                    <div style="font-size:1.2rem;font-weight:700;text-align:center;padding:0.5rem;background:var(--light-gray);border-radius:var(--radius);">
-                        Total Active: <span style="color:var(--primary-blue);">${total}</span>
-                    </div>
-                    ${tasks.length > 0 ? `<div style="margin-top:0.5rem;max-height:150px;overflow-y:auto;font-size:0.8rem;">${tasks.map(t => `<div style="display:flex;justify-content:space-between;padding:0.15rem 0;border-bottom:1px solid #f5f5f5;"><span>${t.taskName}</span><span style="font-size:0.7rem;">${t.vehicleNumber||'—'}</span><span class="badge badge-${t.status}">${t.status}</span></div>`).join('')}</div>` : '<p style="color:var(--dark-gray);margin-top:0.5rem;">No active tasks.</p>'}
-                </div>
-            `;
-            modal.open({ title: `📋 Work Summary — ${worker.name}`, body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- STOCK TO PURCHASE ----
-    async _handleStockToPurchase() {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getPurchaseInventory();
-            const lowStock = inventory.filter(item => (item.quantity || 0) < 3);
-            if (lowStock.length === 0) { this.toast.show('✅ All stock items are sufficiently stocked.', 'success', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Product</th><th>Qty</th><th>Recommended Order</th></tr></thead>
-                        <tbody>
-                            ${lowStock.map(item => `<tr><td><strong>${item.productName}</strong></td><td style="color:var(--danger);">${item.quantity||0}</td><td><span style="font-weight:600;">${Math.max(10,(item.quantity||0)*2)}</span></td></tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">⚠️ ${lowStock.length} item(s) below safety stock (3 units).</div>
-                </div>
-            `;
-            modal.open({ title: '🛒 Stock to Purchase', body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- SHOW DELIVERED ----
-    async _handleShowDelivered() {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const delivered = inventory.filter(v => v.inventoryStatus === 'Delivered');
-            if (delivered.length === 0) { this.toast.show('ℹ️ No delivered vehicles.', 'info', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th></tr></thead>
-                        <tbody>
-                            ${delivered.map(v => `<tr><td><strong>${v.vehicleNumber}</strong></td><td>${v.vehicleName||'—'}</td><td>${v.model||'—'}</td></tr>`).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${delivered.length} delivered</div>
-                </div>
-            `;
-            modal.open({ title: '📦 Delivered Vehicles', body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- VEHICLE STATUS ----
-    async _handleVehicleStatus(vehicle) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const item = inventory.find(v => v.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
-            if (!item) { this.toast.show(`❌ Vehicle ${vehicle} not found`, 'error', 4000);
-                this.loader.hide(); return; }
-            const production = await DataService.getProduction();
-            const tasks = production.filter(t => t.vehicleNumber && t.vehicleNumber.toUpperCase() === vehicle.toUpperCase());
-            const total = tasks.length;
-            const completed = tasks.filter(t => t.status === 'completed').length;
-            const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
-            const modal = this.modal;
-            const statusHtml = `
-                <div class="vehicle-detail-card">
-                    <h3>🚗 ${item.vehicleNumber} — ${item.vehicleName || ''}</h3>
-                    <div class="detail-section">
-                        <div class="grid-2">
-                            <div><span class="detail-label">Status</span><br><span class="badge ${item.inventoryStatus==='Delivered'?'badge-archived':'badge-completed'}">${item.inventoryStatus}</span></div>
-                            <div><span class="detail-label">FC Status</span><br><span class="badge ${item.fcStatus==='ready'?'badge-fc-ready':item.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${item.fcStatus || 'Not started'}</span></div>
-                            <div><span class="detail-label">Progress</span><br><span style="font-weight:600;font-size:1.2rem;">${progress}%</span></div>
-                            <div><span class="detail-label">Tasks</span><br><span style="font-weight:600;">${completed}/${total} done</span></div>
-                        </div>
-                    </div>
-                    <div class="detail-section">
-                        <h4>Task List</h4>
-                        ${tasks.length === 0 ? '<p style="color:var(--dark-gray);">No production tasks.</p>' :
-                            tasks.map(t => `
-                                <div style="display:flex;justify-content:space-between;padding:0.2rem 0;border-bottom:1px solid #f5f5f5;font-size:0.85rem;">
-                                    <span>${t.taskName}</span>
-                                    <span class="badge badge-${t.status}">${t.status}</span>
-                                    ${t.assignedWorkerId ? `<span style="font-size:0.7rem;color:var(--dark-gray);">👷 ${t.assignedWorkerId.split(',').map(id => 'Worker').join(', ')}</span>` : ''}
-                                </div>
-                            `).join('')
-                        }
-                    </div>
-                    ${item.fcRemarks ? `<div class="fc-remark-box">📝 FC Remark: ${item.fcRemarks}</div>` : ''}
-                </div>
-            `;
-            modal.open({ title: `📊 Status - ${vehicle}`, body: statusHtml, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- FLEET STATUS ----
-    async _handleFleetStatus() {
-        this.loader.show();
-        try {
-            const [inventory, production, sales] = await Promise.all([
-                DataService.getInventory(),
-                DataService.getProduction(),
-                DataService.getSales()
-            ]);
-            const active = inventory.filter(v => v.inventoryStatus !== 'Delivered').length;
-            const delivered = inventory.filter(v => v.inventoryStatus === 'Delivered').length;
-            const inProd = production.filter(t => t.status === 'in_progress' || t.status === 'pending').length;
-            const completed = production.filter(t => t.status === 'completed').length;
-            const pendingQC = production.filter(t => t.status === 'pending_approval').length;
-            const activeOrders = sales.filter(s => s.status !== 'delivered').length;
-            const totalOrders = sales.length;
-            const modal = this.modal;
-            const html = `
-                <div class="dashboard-stats" style="grid-template-columns:1fr 1fr;">
-                    <div class="stat-card"><div class="stat-label">Active Vehicles</div><div class="stat-value">${active}</div><span class="material-icons stat-icon">directions_car</span></div>
-                    <div class="stat-card info"><div class="stat-label">Delivered/Archived</div><div class="stat-value">${delivered}</div><span class="material-icons stat-icon">archive</span></div>
-                    <div class="stat-card warning"><div class="stat-label">In Production</div><div class="stat-value">${inProd}</div><span class="material-icons stat-icon">build</span></div>
-                    <div class="stat-card success"><div class="stat-label">Completed</div><div class="stat-value">${completed}</div><span class="material-icons stat-icon">check_circle</span></div>
-                    <div class="stat-card danger"><div class="stat-label">Pending QC</div><div class="stat-value">${pendingQC}</div><span class="material-icons stat-icon">pending</span></div>
-                    <div class="stat-card info"><div class="stat-label">Active Orders</div><div class="stat-value">${activeOrders}</div><span class="material-icons stat-icon">receipt</span></div>
-                </div>
-                <div style="font-size:0.75rem;color:var(--dark-gray);text-align:center;margin-top:0.5rem;">
-                    Total Orders: ${totalOrders} &nbsp;•&nbsp; Total Vehicles: ${inventory.length}
-                </div>
-            `;
-            modal.open({ title: '📊 Fleet Status', body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- LIST VEHICLES ----
-    async _handleListVehicles() {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const active = inventory.filter(v => v.inventoryStatus !== 'Delivered');
-            if (active.length === 0) { this.toast.show('No active vehicles found.', 'info', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Vehicle</th><th>Name</th><th>Status</th><th>FC</th></tr></thead>
-                        <tbody>
-                            ${active.map(v => `
-                                <tr>
-                                    <td><strong>${v.vehicleNumber}</strong></td>
-                                    <td>${v.vehicleName || '—'}</td>
-                                    <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
-                                    <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${active.length} vehicles</div>
-                </div>
-            `;
-            modal.open({ title: '🚗 Active Vehicles', body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- LIST WORKERS ----
-    async _handleListWorkers() {
-        this.loader.show();
-        try {
-            const workers = await DataService.getWorkers();
-            if (workers.length === 0) { this.toast.show('No workers found.', 'info', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Name</th><th>Department</th><th>Type</th></tr></thead>
-                        <tbody>
-                            ${workers.map(w => `
-                                <tr>
-                                    <td><strong>${w.name}</strong></td>
-                                    <td>${w.department || '—'}</td>
-                                    <td><span class="badge ${w.employeeType==='Contractual'?'badge-pending':'badge-completed'}">${w.employeeType || 'Company'}</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Total: ${workers.length} workers</div>
-                </div>
-            `;
-            modal.open({ title: '👷 Workers', body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- SEARCH ----
-    async _handleSearch(query) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            const results = inventory.filter(v => {
-                const searchStr = `${v.vehicleNumber} ${v.vehicleName} ${v.model} ${v.category} ${v.bodyShape}`;
-                return searchStr.toLowerCase().includes(query.toLowerCase());
-            });
-            if (results.length === 0) { this.toast.show(`🔍 No results for "${query}"`, 'info', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th><th>Status</th></tr></thead>
-                        <tbody>
-                            ${results.map(v => `
-                                <tr>
-                                    <td><strong>${v.vehicleNumber}</strong></td>
-                                    <td>${v.vehicleName || '—'}</td>
-                                    <td>${v.model || '—'}</td>
-                                    <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Found ${results.length} vehicle(s)</div>
-                </div>
-            `;
-            modal.open({ title: `🔍 Search: "${query}"`, body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Search failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-
-    // ---- SHOW ME (filter) ----
-    async _handleShowMe(filterText) {
-        this.loader.show();
-        try {
-            const inventory = await DataService.getInventory();
-            let results = [];
-            let title = '';
-            const lower = filterText.toLowerCase();
-
-            if (lower.includes('tata ace')) {
-                results = inventory.filter(v => v.vehicleName && v.vehicleName.toLowerCase().includes('tata ace'));
-                title = 'Tata Ace Vehicles';
-            } else if (lower.includes('fc ready')) {
-                results = inventory.filter(v => v.fcStatus === 'ready');
-                title = 'Vehicles FC Ready';
-            } else if (lower.includes('fc in progress')) {
-                results = inventory.filter(v => v.fcStatus === 'in_progress');
-                title = 'Vehicles FC In Progress';
-            } else if (lower.includes('available')) {
-                results = inventory.filter(v => v.inventoryStatus === 'Available');
-                title = 'Available Vehicles';
-            } else if (lower.includes('delivered')) {
-                results = inventory.filter(v => v.inventoryStatus === 'Delivered');
-                title = 'Delivered / Archived Vehicles';
-            } else {
-                const keywords = filterText.split(/\s+/).filter(k => k.length > 2);
-                if (keywords.length > 0) {
-                    results = inventory.filter(v => {
-                        const searchStr = `${v.vehicleNumber} ${v.vehicleName} ${v.model} ${v.category} ${v.bodyShape} ${v.inventoryStatus} ${v.fcStatus}`.toLowerCase();
-                        return keywords.every(k => searchStr.includes(k.toLowerCase()));
-                    });
-                    title = `Vehicles matching "${filterText}"`;
-                } else {
-                    this.toast.show('Could not parse filter.', 'warning', 4000);
+                    `;
+                    modal.open({ title: '👷 Workers', body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
                     this.loader.hide();
-                    return;
-                }
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
             }
 
-            if (results.length === 0) { this.toast.show(`ℹ️ No vehicles found for "${filterText}"`, 'info', 3000);
-                this.loader.hide(); return; }
-            const modal = this.modal;
-            const html = `
-                <div style="max-height:50vh;overflow-y:auto;">
-                    <table style="width:100%;font-size:0.8rem;">
-                        <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th><th>FC</th><th>Status</th></tr></thead>
-                        <tbody>
-                            ${results.map(v => `
-                                <tr>
-                                    <td><strong>${v.vehicleNumber}</strong></td>
-                                    <td>${v.vehicleName || '—'}</td>
-                                    <td>${v.model || '—'}</td>
-                                    <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
-                                    <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':v.inventoryStatus==='Delivered'?'badge-archived':'badge-pending'}">${v.inventoryStatus}</span></td>
-                                </tr>
-                            `).join('')}
-                        </tbody>
-                    </table>
-                    <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Found ${results.length} vehicle(s)</div>
-                </div>
-            `;
-            modal.open({ title: `📋 ${title}`, body: html, confirmText: 'Close', showCancel: false,
-                onConfirm: () => modal.close() });
-            this.loader.hide();
-        } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
-            this.loader.hide(); }
-    }
-}
+            // ---- SEARCH ----
+            async _handleSearch(query) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    const results = inventory.filter(v => {
+                        const searchStr = `${v.vehicleNumber} ${v.vehicleName} ${v.model} ${v.category} ${v.bodyShape}`;
+                        return searchStr.toLowerCase().includes(query.toLowerCase());
+                    });
+                    if (results.length === 0) { this.toast.show(`🔍 No results for "${query}"`, 'info', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    ${results.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td>${v.model || '—'}</td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Found ${results.length} vehicle(s)</div>
+                        </div>
+                    `;
+                    modal.open({ title: `🔍 Search: "${query}"`, body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Search failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+
+            // ---- SHOW ME (filter) ----
+            async _handleShowMe(filterText) {
+                this.loader.show();
+                try {
+                    const inventory = await DataService.getInventory();
+                    let results = [];
+                    let title = '';
+                    const lower = filterText.toLowerCase();
+
+                    if (lower.includes('tata ace')) {
+                        results = inventory.filter(v => v.vehicleName && v.vehicleName.toLowerCase().includes('tata ace'));
+                        title = 'Tata Ace Vehicles';
+                    } else if (lower.includes('fc ready')) {
+                        results = inventory.filter(v => v.fcStatus === 'ready');
+                        title = 'Vehicles FC Ready';
+                    } else if (lower.includes('fc in progress')) {
+                        results = inventory.filter(v => v.fcStatus === 'in_progress');
+                        title = 'Vehicles FC In Progress';
+                    } else if (lower.includes('available')) {
+                        results = inventory.filter(v => v.inventoryStatus === 'Available');
+                        title = 'Available Vehicles';
+                    } else if (lower.includes('delivered')) {
+                        results = inventory.filter(v => v.inventoryStatus === 'Delivered');
+                        title = 'Delivered / Archived Vehicles';
+                    } else {
+                        const keywords = filterText.split(/\s+/).filter(k => k.length > 2);
+                        if (keywords.length > 0) {
+                            results = inventory.filter(v => {
+                                const searchStr = `${v.vehicleNumber} ${v.vehicleName} ${v.model} ${v.category} ${v.bodyShape} ${v.inventoryStatus} ${v.fcStatus}`.toLowerCase();
+                                return keywords.every(k => searchStr.includes(k.toLowerCase()));
+                            });
+                            title = `Vehicles matching "${filterText}"`;
+                        } else {
+                            this.toast.show('Could not parse filter.', 'warning', 4000);
+                            this.loader.hide();
+                            return;
+                        }
+                    }
+
+                    if (results.length === 0) { this.toast.show(`ℹ️ No vehicles found for "${filterText}"`, 'info', 3000);
+                        this.loader.hide(); return; }
+                    const modal = this.modal;
+                    const html = `
+                        <div style="max-height:50vh;overflow-y:auto;">
+                            <table style="width:100%;font-size:0.8rem;">
+                                <thead><tr><th>Vehicle</th><th>Name</th><th>Model</th><th>FC</th><th>Status</th></tr></thead>
+                                <tbody>
+                                    ${results.map(v => `
+                                        <tr>
+                                            <td><strong>${v.vehicleNumber}</strong></td>
+                                            <td>${v.vehicleName || '—'}</td>
+                                            <td>${v.model || '—'}</td>
+                                            <td><span class="badge ${v.fcStatus==='ready'?'badge-fc-ready':v.fcStatus==='in_progress'?'badge-fc-progress':'badge-draft'}">${v.fcStatus || '—'}</span></td>
+                                            <td><span class="badge ${v.inventoryStatus==='Available'?'badge-completed':v.inventoryStatus==='Delivered'?'badge-archived':'badge-pending'}">${v.inventoryStatus}</span></td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                            <div style="margin-top:0.5rem;font-size:0.75rem;color:var(--dark-gray);">Found ${results.length} vehicle(s)</div>
+                        </div>
+                    `;
+                    modal.open({ title: `📋 ${title}`, body: html, confirmText: 'Close', showCancel: false,
+                        onConfirm: () => modal.close() });
+                    this.loader.hide();
+                } catch (err) { this.toast.show('❌ Failed: ' + (err.message || err), 'error', 5000);
+                    this.loader.hide(); }
+            }
+        }
 
         // ==============================================================
         // 6. PAGES
