@@ -10114,30 +10114,242 @@
                 });
             };
 
-            // ---- Task Manager Modal (re‑used from your original code) ----
-            // We copy the function from your original file – it's already defined,
-            // but we need it in scope. We'll just reference the global one if it exists,
-            // or define a placeholder (but your original already has it).
-            // However, to be safe, we'll define it if missing.
-            if (typeof openTaskManager !== 'function') {
-                // We'll assume the original openTaskManager is already defined in the main script.
-                // But to avoid errors, we'll provide a minimal version that logs.
-                window.openTaskManager = async function(vehicleNumber, supervisorPage) {
-                    console.warn('openTaskManager not fully defined – please ensure the original code is present.');
-                    // Fallback: just show a toast.
-                    new Components.Toast().show('Task Manager is loading...', 'info');
-                    // If the original is defined later, it will override this.
-                };
+    </script>
+        <!-- ==============================================================
+     SUPERVISOR TASK MANAGER – FULL IMPLEMENTATION
+     ============================================================== -->
+    <script>
+    (function() {
+        // ---- Wait for app to be ready ----
+        const waitForApp = setInterval(() => {
+            if (window.__app && window.__app.router && typeof Pages !== 'undefined' && Pages.Supervisor) {
+                clearInterval(waitForApp);
+                applyTaskManager();
+            }
+        }, 100);
+
+        // ---- The full Task Manager implementation ----
+        function applyTaskManager() {
+            console.log('🔧 Applying full Task Manager override...');
+
+            // ---- All possible task types (must match requirements) ----
+            const ALL_TASKS = [
+                'Tinkering', 'Mechanical', 'Dummy Closing', 'Body Coach',
+                'Inside Kitchen', 'Outside Kitchen', 'Kitchen Layout',
+                'Painting', 'ACP Work', 'Vehicle Electrical', 'Coach Electrical',
+                'UPS Wiring', 'Normal Wiring', 'Plumbing', 'Canopy',
+                'Tyre Change', 'Glass Checking', 'Branding',
+                'Solar', 'UPS', 'Camera'
+            ];
+
+            const TASK_TO_REQ_KEY = {
+                'Tinkering': 'tinkering',
+                'Mechanical': 'mechanical',
+                'Dummy Closing': 'dummyClosing',
+                'Body Coach': 'bodyCoach',
+                'Inside Kitchen': 'insideKitchen',
+                'Outside Kitchen': 'outsideKitchen',
+                'Kitchen Layout': 'kitchenLayout',
+                'Painting': 'painting',
+                'ACP Work': 'acpWork',
+                'Vehicle Electrical': 'vehicleElectrical',
+                'Coach Electrical': 'coachElectrical',
+                'UPS Wiring': 'upsWiring',
+                'Normal Wiring': 'normalWiring',
+                'Plumbing': 'plumbing',
+                'Canopy': 'canopy',
+                'Tyre Change': 'tyreChange',
+                'Glass Checking': 'glassChecking',
+                'Branding': 'branding',
+                'Solar': 'solar',
+                'UPS': 'ups',
+                'Camera': 'camera'
+            };
+
+            // ---- Save original renderQueue ----
+            const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+
+            // ---- Override renderQueue to add the Task Manager button ----
+            Pages.Supervisor.prototype.renderQueue = function() {
+                origRenderQueue.call(this);
+
+                const cards = document.querySelectorAll('.worker-task-card .task-info');
+                cards.forEach(card => {
+                    const vehicle = card.dataset.vehicle;
+                    if (!vehicle) return;
+                    if (card.querySelector('.task-manager-btn')) return;
+
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-sm btn-secondary task-manager-btn';
+                    btn.textContent = '📋 Task Manager';
+                    btn.style.marginTop = '0.3rem';
+                    btn.dataset.vehicle = vehicle;
+                    btn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        await openTaskManager(vehicle, this);
+                    });
+
+                    const progressBar = card.querySelector('.progress-bar');
+                    if (progressBar) {
+                        progressBar.parentNode.insertBefore(btn, progressBar.nextSibling);
+                    } else {
+                        card.appendChild(btn);
+                    }
+                });
+            };
+
+            // ---- Full openTaskManager function (copied from original) ----
+            async function openTaskManager(vehicleNumber, supervisorPage) {
+                const loader = new Components.Loader();
+                const toast = new Components.Toast();
+                const modal = new Components.Modal();
+
+                try {
+                    loader.show();
+
+                    // Find the sales order for this vehicle
+                    const sales = await DataService.getSales();
+                    let order = sales.find(s => s.vehicleNumber === vehicleNumber && s.status !== 'delivered');
+                    if (!order) {
+                        order = sales.find(s => s.productName === vehicleNumber && s.status !== 'delivered');
+                    }
+                    if (!order) {
+                        toast.show('No active order found for this vehicle.', 'warning');
+                        loader.hide();
+                        return;
+                    }
+
+                    // Parse requirements
+                    let req = {};
+                    try { req = JSON.parse(order.requirements || '{}'); } catch(e) { req = {}; }
+
+                    // Build checklist
+                    const isVehicle = order.orderType === 'vehicle';
+                    let availableTasks = isVehicle ? ALL_TASKS : ['Body Coach', 'Kitchen Layout', 'Painting', 'Vehicle Electrical', 'Coach Electrical', 'Branding'];
+
+                    let checkboxesHtml = availableTasks.map(task => {
+                        const key = TASK_TO_REQ_KEY[task] || task.replace(/ /g, '').toLowerCase();
+                        const checked = req[key] ? 'checked' : '';
+                        return `
+                            <label style="display:flex;align-items:center;gap:0.5rem;padding:0.2rem 0;border-bottom:1px solid var(--gray);">
+                                <input type="checkbox" class="task-checkbox" data-task="${task}" data-key="${key}" ${checked} />
+                                ${task}
+                                <span style="font-size:0.7rem;color:var(--dark-gray);margin-left:auto;">
+                                    ${checked ? '✅ Active' : '❌ Inactive'}
+                                </span>
+                            </label>
+                        `;
+                    }).join('');
+
+                    // Show existing tasks not in the checklist (e.g., QC, Delivery)
+                    const production = await DataService.getProduction();
+                    const existingTasks = production.filter(t => t.salesOrderId === order.id && t.status !== 'completed');
+                    const existingTaskNames = existingTasks.map(t => t.taskName);
+                    let extraInfo = '';
+                    if (existingTaskNames.length > 0) {
+                        extraInfo = `
+                            <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--dark-gray);">
+                                <strong>Already existing tasks (not in checklist):</strong>
+                                ${existingTaskNames.filter(t => !availableTasks.includes(t)).join(', ') || 'None'}
+                            </div>
+                        `;
+                    }
+
+                    const modalHtml = `
+                        <div>
+                            <p><strong>${order.token}</strong> – ${order.customerName}</p>
+                            <p style="font-size:0.85rem;color:var(--dark-gray);">Vehicle: ${vehicleNumber}</p>
+                            <p style="font-size:0.85rem;color:var(--dark-gray);">Order Type: ${isVehicle ? '🚗 Vehicle' : '📦 Non-Vehicle'}</p>
+                            <hr />
+                            <div style="max-height:300px;overflow-y:auto;margin:0.5rem 0;">
+                                ${checkboxesHtml}
+                            </div>
+                            ${extraInfo}
+                            <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+                                <button id="taskManagerApply" class="btn btn-primary">✅ Apply & Sync</button>
+                                <button id="taskManagerSelectAll" class="btn btn-secondary">☑ Select All</button>
+                                <button id="taskManagerDeselectAll" class="btn btn-secondary">☐ Deselect All</button>
+                            </div>
+                        </div>
+                    `;
+
+                    modal.open({
+                        title: `📋 Task Manager – ${vehicleNumber}`,
+                        body: modalHtml,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    // ---- Modal actions ----
+                    document.getElementById('taskManagerSelectAll').addEventListener('click', () => {
+                        document.querySelectorAll('.task-checkbox').forEach(cb => cb.checked = true);
+                    });
+                    document.getElementById('taskManagerDeselectAll').addEventListener('click', () => {
+                        document.querySelectorAll('.task-checkbox').forEach(cb => cb.checked = false);
+                    });
+
+                    document.getElementById('taskManagerApply').addEventListener('click', async () => {
+                        const checkboxes = document.querySelectorAll('.task-checkbox:checked');
+                        const selectedKeys = Array.from(checkboxes).map(cb => cb.dataset.key);
+
+                        // Build new requirements object
+                        let newReq = {};
+                        // Preserve fields not in the list
+                        for (const [key, val] of Object.entries(req)) {
+                            if (!Object.values(TASK_TO_REQ_KEY).includes(key) && key !== 'brandingDetails' && key !== 'optional' && key !== 'remarks' && key !== 'seatwork' && key !== 'exhaustFan' && key !== 'brandingStickering' && key !== 'bodyCoachMaterial' && key !== 'waterTank' && key !== 'designDescription') {
+                                newReq[key] = val;
+                            }
+                        }
+                        // Set toggled tasks
+                        for (const task of ALL_TASKS) {
+                            const key = TASK_TO_REQ_KEY[task] || task.replace(/ /g, '').toLowerCase();
+                            newReq[key] = selectedKeys.includes(key);
+                        }
+                        // Preserve extra fields
+                        if (req.brandingDetails) newReq.brandingDetails = req.brandingDetails;
+                        if (req.optional) newReq.optional = req.optional;
+                        if (req.remarks) newReq.remarks = req.remarks;
+                        if (req.seatwork !== undefined) newReq.seatwork = req.seatwork;
+                        if (req.exhaustFan) newReq.exhaustFan = req.exhaustFan;
+                        if (req.brandingStickering) newReq.brandingStickering = req.brandingStickering;
+                        if (req.bodyCoachMaterial) newReq.bodyCoachMaterial = req.bodyCoachMaterial;
+                        if (req.waterTank) newReq.waterTank = req.waterTank;
+                        if (req.designDescription) newReq.designDescription = req.designDescription;
+
+                        loader.show();
+                        try {
+                            await DataService.updateSales(order.id, {
+                                requirements: JSON.stringify(newReq)
+                            });
+                            toast.show('✅ Requirements updated – tasks synced.', 'success');
+                            modal.close();
+                            await supervisorPage.loadData();
+                            supervisorPage.renderQueue();
+                            supervisorPage.renderStats();
+                            supervisorPage.renderAssignmentsOverview();
+                        } catch (e) {
+                            toast.show('Error: ' + e.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                } catch (e) {
+                    toast.show('Error: ' + e.message, 'error');
+                } finally {
+                    loader.hide();
+                }
             }
 
-            // ---- Helper to force re‑render with data loaded ----
+            // ---- Helper to force re-render after data loads ----
             async function forceRenderSupervisor() {
                 const page = window.__app.router.currentPage;
                 if (page instanceof Pages.Supervisor) {
                     console.log('🔄 Supervisor detected – loading data and re‑rendering...');
                     try {
-                        await page.loadData(); // ensure data is fresh
-                        page.renderQueue();   // now render with buttons
+                        await page.loadData();
+                        page.renderQueue();
                         console.log('✅ Task Manager buttons should now appear.');
                     } catch (e) {
                         console.warn('Failed to load data:', e);
@@ -10145,19 +10357,18 @@
                 }
             }
 
-            // ---- If Supervisor is already open, render now ----
+            // ---- If Supervisor already open, render now ----
             forceRenderSupervisor();
 
             // ---- Listen for navigation to Supervisor ----
             window.addEventListener('hashchange', function() {
                 const page = window.location.hash.slice(1) || 'dashboard';
                 if (page === 'supervisor') {
-                    // Wait for the page to render first, then force re-render with data
                     setTimeout(forceRenderSupervisor, 200);
                 }
             });
 
-            console.log('✅ Task Manager override applied successfully.');
+            console.log('✅ Full Task Manager installed.');
         }
     })();
     </script>
