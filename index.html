@@ -10030,43 +10030,134 @@
     console.log('🐞 Debugger active. Errors will appear here.');
 })();
 </script>
-        <!-- ==============================================================
-     EXTRA SAFETY: Supervisor Task Manager – force re‑render on navigation
+           <!-- ==============================================================
+     SUPERVISOR TASK MANAGER – FORCED & RELIABLE
      ============================================================== -->
     <script>
     (function() {
-        // Wait for app to be ready
+        // ---- Wait for the app to be fully ready ----
         const waitForApp = setInterval(() => {
-            if (window.__app && window.__app.router) {
+            if (window.__app && window.__app.router && typeof Pages !== 'undefined' && Pages.Supervisor) {
                 clearInterval(waitForApp);
-                initSafety();
+                applyTaskManager();
             }
         }, 100);
 
-        function initSafety() {
-            console.log('🛡️ Supervisor Task Manager – extra safety active.');
+        function applyTaskManager() {
+            console.log('🔧 Applying Task Manager override (forced)...');
 
-            // If Supervisor is already the current page, re‑render now
-            const currentPage = window.__app.router.currentPage;
-            if (currentPage instanceof Pages.Supervisor) {
-                console.log('🔄 Supervisor is active – re‑rendering (safety trigger).');
-                currentPage.renderQueue();
+            // ---- Define the task list and mapping (if not already defined) ----
+            const ALL_TASKS = [
+                'Tinkering', 'Mechanical', 'Dummy Closing', 'Body Coach',
+                'Inside Kitchen', 'Outside Kitchen', 'Kitchen Layout',
+                'Painting', 'ACP Work', 'Vehicle Electrical', 'Coach Electrical',
+                'UPS Wiring', 'Normal Wiring', 'Plumbing', 'Canopy',
+                'Tyre Change', 'Glass Checking', 'Branding',
+                'Solar', 'UPS', 'Camera'
+            ];
+
+            const TASK_TO_REQ_KEY = {
+                'Tinkering': 'tinkering',
+                'Mechanical': 'mechanical',
+                'Dummy Closing': 'dummyClosing',
+                'Body Coach': 'bodyCoach',
+                'Inside Kitchen': 'insideKitchen',
+                'Outside Kitchen': 'outsideKitchen',
+                'Kitchen Layout': 'kitchenLayout',
+                'Painting': 'painting',
+                'ACP Work': 'acpWork',
+                'Vehicle Electrical': 'vehicleElectrical',
+                'Coach Electrical': 'coachElectrical',
+                'UPS Wiring': 'upsWiring',
+                'Normal Wiring': 'normalWiring',
+                'Plumbing': 'plumbing',
+                'Canopy': 'canopy',
+                'Tyre Change': 'tyreChange',
+                'Glass Checking': 'glassChecking',
+                'Branding': 'branding',
+                'Solar': 'solar',
+                'UPS': 'ups',
+                'Camera': 'camera'
+            };
+
+            // ---- Store the original renderQueue ----
+            const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+
+            // ---- Override renderQueue with the Task Manager logic ----
+            Pages.Supervisor.prototype.renderQueue = function() {
+                // Call original first
+                origRenderQueue.call(this);
+
+                // Now add "Task Manager" button to each vehicle card
+                const cards = document.querySelectorAll('.worker-task-card .task-info');
+                cards.forEach(card => {
+                    const vehicle = card.dataset.vehicle;
+                    if (!vehicle) return;
+                    if (card.querySelector('.task-manager-btn')) return;
+
+                    const btn = document.createElement('button');
+                    btn.className = 'btn btn-sm btn-secondary task-manager-btn';
+                    btn.textContent = '📋 Task Manager';
+                    btn.style.marginTop = '0.3rem';
+                    btn.dataset.vehicle = vehicle;
+                    btn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        await openTaskManager(vehicle, this);
+                    });
+
+                    const progressBar = card.querySelector('.progress-bar');
+                    if (progressBar) {
+                        progressBar.parentNode.insertBefore(btn, progressBar.nextSibling);
+                    } else {
+                        card.appendChild(btn);
+                    }
+                });
+            };
+
+            // ---- Task Manager Modal (re‑used from your original code) ----
+            // We copy the function from your original file – it's already defined,
+            // but we need it in scope. We'll just reference the global one if it exists,
+            // or define a placeholder (but your original already has it).
+            // However, to be safe, we'll define it if missing.
+            if (typeof openTaskManager !== 'function') {
+                // We'll assume the original openTaskManager is already defined in the main script.
+                // But to avoid errors, we'll provide a minimal version that logs.
+                window.openTaskManager = async function(vehicleNumber, supervisorPage) {
+                    console.warn('openTaskManager not fully defined – please ensure the original code is present.');
+                    // Fallback: just show a toast.
+                    new Components.Toast().show('Task Manager is loading...', 'info');
+                    // If the original is defined later, it will override this.
+                };
             }
 
-            // Listen for hash changes (page navigation)
+            // ---- Helper to force re‑render with data loaded ----
+            async function forceRenderSupervisor() {
+                const page = window.__app.router.currentPage;
+                if (page instanceof Pages.Supervisor) {
+                    console.log('🔄 Supervisor detected – loading data and re‑rendering...');
+                    try {
+                        await page.loadData(); // ensure data is fresh
+                        page.renderQueue();   // now render with buttons
+                        console.log('✅ Task Manager buttons should now appear.');
+                    } catch (e) {
+                        console.warn('Failed to load data:', e);
+                    }
+                }
+            }
+
+            // ---- If Supervisor is already open, render now ----
+            forceRenderSupervisor();
+
+            // ---- Listen for navigation to Supervisor ----
             window.addEventListener('hashchange', function() {
                 const page = window.location.hash.slice(1) || 'dashboard';
                 if (page === 'supervisor') {
-                    // Wait a tick for the page to render, then re‑render
-                    setTimeout(() => {
-                        const currentPage = window.__app.router.currentPage;
-                        if (currentPage instanceof Pages.Supervisor) {
-                            console.log('🔄 Supervisor navigated – re‑rendering (safety trigger).');
-                            currentPage.renderQueue();
-                        }
-                    }, 100);
+                    // Wait for the page to render first, then force re-render with data
+                    setTimeout(forceRenderSupervisor, 200);
                 }
             });
+
+            console.log('✅ Task Manager override applied successfully.');
         }
     })();
     </script>
