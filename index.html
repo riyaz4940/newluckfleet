@@ -9757,279 +9757,503 @@
         console.log('📌 Vehicle orders now use a fast, transaction-free addSales.');
         console.log('📌 Persistence errors are silently handled.');
     </script>
-    <!-- ==============================================================
-     DEBUGGER ADD-ON: Visual Error Logger & Fix Suggester
+        <!-- ==============================================================
+     CLEANUP & DEBUG TOOL – Bug Button Style
      ============================================================== -->
-<script>
-(function() {
-    // ---- Create the floating button and panel ----
-    const container = document.createElement('div');
-    container.id = 'debuggerContainer';
-    container.style.cssText = `
-        position: fixed;
-        bottom: 80px;
-        right: 16px;
-        z-index: 9999;
-        font-family: monospace;
-        font-size: 13px;
-    `;
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof DataService !== 'undefined') {
+                clearInterval(waitForApp);
+                initCleanupTool();
+            }
+        }, 100);
 
-    // ---- Toggle Button ----
-    const btn = document.createElement('button');
-    btn.id = 'debuggerToggle';
-    btn.textContent = '🐛';
-    btn.style.cssText = `
-        width: 48px;
-        height: 48px;
-        border-radius: 50%;
-        background: #1a1a2e;
-        color: white;
-        border: 2px solid #ff6b6b;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.3);
-        font-size: 24px;
-        cursor: pointer;
-        transition: all 0.2s;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        position: relative;
-    `;
-    btn.onmouseover = () => { btn.style.transform = 'scale(1.1)'; };
-    btn.onmouseout = () => { btn.style.transform = 'scale(1)'; };
+        function initCleanupTool() {
+            console.log('🐞 Initialising Cleanup & Debug Tool...');
 
-    // Error count badge
-    const badge = document.createElement('span');
-    badge.id = 'debuggerBadge';
-    badge.style.cssText = `
-        position: absolute;
-        top: -6px;
-        right: -6px;
-        background: #ff6b6b;
-        color: white;
-        border-radius: 50%;
-        width: 20px;
-        height: 20px;
-        font-size: 11px;
-        font-weight: bold;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border: 2px solid #1a1a2e;
-        display: none;
-    `;
-    badge.textContent = '0';
-    btn.appendChild(badge);
+            // ---- Add bug button to header ----
+            const headerRight = document.querySelector('.header-right');
+            if (!headerRight) return;
 
-    // ---- Panel ----
-    const panel = document.createElement('div');
-    panel.id = 'debuggerPanel';
-    panel.style.cssText = `
-        position: absolute;
-        bottom: 60px;
-        right: 0;
-        width: 460px;
-        max-width: 90vw;
-        max-height: 420px;
-        background: #0d1117;
-        color: #e6edf3;
-        border: 1px solid #30363d;
-        border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.6);
-        padding: 12px;
-        overflow-y: auto;
-        display: none;
-        flex-direction: column;
-        gap: 6px;
-        font-size: 12px;
-        line-height: 1.5;
-        direction: ltr;
-        text-align: left;
-    `;
+            // Create container for the bug button
+            const bugContainer = document.createElement('div');
+            bugContainer.style.cssText = `
+                position: relative;
+                display: inline-flex;
+                align-items: center;
+                justify-content: center;
+                margin-right: 2px;
+            `;
 
-    // Panel header
-    const header = document.createElement('div');
-    header.style.cssText = `
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        border-bottom: 1px solid #30363d;
-        padding-bottom: 6px;
-        margin-bottom: 8px;
-        flex-shrink: 0;
-    `;
-    header.innerHTML = `
-        <span style="font-weight:bold;color:#f0883e;">🐞 Debug Console</span>
-        <div style="display:flex;gap:8px;">
-            <button id="debuggerClear" style="background:#21262d;border:none;color:#e6edf3;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;">Clear</button>
-            <button id="debuggerClose" style="background:#21262d;border:none;color:#e6edf3;padding:2px 8px;border-radius:4px;cursor:pointer;font-size:11px;">✕</button>
-        </div>
-    `;
-    panel.appendChild(header);
+            // ---- The actual bug button (red circle with white bug) ----
+            const cleanupBtn = document.createElement('button');
+            cleanupBtn.className = 'header-btn';
+            cleanupBtn.id = 'cleanupBtn';
+            cleanupBtn.title = 'Cleanup & Debug (Find duplicates & fix assignments)';
+            cleanupBtn.style.cssText = `
+                width: 38px;
+                height: 38px;
+                border-radius: 50%;
+                background: #d32f2f;
+                border: 2px solid #b71c1c;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                cursor: pointer;
+                transition: all 0.25s ease;
+                padding: 0;
+                position: relative;
+                box-shadow: 0 2px 8px rgba(211, 47, 47, 0.3);
+            `;
 
-    // Log container
-    const logContainer = document.createElement('div');
-    logContainer.id = 'debuggerLogs';
-    logContainer.style.cssText = `
-        flex: 1;
-        overflow-y: auto;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        min-height: 60px;
-    `;
-    panel.appendChild(logContainer);
+            // White bug SVG icon (simple bug shape)
+            cleanupBtn.innerHTML = `
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Bug body -->
+                    <ellipse cx="12" cy="14" rx="6" ry="5" fill="white"/>
+                    <!-- Bug head -->
+                    <circle cx="12" cy="8" r="4" fill="white"/>
+                    <!-- Antennae -->
+                    <path d="M8 5 L5 2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M16 5 L19 2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <!-- Eyes -->
+                    <circle cx="10" cy="7.5" r="1.5" fill="#d32f2f"/>
+                    <circle cx="14" cy="7.5" r="1.5" fill="#d32f2f"/>
+                    <!-- Legs left -->
+                    <path d="M7 12 L4 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M7 14 L4 16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M7 16 L4 18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <!-- Legs right -->
+                    <path d="M17 12 L20 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M17 14 L20 16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <path d="M17 16 L20 18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
+                    <!-- Wings -->
+                    <ellipse cx="8" cy="12" rx="3" ry="2" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="0.5"/>
+                    <ellipse cx="16" cy="12" rx="3" ry="2" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="0.5"/>
+                </svg>
+            `;
 
-    // ---- Helper: add a log entry ----
-    let errorCount = 0;
+            // ---- Status dot (green when no issues, red when issues exist) ----
+            const statusDot = document.createElement('span');
+            statusDot.id = 'bugStatusDot';
+            statusDot.style.cssText = `
+                position: absolute;
+                bottom: -2px;
+                right: -2px;
+                width: 14px;
+                height: 14px;
+                border-radius: 50%;
+                border: 2px solid white;
+                background: #4caf50;
+                transition: all 0.3s ease;
+                box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+            `;
+            bugContainer.appendChild(cleanupBtn);
+            bugContainer.appendChild(statusDot);
+            headerRight.insertBefore(bugContainer, headerRight.querySelector('.user-profile'));
 
-    function addLogEntry(level, args) {
-        const message = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)).join(' ');
-        const timestamp = new Date().toLocaleTimeString();
+            // Hover effects
+            cleanupBtn.onmouseover = () => {
+                cleanupBtn.style.transform = 'scale(1.08)';
+                cleanupBtn.style.boxShadow = '0 4px 16px rgba(211, 47, 47, 0.5)';
+            };
+            cleanupBtn.onmouseout = () => {
+                cleanupBtn.style.transform = 'scale(1)';
+                cleanupBtn.style.boxShadow = '0 2px 8px rgba(211, 47, 47, 0.3)';
+            };
 
-        // Fix suggestions
-        let suggestion = '';
-        const lower = message.toLowerCase();
-        if (lower.includes('permission-denied') || lower.includes('permission denied')) {
-            suggestion = '💡 Firestore security rules are blocking this. Check your rules or authentication.';
-        } else if (lower.includes('failed-precondition') || lower.includes('missing index')) {
-            suggestion = '💡 Missing Firestore composite index. Click the link in the console to create it.';
-        } else if (lower.includes('unavailable') || lower.includes('network')) {
-            suggestion = '💡 Network issue. Check your internet connection or Firestore region.';
-        } else if (lower.includes('already exists') || lower.includes('duplicate')) {
-            suggestion = '💡 Duplicate entry. The record already exists in the database.';
-        } else if (lower.includes('invalid argument')) {
-            suggestion = '💡 Invalid data passed to Firestore. Check field types and structure.';
-        } else if (lower.includes('out of memory')) {
-            suggestion = '💡 Memory limit exceeded. Try loading fewer records or paginating.';
-        } else if (lower.includes('timeout')) {
-            suggestion = '💡 Request timed out. Try again later or check your network speed.';
-        } else if (lower.includes('not found')) {
-            suggestion = '💡 Document not found. The ID may be incorrect or it was deleted.';
-        } else if (lower.includes('cannot read property') || lower.includes('undefined')) {
-            suggestion = '💡 Attempted to access a property of `undefined`. Check your object structure.';
-        } else if (lower.includes('function is not defined') || lower.includes('is not a function')) {
-            suggestion = '💡 Calling a non-existent function. Check spelling or method availability.';
+            // Click handler
+            cleanupBtn.addEventListener('click', openCleanupModal);
+
+            // ---- Check for issues and update dot ----
+            async function updateStatusDot() {
+                try {
+                    const [production, sales] = await Promise.all([
+                        DataService.getProduction(),
+                        DataService.getSales()
+                    ]);
+
+                    // Check for duplicate tasks
+                    const prodMap = {};
+                    production.forEach(t => {
+                        const key = `${(t.vehicleNumber || 'non-vehicle').toUpperCase()}|${t.taskName}`;
+                        if (!prodMap[key]) prodMap[key] = [];
+                        prodMap[key].push(t);
+                    });
+                    const hasDuplicateTasks = Object.values(prodMap).some(arr => arr.length > 1);
+
+                    // Check for duplicate sales
+                    const activeSales = sales.filter(s => s.status !== 'delivered' && s.vehicleNumber);
+                    const salesMap = {};
+                    activeSales.forEach(s => {
+                        const key = s.vehicleNumber.toUpperCase();
+                        if (!salesMap[key]) salesMap[key] = [];
+                        salesMap[key].push(s);
+                    });
+                    const hasDuplicateSales = Object.values(salesMap).some(arr => arr.length > 1);
+
+                    // Check for orphaned assignments
+                    const hasOrphaned = production.some(t => 
+                        t.status === 'completed' && 
+                        t.assignedWorkerId && 
+                        t.assignedWorkerId.length > 0
+                    );
+
+                    // Update dot color
+                    if (hasDuplicateTasks || hasDuplicateSales || hasOrphaned) {
+                        statusDot.style.background = '#f44336'; // red
+                        statusDot.style.boxShadow = '0 0 12px rgba(244, 67, 54, 0.6)';
+                    } else {
+                        statusDot.style.background = '#4caf50'; // green
+                        statusDot.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
+                    }
+                } catch (e) {
+                    console.warn('Failed to check issues:', e);
+                }
+            }
+
+            // ---- Initial dot check ----
+            setTimeout(updateStatusDot, 500);
+
+            // ---- Toast & Modal helpers ----
+            const toast = new Components.Toast();
+            const modal = new Components.Modal();
+            const loader = new Components.Loader();
+
+            async function openCleanupModal() {
+                loader.show();
+                try {
+                    const [production, sales, workers, inventory] = await Promise.all([
+                        DataService.getProduction(),
+                        DataService.getSales(),
+                        DataService.getWorkers(),
+                        DataService.getInventory()
+                    ]);
+
+                    // ---- 1. Find duplicate production tasks ----
+                    const prodMap = {};
+                    production.forEach(t => {
+                        const key = `${(t.vehicleNumber || 'non-vehicle').toUpperCase()}|${t.taskName}`;
+                        if (!prodMap[key]) prodMap[key] = [];
+                        prodMap[key].push(t);
+                    });
+                    const duplicateTasks = Object.values(prodMap).filter(arr => arr.length > 1);
+
+                    // ---- 2. Find duplicate sales orders (active) ----
+                    const activeSales = sales.filter(s => s.status !== 'delivered' && s.vehicleNumber);
+                    const salesMap = {};
+                    activeSales.forEach(s => {
+                        const key = s.vehicleNumber.toUpperCase();
+                        if (!salesMap[key]) salesMap[key] = [];
+                        salesMap[key].push(s);
+                    });
+                    const duplicateSales = Object.values(salesMap).filter(arr => arr.length > 1);
+
+                    // ---- 3. Find orphaned assignments ----
+                    const orphanedTasks = production.filter(t => 
+                        t.status === 'completed' && 
+                        t.assignedWorkerId && 
+                        t.assignedWorkerId.length > 0
+                    );
+
+                    // ---- Build modal HTML ----
+                    let html = `
+                        <div style="max-height:60vh;overflow-y:auto;">
+                            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                                <button class="btn btn-danger btn-sm" id="fixAllBtn" style="background:#dc3545;color:white;">🔧 Fix All Issues</button>
+                                <span style="font-size:0.8rem;color:var(--dark-gray);">This will remove duplicates and clean up orphaned assignments.</span>
+                            </div>
+                    `;
+
+                    // ---- Section: Duplicate Tasks ----
+                    html += `<h4 style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;">
+                        <span class="material-icons" style="font-size:20px;">construction</span> 
+                        Duplicate Production Tasks 
+                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${duplicateTasks.length} groups)</span>
+                        ${duplicateTasks.length > 0 ? `<button class="btn btn-sm btn-danger fix-duplicate-tasks" style="font-size:0.7rem;">Fix All</button>` : ''}
+                    </h4>`;
+
+                    if (duplicateTasks.length === 0) {
+                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No duplicate production tasks found.</p>`;
+                    } else {
+                        duplicateTasks.forEach((group) => {
+                            const label = group[0].vehicleNumber ? `${group[0].vehicleNumber} – ${group[0].taskName}` : group[0].taskName;
+                            html += `
+                                <div style="border-left:3px solid var(--danger);padding:0.4rem 0.6rem;margin:0.3rem 0;background:#f8f9fa;border-radius:4px;">
+                                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;">
+                                        <strong>${label}</strong> <span style="font-size:0.7rem;color:var(--dark-gray);">${group.length} entries</span>
+                                    </div>
+                                    ${group.map(t => `
+                                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.1rem 0;border-bottom:1px solid #eee;align-items:center;">
+                                            <span>${t.id.slice(0,8)} – ${t.status} ${t.assignedWorkerId ? '👷' : '⭕'}</span>
+                                            <button class="btn btn-sm btn-danger delete-task-btn" data-taskid="${t.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">✕</button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        });
+                    }
+
+                    // ---- Section: Duplicate Sales ----
+                    html += `<h4 style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;">
+                        <span class="material-icons" style="font-size:20px;">receipt</span> 
+                        Duplicate Sales Orders 
+                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${duplicateSales.length} groups)</span>
+                        ${duplicateSales.length > 0 ? `<button class="btn btn-sm btn-danger fix-duplicate-sales" style="font-size:0.7rem;">Fix All</button>` : ''}
+                    </h4>`;
+
+                    if (duplicateSales.length === 0) {
+                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No duplicate sales orders found.</p>`;
+                    } else {
+                        duplicateSales.forEach(group => {
+                            html += `
+                                <div style="border-left:3px solid var(--warning);padding:0.4rem 0.6rem;margin:0.3rem 0;background:#f8f9fa;border-radius:4px;">
+                                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;">
+                                        <strong>${group[0].vehicleNumber}</strong> <span style="font-size:0.7rem;color:var(--dark-gray);">${group.length} active orders</span>
+                                    </div>
+                                    ${group.map(s => `
+                                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.1rem 0;border-bottom:1px solid #eee;align-items:center;">
+                                            <span>${s.token} – ${s.customerName || '—'} (${s.status})</span>
+                                            <button class="btn btn-sm btn-danger delete-sales-btn" data-salesid="${s.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">✕</button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        });
+                    }
+
+                    // ---- Section: Orphaned Assignments ----
+                    html += `<h4 style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;">
+                        <span class="material-icons" style="font-size:20px;">person_remove</span> 
+                        Completed Tasks Still Assigned to Workers 
+                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${orphanedTasks.length} tasks)</span>
+                        ${orphanedTasks.length > 0 ? `<button class="btn btn-sm btn-primary fix-orphaned" style="font-size:0.7rem;">Unassign All</button>` : ''}
+                    </h4>`;
+
+                    if (orphanedTasks.length === 0) {
+                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No orphaned assignments found.</p>`;
+                    } else {
+                        html += `<div style="max-height:150px;overflow-y:auto;">`;
+                        orphanedTasks.forEach(t => {
+                            const workerNames = (t.assignedWorkerId || '').split(',').filter(Boolean)
+                                .map(id => {
+                                    const w = workers.find(w => String(w.id) === id.trim());
+                                    return w?.name || 'Unknown';
+                                }).join(', ') || 'Unassigned';
+                            html += `
+                                <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.2rem 0;border-bottom:1px solid #eee;align-items:center;">
+                                    <span>${t.vehicleNumber || 'Non-Vehicle'} – ${t.taskName}</span>
+                                    <span style="color:var(--dark-gray);">👷 ${workerNames}</span>
+                                    <button class="btn btn-sm btn-primary unassign-task-btn" data-taskid="${t.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">Unassign</button>
+                                </div>
+                            `;
+                        });
+                        html += `</div>`;
+                    }
+
+                    html += `</div>`;
+
+                    modal.open({
+                        title: '🐞 Cleanup & Debug Tool',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => {
+                            modal.close();
+                            updateStatusDot();
+                        }
+                    });
+
+                    // ---- Bind actions ----
+                    document.querySelectorAll('.delete-task-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            if (!confirm('Delete this task permanently?')) return;
+                            loader.show();
+                            try {
+                                await db.collection('production').doc(taskId).delete();
+                                toast.show('✅ Task deleted', 'success');
+                                modal.close();
+                                setTimeout(openCleanupModal, 300);
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-sales-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const salesId = btn.dataset.salesid;
+                            if (!confirm('Delete this sales order?')) return;
+                            loader.show();
+                            try {
+                                await DataService.deleteSales(salesId);
+                                toast.show('✅ Sales order deleted', 'success');
+                                modal.close();
+                                setTimeout(openCleanupModal, 300);
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.unassign-task-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            if (!confirm('Unassign all workers from this completed task?')) return;
+                            loader.show();
+                            try {
+                                await DataService.updateProduction(taskId, { assignedWorkerId: '' });
+                                toast.show('✅ Worker unassigned', 'success');
+                                modal.close();
+                                setTimeout(openCleanupModal, 300);
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        });
+                    });
+
+                    // ---- Fix All Duplicate Tasks ----
+                    document.querySelector('.fix-duplicate-tasks')?.addEventListener('click', async () => {
+                        if (!confirm(`Delete all duplicate production tasks (keep one per group)?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const group of duplicateTasks) {
+                                const toDelete = group.slice(1);
+                                for (const task of toDelete) {
+                                    await db.collection('production').doc(task.id).delete();
+                                    count++;
+                                }
+                            }
+                            toast.show(`✅ ${count} duplicate tasks deleted`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // ---- Fix All Duplicate Sales ----
+                    document.querySelector('.fix-duplicate-sales')?.addEventListener('click', async () => {
+                        if (!confirm(`Delete all duplicate sales orders (keep one per vehicle)?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const group of duplicateSales) {
+                                const toDelete = group.slice(1);
+                                for (const order of toDelete) {
+                                    await DataService.deleteSales(order.id);
+                                    count++;
+                                }
+                            }
+                            toast.show(`✅ ${count} duplicate sales orders deleted`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // ---- Fix All Orphaned ----
+                    document.querySelector('.fix-orphaned')?.addEventListener('click', async () => {
+                        if (!confirm(`Unassign all workers from ${orphanedTasks.length} completed tasks?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const task of orphanedTasks) {
+                                await DataService.updateProduction(task.id, { assignedWorkerId: '' });
+                                count++;
+                            }
+                            toast.show(`✅ ${count} workers unassigned from completed tasks`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // ---- Fix All Issues ----
+                    document.getElementById('fixAllBtn')?.addEventListener('click', async () => {
+                        const total = duplicateTasks.reduce((s, g) => s + g.length - 1, 0) + 
+                                     duplicateSales.reduce((s, g) => s + g.length - 1, 0) + 
+                                     orphanedTasks.length;
+                        if (!confirm(`This will fix ${total} issues across all categories. Continue?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const group of duplicateTasks) {
+                                const toDelete = group.slice(1);
+                                for (const task of toDelete) {
+                                    await db.collection('production').doc(task.id).delete();
+                                    count++;
+                                }
+                            }
+                            for (const group of duplicateSales) {
+                                const toDelete = group.slice(1);
+                                for (const order of toDelete) {
+                                    await DataService.deleteSales(order.id);
+                                    count++;
+                                }
+                            }
+                            for (const task of orphanedTasks) {
+                                await DataService.updateProduction(task.id, { assignedWorkerId: '' });
+                                count++;
+                            }
+                            toast.show(`✅ All issues fixed (${count} items cleaned up)`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // Update dot after modal closes
+                    setTimeout(updateStatusDot, 500);
+                    loader.hide();
+
+                } catch (err) {
+                    toast.show('Error loading data: ' + err.message, 'error');
+                    loader.hide();
+                }
+            }
+
+            // ---- Also re-check dot when page becomes visible ----
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) {
+                    setTimeout(updateStatusDot, 500);
+                }
+            });
+
+            // ---- And when any modal closes ----
+            const origModalClose = Components.Modal.prototype.close;
+            Components.Modal.prototype.close = function() {
+                origModalClose.call(this);
+                setTimeout(updateStatusDot, 300);
+            };
+
+            console.log('🐞 Cleanup & Debug Tool ready.');
         }
-
-        const entry = document.createElement('div');
-        entry.style.cssText = `
-            padding: 4px 8px;
-            border-radius: 4px;
-            background: ${level === 'error' ? '#2d1b1e' : '#1c2333'};
-            border-left: 3px solid ${level === 'error' ? '#ff6b6b' : '#58a6ff'};
-            word-break: break-word;
-        `;
-
-        const meta = document.createElement('div');
-        meta.style.cssText = 'display:flex;justify-content:space-between;font-size:10px;color:#8b949e;margin-bottom:2px;';
-        meta.innerHTML = `<span>${timestamp}</span><span>${level.toUpperCase()}</span>`;
-        entry.appendChild(meta);
-
-        const msg = document.createElement('div');
-        msg.style.cssText = 'color:#f0f6fc;white-space:pre-wrap;font-size:12px;';
-        msg.textContent = message;
-        entry.appendChild(msg);
-
-        if (suggestion) {
-            const sugg = document.createElement('div');
-            sugg.style.cssText = 'color:#f0883e;font-size:11px;margin-top:2px;border-top:1px solid #30363d;padding-top:2px;';
-            sugg.textContent = suggestion;
-            entry.appendChild(sugg);
-        }
-
-        logContainer.appendChild(entry);
-        logContainer.scrollTop = logContainer.scrollHeight;
-
-        // Update badge
-        if (level === 'error') {
-            errorCount++;
-            badge.textContent = errorCount;
-            badge.style.display = 'flex';
-            btn.style.borderColor = '#ff6b6b';
-        }
-
-        // Keep only last 50 entries to avoid memory issues
-        while (logContainer.children.length > 50) {
-            logContainer.removeChild(logContainer.firstChild);
-        }
-    }
-
-    // ---- Override console methods ----
-    const origError = console.error;
-    const origWarn = console.warn;
-    const origLog = console.log;
-
-    console.error = function(...args) {
-        origError.apply(console, args);
-        addLogEntry('error', args);
-    };
-
-    console.warn = function(...args) {
-        origWarn.apply(console, args);
-        addLogEntry('warn', args);
-    };
-
-    console.log = function(...args) {
-        origLog.apply(console, args);
-        // Only log to panel if it's an object/error that looks interesting
-        if (args.some(a => a instanceof Error || (typeof a === 'string' && (a.includes('error') || a.includes('fail'))))) {
-            addLogEntry('info', args);
-        }
-    };
-
-    // ---- Global error handlers ----
-    window.addEventListener('error', function(event) {
-        const msg = event.message || event.error?.message || 'Unknown error';
-        addLogEntry('error', [`[Uncaught] ${msg}`, event.filename ? `at ${event.filename}:${event.lineno}` : '']);
-        // Let the browser also log it
-        return false;
-    });
-
-    window.addEventListener('unhandledrejection', function(event) {
-        const reason = event.reason;
-        const msg = reason?.message || reason || 'Unhandled promise rejection';
-        addLogEntry('error', [`[Promise] ${msg}`, reason?.stack ? `\n${reason.stack}` : '']);
-        // Let the browser also log it
-        return false;
-    });
-
-    // ---- Panel controls ----
-    btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        const isOpen = panel.style.display === 'flex';
-        panel.style.display = isOpen ? 'none' : 'flex';
-    });
-
-    document.getElementById('debuggerClose').addEventListener('click', function(e) {
-        e.stopPropagation();
-        panel.style.display = 'none';
-    });
-
-    document.getElementById('debuggerClear').addEventListener('click', function(e) {
-        e.stopPropagation();
-        logContainer.innerHTML = '';
-        errorCount = 0;
-        badge.textContent = '0';
-        badge.style.display = 'none';
-        btn.style.borderColor = '#ff6b6b';
-    });
-
-    // Close panel when clicking outside
-    document.addEventListener('click', function(e) {
-        if (!container.contains(e.target)) {
-            panel.style.display = 'none';
-        }
-    });
-
-    // ---- Append to body ----
-    container.appendChild(btn);
-    container.appendChild(panel);
-    document.body.appendChild(container);
-
-    // ---- Initial test log ----
-    console.log('🐞 Debugger active. Errors will appear here.');
-})();
-</script>
+    })();
+    </script>
            <!-- ==============================================================
      SUPERVISOR TASK MANAGER – FORCED & RELIABLE
      ============================================================== -->
