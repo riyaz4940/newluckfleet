@@ -11345,5 +11345,190 @@
         }
     })();
     </script>
+        <!-- ==============================================================
+     PENDING APPROVALS – Clickable Notification Bell
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof DataService !== 'undefined' && document.getElementById('notifBtn')) {
+                clearInterval(waitForApp);
+                initPendingApprovals();
+            }
+        }, 100);
+
+        function initPendingApprovals() {
+            console.log('🔔 Initializing Pending Approvals...');
+
+            const notifBtn = document.getElementById('notifBtn');
+            const badge = document.getElementById('notifBadge');
+
+            // ---- Helper: update badge count ----
+            async function updateBadge() {
+                try {
+                    const production = await DataService.getProduction();
+                    const pending = production.filter(t => t.status === 'pending_approval');
+                    const count = pending.length;
+                    if (badge) {
+                        badge.textContent = count;
+                        badge.style.display = count > 0 ? 'flex' : 'none';
+                    }
+                    return pending;
+                } catch (e) {
+                    console.warn('Failed to update badge:', e);
+                    return [];
+                }
+            }
+
+            // ---- Initial badge update ----
+            updateBadge();
+
+            // ---- Click bell → show pending approvals ----
+            notifBtn.addEventListener('click', async function(e) {
+                e.stopPropagation();
+                const pending = await updateBadge(); // refresh count and get list
+                if (pending.length === 0) {
+                    new Components.Toast().show('✅ No tasks pending approval.', 'success', 3000);
+                    return;
+                }
+                showPendingModal(pending);
+            });
+
+            // ---- Show modal with cards ----
+            async function showPendingModal(pendingTasks) {
+                const modal = new Components.Modal();
+                const toast = new Components.Toast();
+                const loader = new Components.Loader();
+
+                loader.show();
+                try {
+                    const workers = await DataService.getWorkers();
+                    const inventory = await DataService.getInventory();
+
+                    // Build cards
+                    let cardsHtml = pendingTasks.map(task => {
+                        const workerIds = (task.assignedWorkerId || '').split(',').filter(Boolean);
+                        const workerNames = workerIds.map(id => {
+                            const w = workers.find(w => String(w.id) === id.trim());
+                            return w?.name || 'Unknown';
+                        }).join(', ') || 'Unassigned';
+
+                        const vehicleDisplay = task.vehicleNumber || 'Non‑Vehicle';
+                        const vehicleName = inventory.find(v => v.vehicleNumber === task.vehicleNumber)?.vehicleName || '';
+
+                        return `
+                            <div class="pending-card" style="background:#f8f9fa;border-radius:var(--radius);padding:0.8rem;margin-bottom:0.6rem;border-left:4px solid var(--warning);cursor:pointer;transition:all 0.2s;box-shadow:0 1px 4px rgba(0,0,0,0.06);" data-taskid="${task.id}" data-vehicle="${task.vehicleNumber || ''}">
+                                <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.3rem;">
+                                    <div>
+                                        <strong style="font-size:1rem;">${vehicleDisplay}</strong>
+                                        ${vehicleName ? `<span style="font-size:0.8rem;color:var(--dark-gray);">(${vehicleName})</span>` : ''}
+                                        <span style="font-size:0.85rem;margin-left:0.5rem;">– ${task.taskName}</span>
+                                        <span style="font-size:0.7rem;color:var(--dark-gray);">(Est. ${task.estimatedHours})</span>
+                                    </div>
+                                    <span style="font-size:0.8rem;background:#e8f0fe;padding:0.1rem 0.5rem;border-radius:12px;">👷 ${workerNames}</span>
+                                </div>
+                                <div style="margin-top:0.4rem;display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center;">
+                                    <button class="btn btn-sm btn-primary review-pending-btn" data-taskid="${task.id}" data-vehicle="${task.vehicleNumber || ''}">
+                                        <span class="material-icons" style="font-size:16px;">verified</span> Review & Approve
+                                    </button>
+                                    <span style="font-size:0.7rem;color:var(--dark-gray);">⏱️ ${task.actualHours ? task.actualHours.toFixed(1) + ' hrs actual' : 'Not started yet'}</span>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    const modalBody = `
+                        <div style="max-height:55vh;overflow-y:auto;padding:0.2rem;">
+                            <h3 style="margin-bottom:0.3rem;">🛠️ Pending Approvals <span style="font-size:0.9rem;color:var(--dark-gray);">(${pendingTasks.length})</span></h3>
+                            <p style="font-size:0.85rem;color:var(--dark-gray);margin-bottom:0.8rem;">Click a card or "Review" to inspect Before/After photos and approve.</p>
+                            ${cardsHtml}
+                        </div>
+                    `;
+
+                    modal.open({
+                        title: '📋 Pending Approvals',
+                        body: modalBody,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    // ---- Click card → open QC approval ----
+                    document.querySelectorAll('.pending-card').forEach(card => {
+                        card.addEventListener('click', function(e) {
+                            if (e.target.closest('button')) return;
+                            const taskId = this.dataset.taskid;
+                            const vehicle = this.dataset.vehicle;
+                            modal.close();
+                            openQCApproval(taskId, vehicle);
+                        });
+                        // Hover effect
+                        card.addEventListener('mouseenter', function() {
+                            this.style.transform = 'scale(1.01)';
+                            this.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)';
+                        });
+                        card.addEventListener('mouseleave', function() {
+                            this.style.transform = 'scale(1)';
+                            this.style.boxShadow = '0 1px 4px rgba(0,0,0,0.06)';
+                        });
+                    });
+
+                    // ---- Click "Review & Approve" button ----
+                    document.querySelectorAll('.review-pending-btn').forEach(btn => {
+                        btn.addEventListener('click', function(e) {
+                            e.stopPropagation();
+                            const taskId = this.dataset.taskid;
+                            const vehicle = this.dataset.vehicle;
+                            modal.close();
+                            openQCApproval(taskId, vehicle);
+                        });
+                    });
+
+                    loader.hide();
+                } catch (err) {
+                    toast.show('❌ Failed to load pending approvals: ' + (err.message || err), 'error', 5000);
+                    loader.hide();
+                }
+            }
+
+            // ---- Open QC approval modal (reuses VoiceCommandParser method) ----
+            async function openQCApproval(taskId, vehicleNumber) {
+                const voice = window.__app?.voice;
+                if (voice && typeof voice._openQCApproval === 'function') {
+                    await voice._openQCApproval(taskId, vehicleNumber);
+                    return;
+                }
+
+                // Fallback: if voice method missing, navigate to Supervisor and use its method
+                const router = window.__app?.router;
+                if (router) {
+                    await router.navigate('supervisor');
+                    setTimeout(async () => {
+                        const page = router.currentPage;
+                        if (page && typeof page.showQCApprove === 'function') {
+                            await page.showQCApprove(vehicleNumber);
+                        } else {
+                            new Components.Toast().show('Could not open approval. Please go to Supervisor.', 'warning', 5000);
+                        }
+                    }, 300);
+                }
+            }
+
+            // ---- Also update badge whenever a task changes (optional) ----
+            // We'll listen for page changes and re-check
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) updateBadge();
+            });
+            // Also when modal closes, we can refresh
+            const origModalClose = Components.Modal.prototype.close;
+            Components.Modal.prototype.close = function() {
+                origModalClose.call(this);
+                updateBadge();
+            };
+
+            console.log('🔔 Pending Approvals ready.');
+        }
+    })();
+    </script>
 </body>
 </html>
