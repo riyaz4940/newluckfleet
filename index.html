@@ -10372,5 +10372,978 @@
         }
     })();
     </script>
+        <!-- ==============================================================
+     VEHICLE HISTORY PAGE – Completed Tasks Only
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && window.__app.router && typeof Pages !== 'undefined') {
+                clearInterval(waitForApp);
+                initVehicleHistory();
+            }
+        }, 100);
+
+        function initVehicleHistory() {
+            console.log('🚗 Initialising Vehicle History page (completed tasks only)...');
+
+            // ---- Define the new page ----
+            Pages.VehicleHistory = class {
+                constructor(app) {
+                    this.app = app;
+                    this.toast = new Components.Toast();
+                    this.loader = new Components.Loader();
+                    this.modal = new Components.Modal();
+                    this.workers = [];
+                    this.production = [];
+                    this.inventory = [];
+                    this.searchTerm = '';
+                }
+
+                async render(container) {
+                    // Load all necessary data
+                    await this.loadData();
+
+                    container.innerHTML = `
+                        <div class="page-header">
+                            <h2>🚗 Vehicle History</h2>
+                            <p style="color:var(--dark-gray);font-size:0.85rem;">Search a vehicle number to see completed work, who did it, and how long it took.</p>
+                        </div>
+                        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                            <input type="text" id="vhSearchInput" placeholder="🔍 Search vehicle number..." style="flex:1;min-width:200px;padding:0.4rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);font-size:0.95rem;" />
+                            <button class="btn btn-primary" id="vhSearchBtn">Search</button>
+                            <button class="btn btn-secondary" id="vhClearBtn">Clear</button>
+                        </div>
+                        <div id="vhResults" style="display:flex;flex-direction:column;gap:0.8rem;"></div>
+                    `;
+
+                    // Bind events
+                    document.getElementById('vhSearchBtn').addEventListener('click', () => this.search());
+                    document.getElementById('vhClearBtn').addEventListener('click', () => {
+                        document.getElementById('vhSearchInput').value = '';
+                        this.searchTerm = '';
+                        document.getElementById('vhResults').innerHTML = '';
+                    });
+                    document.getElementById('vhSearchInput').addEventListener('keyup', (e) => {
+                        if (e.key === 'Enter') this.search();
+                    });
+                }
+
+                async loadData() {
+                    this.loader.show();
+                    try {
+                        const [workers, production, inventory] = await Promise.all([
+                            DataService.getWorkers(),
+                            DataService.getProduction(),
+                            DataService.getInventory()
+                        ]);
+                        this.workers = workers;
+                        // Only keep completed tasks to save memory
+                        this.production = production.filter(t => t.status === 'completed');
+                        this.inventory = inventory;
+                    } catch (e) {
+                        this.toast.show('Failed to load data: ' + e.message, 'error');
+                    } finally {
+                        this.loader.hide();
+                    }
+                }
+
+                search() {
+                    const input = document.getElementById('vhSearchInput');
+                    const term = input.value.trim();
+                    if (!term) {
+                        this.toast.show('Please enter a vehicle number.', 'warning');
+                        return;
+                    }
+                    this.searchTerm = term;
+                    this.renderResults(term);
+                }
+
+                renderResults(term) {
+                    const container = document.getElementById('vhResults');
+                    const lowerTerm = term.toLowerCase();
+
+                    // Find matching completed tasks
+                    const matchedTasks = this.production.filter(t => {
+                        const vehicle = (t.vehicleNumber || '').toLowerCase();
+                        const product = (t.productName || '').toLowerCase();
+                        return vehicle.includes(lowerTerm) || product.includes(lowerTerm);
+                    });
+
+                    if (matchedTasks.length === 0) {
+                        container.innerHTML = `
+                            <div style="text-align:center;padding:2rem;color:var(--dark-gray);">
+                                <span class="material-icons" style="font-size:3rem;">search_off</span>
+                                <p>No completed tasks found for vehicle "<strong>${term}</strong>".</p>
+                                <p style="font-size:0.8rem;">Try a different number or check inventory.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    // Group by vehicle number (or product name)
+                    const grouped = {};
+                    matchedTasks.forEach(t => {
+                        const key = t.vehicleNumber || t.productName || 'Non-Vehicle';
+                        if (!grouped[key]) grouped[key] = [];
+                        grouped[key].push(t);
+                    });
+
+                    let html = '';
+                    for (const [vehicle, tasks] of Object.entries(grouped)) {
+                        // Sort by endTime (newest first)
+                        tasks.sort((a, b) => {
+                            const dateA = a.endTime ? new Date(a.endTime) : new Date(0);
+                            const dateB = b.endTime ? new Date(b.endTime) : new Date(0);
+                            return dateB - dateA;
+                        });
+
+                        // Find vehicle details from inventory
+                        const inv = this.inventory.find(v => v.vehicleNumber === vehicle);
+                        const vehicleName = inv?.vehicleName || '';
+                        const vehicleModel = inv?.model || '';
+
+                        html += `
+                            <div style="background:white;border-radius:var(--radius);padding:0.8rem;box-shadow:var(--shadow);border-left:4px solid var(--success);">
+                                <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;margin-bottom:0.5rem;">
+                                    <div>
+                                        <h3 style="font-size:1.1rem;margin:0;">🚗 ${vehicle}</h3>
+                                        ${vehicleName ? `<span style="font-size:0.85rem;color:var(--dark-gray);">${vehicleName}</span>` : ''}
+                                        ${vehicleModel ? `<span style="font-size:0.8rem;color:var(--dark-gray);">(${vehicleModel})</span>` : ''}
+                                    </div>
+                                    <span style="font-size:0.8rem;color:var(--dark-gray);">${tasks.length} completed task(s)</span>
+                                </div>
+                                <div style="display:flex;flex-direction:column;gap:0.4rem;">
+                                    ${tasks.map(t => {
+                                        const workerIds = (t.assignedWorkerId || '').split(',').filter(Boolean);
+                                        const workerNames = workerIds.map(id => {
+                                            const w = this.workers.find(w => String(w.id) === id.trim());
+                                            return w?.name || 'Unknown';
+                                        }).join(', ') || 'Unassigned';
+
+                                        const startTime = t.startTime ? new Date(t.startTime).toLocaleString() : '—';
+                                        const endTime = t.endTime ? new Date(t.endTime).toLocaleString() : '—';
+                                        const duration = t.actualHours ? t.actualHours.toFixed(2) + ' hrs' : '—';
+
+                                        return `
+                                            <div style="background:#f8fafc;border-radius:6px;padding:0.5rem 0.7rem;border:1px solid #eef2f6;">
+                                                <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:0.3rem;">
+                                                    <div>
+                                                        <strong>${t.taskName}</strong>
+                                                        <span class="badge badge-completed" style="margin-left:0.5rem;">✅ Completed</span>
+                                                    </div>
+                                                    <span style="font-size:0.85rem;">👷 ${workerNames}</span>
+                                                </div>
+                                                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;font-size:0.8rem;color:var(--dark-gray);margin-top:0.2rem;">
+                                                    <span>🕒 Start: ${startTime}</span>
+                                                    <span>🏁 End: ${endTime}</span>
+                                                    <span>⏱️ Duration: <strong style="color:var(--success);">${duration}</strong></span>
+                                                    ${t.remarks ? `<span style="color:var(--dark-gray);">📝 ${t.remarks}</span>` : ''}
+                                                </div>
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    container.innerHTML = html;
+                }
+            };
+
+            // ---- Add to router and navigation ----
+            const router = window.__app.router;
+            if (router) {
+                router.pages.vehiclehistory = Pages.VehicleHistory;
+
+                // Add to sidebar – visible to supervisor, ops_manager, owner
+                const user = window.__app.auth.getCurrentUser();
+                if (user && ['supervisor', 'operations_manager', 'owner'].includes(user.role)) {
+                    const sidebar = document.getElementById('sidebarNav');
+                    if (sidebar) {
+                        const item = document.createElement('a');
+                        item.href = '#vehiclehistory';
+                        item.className = 'nav-item';
+                        item.dataset.page = 'vehiclehistory';
+                        item.innerHTML = `<span class="material-icons">history</span><span class="nav-label">Vehicle History</span>`;
+                        // Insert before 'Assignments' or at the end
+                        const assignments = sidebar.querySelector('[data-page="assignments"]');
+                        if (assignments) {
+                            sidebar.insertBefore(item, assignments);
+                        } else {
+                            sidebar.appendChild(item);
+                        }
+                    }
+
+                    // Add to bottom nav (mobile)
+                    const bottomNav = document.getElementById('bottomNav');
+                    if (bottomNav) {
+                        const btn = document.createElement('button');
+                        btn.className = 'nav-btn';
+                        btn.dataset.page = 'vehiclehistory';
+                        btn.innerHTML = `<span class="material-icons">history</span><span class="nav-label">History</span>`;
+                        const assignments = bottomNav.querySelector('[data-page="assignments"]');
+                        if (assignments) {
+                            bottomNav.insertBefore(btn, assignments);
+                        } else {
+                            bottomNav.appendChild(btn);
+                        }
+                    }
+
+                    console.log('✅ Vehicle History page added to navigation.');
+                }
+            }
+
+            console.log('🚗 Vehicle History ready (completed tasks only).');
+        }
+    })();
+    </script>
+        <!-- ==============================================================
+     TASK ANALYTICS – Daily/Weekly/Monthly Assigned vs Completed
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && window.__app.router && typeof Pages !== 'undefined') {
+                clearInterval(waitForApp);
+                initTaskAnalytics();
+            }
+        }, 100);
+
+        function initTaskAnalytics() {
+            console.log('📊 Initialising Task Analytics page...');
+
+            // ---- Define the new page ----
+            Pages.TaskAnalytics = class {
+                constructor(app) {
+                    this.app = app;
+                    this.toast = new Components.Toast();
+                    this.loader = new Components.Loader();
+                    this.modal = new Components.Modal();
+                    this.workers = [];
+                    this.production = [];
+                    this.filteredTasks = [];
+                }
+
+                async render(container) {
+                    await this.loadData();
+
+                    container.innerHTML = `
+                        <div class="page-header">
+                            <h2>📊 Task Analytics</h2>
+                            <p style="color:var(--dark-gray);font-size:0.85rem;">Track tasks assigned vs completed per day, week, or month.</p>
+                        </div>
+                        <div class="filters-container" style="margin-bottom:1rem;flex-wrap:wrap;gap:0.5rem;">
+                            <div class="filter-group">
+                                <label>Worker:</label>
+                                <select id="taWorkerFilter">
+                                    <option value="all">All Workers</option>
+                                    ${this.workers.map(w => `<option value="${w.id}">${w.name}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>From:</label>
+                                <input type="date" id="taStartDate" style="padding:0.2rem 0.4rem;border:1px solid var(--gray);border-radius:4px;" />
+                            </div>
+                            <div class="filter-group">
+                                <label>To:</label>
+                                <input type="date" id="taEndDate" style="padding:0.2rem 0.4rem;border:1px solid var(--gray);border-radius:4px;" />
+                            </div>
+                            <div class="filter-group">
+                                <label>Group by:</label>
+                                <select id="taGroupBy">
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                </select>
+                            </div>
+                            <button class="btn btn-primary btn-sm" id="taApplyBtn">Apply</button>
+                            <button class="btn btn-secondary btn-sm" id="taResetBtn">Reset</button>
+                            <button class="btn btn-secondary btn-sm" id="taExportBtn">📊 Export CSV</button>
+                        </div>
+                        <div id="taSummaryCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.8rem;margin-bottom:1rem;"></div>
+                        <div id="taTableContainer" style="background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);overflow:auto;"></div>
+                        <div id="taChartContainer" style="margin-top:1rem;background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);"></div>
+                    `;
+
+                    // Set default dates (last 30 days)
+                    const end = new Date();
+                    const start = new Date();
+                    start.setDate(start.getDate() - 30);
+                    document.getElementById('taStartDate').value = start.toISOString().split('T')[0];
+                    document.getElementById('taEndDate').value = end.toISOString().split('T')[0];
+
+                    // Bind events
+                    document.getElementById('taApplyBtn').addEventListener('click', () => this.applyFilters());
+                    document.getElementById('taResetBtn').addEventListener('click', () => this.resetFilters());
+                    document.getElementById('taExportBtn').addEventListener('click', () => this.exportCSV());
+
+                    // Initial render
+                    await this.applyFilters();
+                }
+
+                async loadData() {
+                    this.loader.show();
+                    try {
+                        const [workers, production] = await Promise.all([
+                            DataService.getWorkers(),
+                            DataService.getProduction()
+                        ]);
+                        this.workers = workers;
+                        this.production = production;
+                    } catch (e) {
+                        this.toast.show('Failed to load data: ' + e.message, 'error');
+                    } finally {
+                        this.loader.hide();
+                    }
+                }
+
+                async applyFilters() {
+                    const workerId = document.getElementById('taWorkerFilter').value;
+                    const start = document.getElementById('taStartDate').value;
+                    const end = document.getElementById('taEndDate').value;
+                    const groupBy = document.getElementById('taGroupBy').value;
+
+                    let filtered = [...this.production];
+
+                    // Filter by worker
+                    if (workerId !== 'all') {
+                        filtered = filtered.filter(t => {
+                            const assigned = (t.assignedWorkerId || '').split(',').filter(Boolean);
+                            return assigned.includes(workerId);
+                        });
+                    }
+
+                    // Filter by date range (using createdAt for assigned, endTime for completed)
+                    if (start && end) {
+                        const startDate = new Date(start);
+                        const endDate = new Date(end);
+                        endDate.setHours(23, 59, 59, 999);
+                        filtered = filtered.filter(t => {
+                            const created = t.createdAt ? new Date(t.createdAt) : null;
+                            return created && created >= startDate && created <= endDate;
+                        });
+                    }
+
+                    this.filteredTasks = filtered;
+
+                    // Render
+                    this.renderSummary(filtered, groupBy);
+                    this.renderTable(filtered, groupBy);
+                    this.renderChart(filtered, groupBy);
+                }
+
+                resetFilters() {
+                    document.getElementById('taWorkerFilter').value = 'all';
+                    const end = new Date();
+                    const start = new Date();
+                    start.setDate(start.getDate() - 30);
+                    document.getElementById('taStartDate').value = start.toISOString().split('T')[0];
+                    document.getElementById('taEndDate').value = end.toISOString().split('T')[0];
+                    document.getElementById('taGroupBy').value = 'daily';
+                    this.applyFilters();
+                }
+
+                renderSummary(tasks, groupBy) {
+                    const container = document.getElementById('taSummaryCards');
+                    
+                    const assigned = tasks.length;
+                    const completed = tasks.filter(t => t.status === 'completed').length;
+                    const inProgress = tasks.filter(t => t.status === 'in_progress' || t.status === 'pending_approval').length;
+                    const pending = tasks.filter(t => t.status === 'pending').length;
+                    const completionRate = assigned > 0 ? Math.round((completed / assigned) * 100) : 0;
+
+                    container.innerHTML = `
+                        <div class="stat-card"><div class="stat-label">Total Assigned</div><div class="stat-value">${assigned}</div></div>
+                        <div class="stat-card success"><div class="stat-label">Completed</div><div class="stat-value">${completed}</div></div>
+                        <div class="stat-card warning"><div class="stat-label">In Progress</div><div class="stat-value">${inProgress}</div></div>
+                        <div class="stat-card info"><div class="stat-label">Pending</div><div class="stat-value">${pending}</div></div>
+                        <div class="stat-card ${completionRate >= 80 ? 'success' : completionRate >= 50 ? 'warning' : 'danger'}"><div class="stat-label">Completion Rate</div><div class="stat-value">${completionRate}%</div></div>
+                    `;
+                }
+
+                renderTable(tasks, groupBy) {
+                    const container = document.getElementById('taTableContainer');
+
+                    if (tasks.length === 0) {
+                        container.innerHTML = `<p style="color:var(--dark-gray);text-align:center;padding:2rem;">No tasks found for the selected filters.</p>`;
+                        return;
+                    }
+
+                    // Group tasks by period
+                    const grouped = this.groupTasksByPeriod(tasks, groupBy);
+
+                    let html = `
+                        <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                            <thead>
+                                <tr style="background:var(--light-gray);">
+                                    <th style="padding:0.3rem 0.5rem;text-align:left;">Period</th>
+                                    <th style="padding:0.3rem 0.5rem;text-align:center;">Assigned</th>
+                                    <th style="padding:0.3rem 0.5rem;text-align:center;">Completed</th>
+                                    <th style="padding:0.3rem 0.5rem;text-align:center;">In Progress</th>
+                                    <th style="padding:0.3rem 0.5rem;text-align:center;">Pending</th>
+                                    <th style="padding:0.3rem 0.5rem;text-align:center;">Completion %</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0])).map(([period, periodTasks]) => {
+                                    const total = periodTasks.length;
+                                    const completed = periodTasks.filter(t => t.status === 'completed').length;
+                                    const inProgress = periodTasks.filter(t => t.status === 'in_progress' || t.status === 'pending_approval').length;
+                                    const pending = periodTasks.filter(t => t.status === 'pending').length;
+                                    const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+                                    return `
+                                        <tr>
+                                            <td><strong>${period}</strong></td>
+                                            <td style="text-align:center;">${total}</td>
+                                            <td style="text-align:center;color:var(--success);">${completed}</td>
+                                            <td style="text-align:center;color:var(--warning);">${inProgress}</td>
+                                            <td style="text-align:center;color:var(--dark-gray);">${pending}</td>
+                                            <td style="text-align:center;font-weight:600;color:${rate >= 80 ? 'var(--success)' : rate >= 50 ? 'var(--warning)' : 'var(--danger)'};">${rate}%</td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    `;
+
+                    container.innerHTML = html;
+                }
+
+                renderChart(tasks, groupBy) {
+                    const container = document.getElementById('taChartContainer');
+                    
+                    if (tasks.length === 0) {
+                        container.innerHTML = `<p style="color:var(--dark-gray);text-align:center;padding:1rem;">No data to chart.</p>`;
+                        return;
+                    }
+
+                    const grouped = this.groupTasksByPeriod(tasks, groupBy);
+                    const sorted = Object.entries(grouped).sort((a, b) => a[0].localeCompare(b[0]));
+                    const labels = sorted.map(([period]) => period);
+                    const assignedData = sorted.map(([, periodTasks]) => periodTasks.length);
+                    const completedData = sorted.map(([, periodTasks]) => periodTasks.filter(t => t.status === 'completed').length);
+
+                    // Simple bar chart using divs
+                    const maxVal = Math.max(...assignedData, 1);
+
+                    let barsHtml = labels.map((label, i) => {
+                        const assigned = assignedData[i];
+                        const completed = completedData[i];
+                        const assignedPct = (assigned / maxVal) * 100;
+                        const completedPct = (completed / maxVal) * 100;
+                        return `
+                            <div style="margin-bottom:0.5rem;">
+                                <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--dark-gray);">
+                                    <span>${label}</span>
+                                    <span>${assigned} assigned | ${completed} completed</span>
+                                </div>
+                                <div style="display:flex;gap:0.2rem;height:24px;background:#f0f0f0;border-radius:4px;overflow:hidden;position:relative;">
+                                    <div style="width:${assignedPct}%;background:#4a90d9;height:100%;transition:width 0.5s;border-radius:4px 0 0 4px;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:white;font-weight:600;min-width:20px;">
+                                        ${assigned > 0 ? assigned : ''}
+                                    </div>
+                                    <div style="width:${completedPct}%;background:#5cb85c;height:100%;transition:width 0.5s;border-radius:0 4px 4px 0;display:flex;align-items:center;justify-content:center;font-size:0.6rem;color:white;font-weight:600;min-width:20px;">
+                                        ${completed > 0 ? completed : ''}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    container.innerHTML = `
+                        <h4 style="margin-bottom:0.5rem;font-size:0.9rem;">📈 Assigned vs Completed (${groupBy})</h4>
+                        <div style="display:flex;gap:1rem;font-size:0.75rem;margin-bottom:0.5rem;">
+                            <span><span style="display:inline-block;width:12px;height:12px;background:#4a90d9;border-radius:2px;"></span> Assigned</span>
+                            <span><span style="display:inline-block;width:12px;height:12px;background:#5cb85c;border-radius:2px;"></span> Completed</span>
+                        </div>
+                        <div>${barsHtml}</div>
+                    `;
+                }
+
+                groupTasksByPeriod(tasks, groupBy) {
+                    const grouped = {};
+
+                    tasks.forEach(t => {
+                        const date = t.createdAt ? new Date(t.createdAt) : new Date();
+                        let key;
+
+                        if (groupBy === 'daily') {
+                            key = date.toISOString().split('T')[0];
+                        } else if (groupBy === 'weekly') {
+                            const weekStart = new Date(date);
+                            weekStart.setDate(date.getDate() - date.getDay());
+                            key = 'Week ' + weekStart.toISOString().split('T')[0];
+                        } else {
+                            key = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0');
+                        }
+
+                        if (!grouped[key]) grouped[key] = [];
+                        grouped[key].push(t);
+                    });
+
+                    return grouped;
+                }
+
+                exportCSV() {
+                    const tasks = this.filteredTasks;
+                    if (tasks.length === 0) {
+                        this.toast.show('No data to export.', 'warning');
+                        return;
+                    }
+
+                    const headers = ['Task', 'Vehicle', 'Worker', 'Status', 'Assigned Date', 'Completed Date', 'Duration (hrs)'];
+                    const rows = tasks.map(t => {
+                        const workerNames = (t.assignedWorkerId || '').split(',').filter(Boolean)
+                            .map(id => {
+                                const w = this.workers.find(w => String(w.id) === id.trim());
+                                return w?.name || 'Unknown';
+                            }).join(', ') || 'Unassigned';
+                        return [
+                            t.taskName,
+                            t.vehicleNumber || 'Non-Vehicle',
+                            workerNames,
+                            t.status,
+                            t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '',
+                            t.endTime ? new Date(t.endTime).toLocaleDateString() : '',
+                            t.actualHours ? t.actualHours.toFixed(2) : ''
+                        ];
+                    });
+
+                    let csv = headers.join(',') + '\n';
+                    rows.forEach(row => {
+                        csv += row.map(cell => `"${cell}"`).join(',') + '\n';
+                    });
+
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'task_analytics.csv';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    this.toast.show('CSV exported!', 'success');
+                }
+            };
+
+            // ---- Add to router and navigation ----
+            const router = window.__app.router;
+            if (router) {
+                router.pages.taskanalytics = Pages.TaskAnalytics;
+
+                const user = window.__app.auth.getCurrentUser();
+                if (user && ['supervisor', 'operations_manager', 'owner'].includes(user.role)) {
+                    const sidebar = document.getElementById('sidebarNav');
+                    if (sidebar) {
+                        const item = document.createElement('a');
+                        item.href = '#taskanalytics';
+                        item.className = 'nav-item';
+                        item.dataset.page = 'taskanalytics';
+                        item.innerHTML = `<span class="material-icons">analytics</span><span class="nav-label">Task Analytics</span>`;
+                        const assignments = sidebar.querySelector('[data-page="assignments"]');
+                        if (assignments) {
+                            sidebar.insertBefore(item, assignments);
+                        } else {
+                            sidebar.appendChild(item);
+                        }
+                    }
+
+                    const bottomNav = document.getElementById('bottomNav');
+                    if (bottomNav) {
+                        const btn = document.createElement('button');
+                        btn.className = 'nav-btn';
+                        btn.dataset.page = 'taskanalytics';
+                        btn.innerHTML = `<span class="material-icons">analytics</span><span class="nav-label">Analytics</span>`;
+                        const assignments = bottomNav.querySelector('[data-page="assignments"]');
+                        if (assignments) {
+                            bottomNav.insertBefore(btn, assignments);
+                        } else {
+                            bottomNav.appendChild(btn);
+                        }
+                    }
+
+                    console.log('✅ Task Analytics page added to navigation.');
+                }
+            }
+
+            console.log('📊 Task Analytics ready.');
+        }
+    })();
+    </script>
+        <!-- ==============================================================
+     CLEANUP & DEBUG TOOL – Duplicate Finder & Worker Cleanup
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof DataService !== 'undefined') {
+                clearInterval(waitForApp);
+                initCleanupTool();
+            }
+        }, 100);
+
+        function initCleanupTool() {
+            console.log('🧹 Initialising Cleanup & Debug Tool...');
+
+            // ---- Add cleanup button to header ----
+            const headerRight = document.querySelector('.header-right');
+            if (!headerRight) return;
+
+            const cleanupBtn = document.createElement('button');
+            cleanupBtn.className = 'header-btn';
+            cleanupBtn.id = 'cleanupBtn';
+            cleanupBtn.title = 'Cleanup & Debug (Find duplicates & fix assignments)';
+            // ---- Make it look like a bug with red border ----
+            cleanupBtn.innerHTML = `<span style="font-size:22px;">🐛</span>`;
+            cleanupBtn.style.cssText = `
+                border: 2px solid #dc3545;
+                border-radius: 50%;
+                padding: 4px;
+                width: 38px;
+                height: 38px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: transparent;
+                color: var(--dark-gray);
+                transition: 0.2s;
+                cursor: pointer;
+                position: relative;
+            `;
+            cleanupBtn.onmouseover = () => {
+                cleanupBtn.style.background = 'rgba(220, 53, 69, 0.1)';
+                cleanupBtn.style.transform = 'scale(1.05)';
+            };
+            cleanupBtn.onmouseout = () => {
+                cleanupBtn.style.background = 'transparent';
+                cleanupBtn.style.transform = 'scale(1)';
+            };
+            // Insert before the user profile
+            headerRight.insertBefore(cleanupBtn, headerRight.querySelector('.user-profile'));
+
+            cleanupBtn.addEventListener('click', openCleanupModal);
+
+            // ---- Toast & Modal helpers ----
+            const toast = new Components.Toast();
+            const modal = new Components.Modal();
+            const loader = new Components.Loader();
+
+            async function openCleanupModal() {
+                loader.show();
+                try {
+                    // Fetch all data
+                    const [production, sales, workers, inventory] = await Promise.all([
+                        DataService.getProduction(),
+                        DataService.getSales(),
+                        DataService.getWorkers(),
+                        DataService.getInventory()
+                    ]);
+
+                    // ---- 1. Find duplicate production tasks ----
+                    const prodMap = {};
+                    production.forEach(t => {
+                        const key = `${(t.vehicleNumber || 'non-vehicle').toUpperCase()}|${t.taskName}`;
+                        if (!prodMap[key]) prodMap[key] = [];
+                        prodMap[key].push(t);
+                    });
+                    const duplicateTasks = Object.values(prodMap).filter(arr => arr.length > 1);
+
+                    // ---- 2. Find duplicate sales orders (active) ----
+                    const activeSales = sales.filter(s => s.status !== 'delivered' && s.vehicleNumber);
+                    const salesMap = {};
+                    activeSales.forEach(s => {
+                        const key = s.vehicleNumber.toUpperCase();
+                        if (!salesMap[key]) salesMap[key] = [];
+                        salesMap[key].push(s);
+                    });
+                    const duplicateSales = Object.values(salesMap).filter(arr => arr.length > 1);
+
+                    // ---- 3. Find orphaned assignments (completed tasks with workers assigned) ----
+                    const orphanedTasks = production.filter(t => 
+                        t.status === 'completed' && 
+                        t.assignedWorkerId && 
+                        t.assignedWorkerId.length > 0
+                    );
+
+                    // ---- Build modal HTML ----
+                    let html = `
+                        <div style="max-height:60vh;overflow-y:auto;">
+                            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
+                                <button class="btn btn-danger btn-sm" id="fixAllBtn" style="background:#dc3545;color:white;">🔧 Fix All Issues</button>
+                                <span style="font-size:0.8rem;color:var(--dark-gray);">This will remove duplicates and clean up orphaned assignments.</span>
+                            </div>
+                    `;
+
+                    // ---- Section: Duplicate Tasks ----
+                    html += `<h4 style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;">
+                        <span class="material-icons" style="font-size:20px;">construction</span> 
+                        Duplicate Production Tasks 
+                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${duplicateTasks.length} groups)</span>
+                        ${duplicateTasks.length > 0 ? `<button class="btn btn-sm btn-danger fix-duplicate-tasks" style="font-size:0.7rem;">Fix All</button>` : ''}
+                    </h4>`;
+
+                    if (duplicateTasks.length === 0) {
+                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No duplicate production tasks found.</p>`;
+                    } else {
+                        duplicateTasks.forEach((group, idx) => {
+                            const label = group[0].vehicleNumber ? `${group[0].vehicleNumber} – ${group[0].taskName}` : group[0].taskName;
+                            html += `
+                                <div style="border-left:3px solid var(--danger);padding:0.4rem 0.6rem;margin:0.3rem 0;background:#f8f9fa;border-radius:4px;">
+                                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;">
+                                        <strong>${label}</strong> <span style="font-size:0.7rem;color:var(--dark-gray);">${group.length} entries</span>
+                                    </div>
+                                    ${group.map(t => `
+                                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.1rem 0;border-bottom:1px solid #eee;align-items:center;">
+                                            <span>${t.id.slice(0,8)} – ${t.status} ${t.assignedWorkerId ? '👷' : '⭕'}</span>
+                                            <button class="btn btn-sm btn-danger delete-task-btn" data-taskid="${t.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">✕</button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        });
+                    }
+
+                    // ---- Section: Duplicate Sales ----
+                    html += `<h4 style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;">
+                        <span class="material-icons" style="font-size:20px;">receipt</span> 
+                        Duplicate Sales Orders 
+                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${duplicateSales.length} groups)</span>
+                        ${duplicateSales.length > 0 ? `<button class="btn btn-sm btn-danger fix-duplicate-sales" style="font-size:0.7rem;">Fix All</button>` : ''}
+                    </h4>`;
+
+                    if (duplicateSales.length === 0) {
+                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No duplicate sales orders found.</p>`;
+                    } else {
+                        duplicateSales.forEach(group => {
+                            html += `
+                                <div style="border-left:3px solid var(--warning);padding:0.4rem 0.6rem;margin:0.3rem 0;background:#f8f9fa;border-radius:4px;">
+                                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;">
+                                        <strong>${group[0].vehicleNumber}</strong> <span style="font-size:0.7rem;color:var(--dark-gray);">${group.length} active orders</span>
+                                    </div>
+                                    ${group.map(s => `
+                                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.1rem 0;border-bottom:1px solid #eee;align-items:center;">
+                                            <span>${s.token} – ${s.customerName || '—'} (${s.status})</span>
+                                            <button class="btn btn-sm btn-danger delete-sales-btn" data-salesid="${s.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">✕</button>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            `;
+                        });
+                    }
+
+                    // ---- Section: Orphaned Assignments ----
+                    html += `<h4 style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;">
+                        <span class="material-icons" style="font-size:20px;">person_remove</span> 
+                        Completed Tasks Still Assigned to Workers 
+                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${orphanedTasks.length} tasks)</span>
+                        ${orphanedTasks.length > 0 ? `<button class="btn btn-sm btn-primary fix-orphaned" style="font-size:0.7rem;">Unassign All</button>` : ''}
+                    </h4>`;
+
+                    if (orphanedTasks.length === 0) {
+                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No orphaned assignments found.</p>`;
+                    } else {
+                        html += `<div style="max-height:150px;overflow-y:auto;">`;
+                        orphanedTasks.forEach(t => {
+                            const workerNames = (t.assignedWorkerId || '').split(',').filter(Boolean)
+                                .map(id => {
+                                    const w = workers.find(w => String(w.id) === id.trim());
+                                    return w?.name || 'Unknown';
+                                }).join(', ') || 'Unassigned';
+                            html += `
+                                <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.2rem 0;border-bottom:1px solid #eee;align-items:center;">
+                                    <span>${t.vehicleNumber || 'Non-Vehicle'} – ${t.taskName}</span>
+                                    <span style="color:var(--dark-gray);">👷 ${workerNames}</span>
+                                    <button class="btn btn-sm btn-primary unassign-task-btn" data-taskid="${t.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">Unassign</button>
+                                </div>
+                            `;
+                        });
+                        html += `</div>`;
+                    }
+
+                    html += `</div>`;
+                    // ---- End modal HTML ----
+
+                    modal.open({
+                        title: '🧹 Cleanup & Debug Tool',
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => modal.close()
+                    });
+
+                    // ---- Bind actions ----
+                    document.querySelectorAll('.delete-task-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            if (!confirm('Delete this task permanently?')) return;
+                            loader.show();
+                            try {
+                                await db.collection('production').doc(taskId).delete();
+                                toast.show('✅ Task deleted', 'success');
+                                modal.close();
+                                setTimeout(openCleanupModal, 300);
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.delete-sales-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const salesId = btn.dataset.salesid;
+                            if (!confirm('Delete this sales order?')) return;
+                            loader.show();
+                            try {
+                                await DataService.deleteSales(salesId);
+                                toast.show('✅ Sales order deleted', 'success');
+                                modal.close();
+                                setTimeout(openCleanupModal, 300);
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        });
+                    });
+
+                    document.querySelectorAll('.unassign-task-btn').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const taskId = btn.dataset.taskid;
+                            if (!confirm('Unassign all workers from this completed task?')) return;
+                            loader.show();
+                            try {
+                                await DataService.updateProduction(taskId, { assignedWorkerId: '' });
+                                toast.show('✅ Worker unassigned', 'success');
+                                modal.close();
+                                setTimeout(openCleanupModal, 300);
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        });
+                    });
+
+                    // ---- Fix All Duplicate Tasks ----
+                    document.querySelector('.fix-duplicate-tasks')?.addEventListener('click', async () => {
+                        if (!confirm(`Delete all duplicate production tasks (keep one per group)?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const group of duplicateTasks) {
+                                const toDelete = group.slice(1);
+                                for (const task of toDelete) {
+                                    await db.collection('production').doc(task.id).delete();
+                                    count++;
+                                }
+                            }
+                            toast.show(`✅ ${count} duplicate tasks deleted`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // ---- Fix All Duplicate Sales ----
+                    document.querySelector('.fix-duplicate-sales')?.addEventListener('click', async () => {
+                        if (!confirm(`Delete all duplicate sales orders (keep one per vehicle)?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const group of duplicateSales) {
+                                const toDelete = group.slice(1);
+                                for (const order of toDelete) {
+                                    await DataService.deleteSales(order.id);
+                                    count++;
+                                }
+                            }
+                            toast.show(`✅ ${count} duplicate sales orders deleted`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // ---- Fix All Orphaned ----
+                    document.querySelector('.fix-orphaned')?.addEventListener('click', async () => {
+                        if (!confirm(`Unassign all workers from ${orphanedTasks.length} completed tasks?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            for (const task of orphanedTasks) {
+                                await DataService.updateProduction(task.id, { assignedWorkerId: '' });
+                                count++;
+                            }
+                            toast.show(`✅ ${count} workers unassigned from completed tasks`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    // ---- Fix All Issues ----
+                    document.getElementById('fixAllBtn')?.addEventListener('click', async () => {
+                        const total = duplicateTasks.reduce((s, g) => s + g.length - 1, 0) + 
+                                     duplicateSales.reduce((s, g) => s + g.length - 1, 0) + 
+                                     orphanedTasks.length;
+                        if (!confirm(`This will fix ${total} issues across all categories. Continue?`)) return;
+                        loader.show();
+                        try {
+                            let count = 0;
+                            // Fix duplicate tasks
+                            for (const group of duplicateTasks) {
+                                const toDelete = group.slice(1);
+                                for (const task of toDelete) {
+                                    await db.collection('production').doc(task.id).delete();
+                                    count++;
+                                }
+                            }
+                            // Fix duplicate sales
+                            for (const group of duplicateSales) {
+                                const toDelete = group.slice(1);
+                                for (const order of toDelete) {
+                                    await DataService.deleteSales(order.id);
+                                    count++;
+                                }
+                            }
+                            // Fix orphaned
+                            for (const task of orphanedTasks) {
+                                await DataService.updateProduction(task.id, { assignedWorkerId: '' });
+                                count++;
+                            }
+                            toast.show(`✅ All issues fixed (${count} items cleaned up)`, 'success');
+                            modal.close();
+                            setTimeout(openCleanupModal, 300);
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    });
+
+                    loader.hide();
+
+                } catch (err) {
+                    toast.show('Error loading data: ' + err.message, 'error');
+                    loader.hide();
+                }
+            }
+        }
+    })();
+    </script>
 </body>
 </html>
