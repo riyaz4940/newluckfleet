@@ -10030,5 +10030,45 @@
     console.log('🐞 Debugger active. Errors will appear here.');
 })();
 </script>
+        <!-- ==============================================================
+     EXTRA SAFETY: Supervisor Task Manager – force re‑render on navigation
+     ============================================================== -->
+    <script>
+    (function() {
+        // Wait for app to be ready
+        const waitForApp = setInterval(() => {
+            if (window.__app && window.__app.router) {
+                clearInterval(waitForApp);
+                initSafety();
+            }
+        }, 100);
+
+        function initSafety() {
+            console.log('🛡️ Supervisor Task Manager – extra safety active.');
+
+            // If Supervisor is already the current page, re‑render now
+            const currentPage = window.__app.router.currentPage;
+            if (currentPage instanceof Pages.Supervisor) {
+                console.log('🔄 Supervisor is active – re‑rendering (safety trigger).');
+                currentPage.renderQueue();
+            }
+
+            // Listen for hash changes (page navigation)
+            window.addEventListener('hashchange', function() {
+                const page = window.location.hash.slice(1) || 'dashboard';
+                if (page === 'supervisor') {
+                    // Wait a tick for the page to render, then re‑render
+                    setTimeout(() => {
+                        const currentPage = window.__app.router.currentPage;
+                        if (currentPage instanceof Pages.Supervisor) {
+                            console.log('🔄 Supervisor navigated – re‑rendering (safety trigger).');
+                            currentPage.renderQueue();
+                        }
+                    }, 100);
+                }
+            });
+        }
+    })();
+    </script>
 </body>
 </html>
