@@ -9757,503 +9757,7 @@
         console.log('📌 Vehicle orders now use a fast, transaction-free addSales.');
         console.log('📌 Persistence errors are silently handled.');
     </script>
-        <!-- ==============================================================
-     CLEANUP & DEBUG TOOL – Bug Button Style
-     ============================================================== -->
-    <script>
-    (function() {
-        const waitForApp = setInterval(() => {
-            if (window.__app && typeof DataService !== 'undefined') {
-                clearInterval(waitForApp);
-                initCleanupTool();
-            }
-        }, 100);
-
-        function initCleanupTool() {
-            console.log('🐞 Initialising Cleanup & Debug Tool...');
-
-            // ---- Add bug button to header ----
-            const headerRight = document.querySelector('.header-right');
-            if (!headerRight) return;
-
-            // Create container for the bug button
-            const bugContainer = document.createElement('div');
-            bugContainer.style.cssText = `
-                position: relative;
-                display: inline-flex;
-                align-items: center;
-                justify-content: center;
-                margin-right: 2px;
-            `;
-
-            // ---- The actual bug button (red circle with white bug) ----
-            const cleanupBtn = document.createElement('button');
-            cleanupBtn.className = 'header-btn';
-            cleanupBtn.id = 'cleanupBtn';
-            cleanupBtn.title = 'Cleanup & Debug (Find duplicates & fix assignments)';
-            cleanupBtn.style.cssText = `
-                width: 38px;
-                height: 38px;
-                border-radius: 50%;
-                background: #d32f2f;
-                border: 2px solid #b71c1c;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                cursor: pointer;
-                transition: all 0.25s ease;
-                padding: 0;
-                position: relative;
-                box-shadow: 0 2px 8px rgba(211, 47, 47, 0.3);
-            `;
-
-            // White bug SVG icon (simple bug shape)
-            cleanupBtn.innerHTML = `
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <!-- Bug body -->
-                    <ellipse cx="12" cy="14" rx="6" ry="5" fill="white"/>
-                    <!-- Bug head -->
-                    <circle cx="12" cy="8" r="4" fill="white"/>
-                    <!-- Antennae -->
-                    <path d="M8 5 L5 2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M16 5 L19 2" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <!-- Eyes -->
-                    <circle cx="10" cy="7.5" r="1.5" fill="#d32f2f"/>
-                    <circle cx="14" cy="7.5" r="1.5" fill="#d32f2f"/>
-                    <!-- Legs left -->
-                    <path d="M7 12 L4 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M7 14 L4 16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M7 16 L4 18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <!-- Legs right -->
-                    <path d="M17 12 L20 14" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M17 14 L20 16" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <path d="M17 16 L20 18" stroke="white" stroke-width="1.5" stroke-linecap="round"/>
-                    <!-- Wings -->
-                    <ellipse cx="8" cy="12" rx="3" ry="2" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="0.5"/>
-                    <ellipse cx="16" cy="12" rx="3" ry="2" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="0.5"/>
-                </svg>
-            `;
-
-            // ---- Status dot (green when no issues, red when issues exist) ----
-            const statusDot = document.createElement('span');
-            statusDot.id = 'bugStatusDot';
-            statusDot.style.cssText = `
-                position: absolute;
-                bottom: -2px;
-                right: -2px;
-                width: 14px;
-                height: 14px;
-                border-radius: 50%;
-                border: 2px solid white;
-                background: #4caf50;
-                transition: all 0.3s ease;
-                box-shadow: 0 1px 4px rgba(0,0,0,0.2);
-            `;
-            bugContainer.appendChild(cleanupBtn);
-            bugContainer.appendChild(statusDot);
-            headerRight.insertBefore(bugContainer, headerRight.querySelector('.user-profile'));
-
-            // Hover effects
-            cleanupBtn.onmouseover = () => {
-                cleanupBtn.style.transform = 'scale(1.08)';
-                cleanupBtn.style.boxShadow = '0 4px 16px rgba(211, 47, 47, 0.5)';
-            };
-            cleanupBtn.onmouseout = () => {
-                cleanupBtn.style.transform = 'scale(1)';
-                cleanupBtn.style.boxShadow = '0 2px 8px rgba(211, 47, 47, 0.3)';
-            };
-
-            // Click handler
-            cleanupBtn.addEventListener('click', openCleanupModal);
-
-            // ---- Check for issues and update dot ----
-            async function updateStatusDot() {
-                try {
-                    const [production, sales] = await Promise.all([
-                        DataService.getProduction(),
-                        DataService.getSales()
-                    ]);
-
-                    // Check for duplicate tasks
-                    const prodMap = {};
-                    production.forEach(t => {
-                        const key = `${(t.vehicleNumber || 'non-vehicle').toUpperCase()}|${t.taskName}`;
-                        if (!prodMap[key]) prodMap[key] = [];
-                        prodMap[key].push(t);
-                    });
-                    const hasDuplicateTasks = Object.values(prodMap).some(arr => arr.length > 1);
-
-                    // Check for duplicate sales
-                    const activeSales = sales.filter(s => s.status !== 'delivered' && s.vehicleNumber);
-                    const salesMap = {};
-                    activeSales.forEach(s => {
-                        const key = s.vehicleNumber.toUpperCase();
-                        if (!salesMap[key]) salesMap[key] = [];
-                        salesMap[key].push(s);
-                    });
-                    const hasDuplicateSales = Object.values(salesMap).some(arr => arr.length > 1);
-
-                    // Check for orphaned assignments
-                    const hasOrphaned = production.some(t => 
-                        t.status === 'completed' && 
-                        t.assignedWorkerId && 
-                        t.assignedWorkerId.length > 0
-                    );
-
-                    // Update dot color
-                    if (hasDuplicateTasks || hasDuplicateSales || hasOrphaned) {
-                        statusDot.style.background = '#f44336'; // red
-                        statusDot.style.boxShadow = '0 0 12px rgba(244, 67, 54, 0.6)';
-                    } else {
-                        statusDot.style.background = '#4caf50'; // green
-                        statusDot.style.boxShadow = '0 1px 4px rgba(0,0,0,0.2)';
-                    }
-                } catch (e) {
-                    console.warn('Failed to check issues:', e);
-                }
-            }
-
-            // ---- Initial dot check ----
-            setTimeout(updateStatusDot, 500);
-
-            // ---- Toast & Modal helpers ----
-            const toast = new Components.Toast();
-            const modal = new Components.Modal();
-            const loader = new Components.Loader();
-
-            async function openCleanupModal() {
-                loader.show();
-                try {
-                    const [production, sales, workers, inventory] = await Promise.all([
-                        DataService.getProduction(),
-                        DataService.getSales(),
-                        DataService.getWorkers(),
-                        DataService.getInventory()
-                    ]);
-
-                    // ---- 1. Find duplicate production tasks ----
-                    const prodMap = {};
-                    production.forEach(t => {
-                        const key = `${(t.vehicleNumber || 'non-vehicle').toUpperCase()}|${t.taskName}`;
-                        if (!prodMap[key]) prodMap[key] = [];
-                        prodMap[key].push(t);
-                    });
-                    const duplicateTasks = Object.values(prodMap).filter(arr => arr.length > 1);
-
-                    // ---- 2. Find duplicate sales orders (active) ----
-                    const activeSales = sales.filter(s => s.status !== 'delivered' && s.vehicleNumber);
-                    const salesMap = {};
-                    activeSales.forEach(s => {
-                        const key = s.vehicleNumber.toUpperCase();
-                        if (!salesMap[key]) salesMap[key] = [];
-                        salesMap[key].push(s);
-                    });
-                    const duplicateSales = Object.values(salesMap).filter(arr => arr.length > 1);
-
-                    // ---- 3. Find orphaned assignments ----
-                    const orphanedTasks = production.filter(t => 
-                        t.status === 'completed' && 
-                        t.assignedWorkerId && 
-                        t.assignedWorkerId.length > 0
-                    );
-
-                    // ---- Build modal HTML ----
-                    let html = `
-                        <div style="max-height:60vh;overflow-y:auto;">
-                            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-bottom:1rem;">
-                                <button class="btn btn-danger btn-sm" id="fixAllBtn" style="background:#dc3545;color:white;">🔧 Fix All Issues</button>
-                                <span style="font-size:0.8rem;color:var(--dark-gray);">This will remove duplicates and clean up orphaned assignments.</span>
-                            </div>
-                    `;
-
-                    // ---- Section: Duplicate Tasks ----
-                    html += `<h4 style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;">
-                        <span class="material-icons" style="font-size:20px;">construction</span> 
-                        Duplicate Production Tasks 
-                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${duplicateTasks.length} groups)</span>
-                        ${duplicateTasks.length > 0 ? `<button class="btn btn-sm btn-danger fix-duplicate-tasks" style="font-size:0.7rem;">Fix All</button>` : ''}
-                    </h4>`;
-
-                    if (duplicateTasks.length === 0) {
-                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No duplicate production tasks found.</p>`;
-                    } else {
-                        duplicateTasks.forEach((group) => {
-                            const label = group[0].vehicleNumber ? `${group[0].vehicleNumber} – ${group[0].taskName}` : group[0].taskName;
-                            html += `
-                                <div style="border-left:3px solid var(--danger);padding:0.4rem 0.6rem;margin:0.3rem 0;background:#f8f9fa;border-radius:4px;">
-                                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;">
-                                        <strong>${label}</strong> <span style="font-size:0.7rem;color:var(--dark-gray);">${group.length} entries</span>
-                                    </div>
-                                    ${group.map(t => `
-                                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.1rem 0;border-bottom:1px solid #eee;align-items:center;">
-                                            <span>${t.id.slice(0,8)} – ${t.status} ${t.assignedWorkerId ? '👷' : '⭕'}</span>
-                                            <button class="btn btn-sm btn-danger delete-task-btn" data-taskid="${t.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">✕</button>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            `;
-                        });
-                    }
-
-                    // ---- Section: Duplicate Sales ----
-                    html += `<h4 style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;">
-                        <span class="material-icons" style="font-size:20px;">receipt</span> 
-                        Duplicate Sales Orders 
-                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${duplicateSales.length} groups)</span>
-                        ${duplicateSales.length > 0 ? `<button class="btn btn-sm btn-danger fix-duplicate-sales" style="font-size:0.7rem;">Fix All</button>` : ''}
-                    </h4>`;
-
-                    if (duplicateSales.length === 0) {
-                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No duplicate sales orders found.</p>`;
-                    } else {
-                        duplicateSales.forEach(group => {
-                            html += `
-                                <div style="border-left:3px solid var(--warning);padding:0.4rem 0.6rem;margin:0.3rem 0;background:#f8f9fa;border-radius:4px;">
-                                    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;align-items:center;">
-                                        <strong>${group[0].vehicleNumber}</strong> <span style="font-size:0.7rem;color:var(--dark-gray);">${group.length} active orders</span>
-                                    </div>
-                                    ${group.map(s => `
-                                        <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.1rem 0;border-bottom:1px solid #eee;align-items:center;">
-                                            <span>${s.token} – ${s.customerName || '—'} (${s.status})</span>
-                                            <button class="btn btn-sm btn-danger delete-sales-btn" data-salesid="${s.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">✕</button>
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            `;
-                        });
-                    }
-
-                    // ---- Section: Orphaned Assignments ----
-                    html += `<h4 style="margin-top:1rem;display:flex;align-items:center;gap:0.5rem;">
-                        <span class="material-icons" style="font-size:20px;">person_remove</span> 
-                        Completed Tasks Still Assigned to Workers 
-                        <span style="font-size:0.8rem;color:var(--dark-gray);">(${orphanedTasks.length} tasks)</span>
-                        ${orphanedTasks.length > 0 ? `<button class="btn btn-sm btn-primary fix-orphaned" style="font-size:0.7rem;">Unassign All</button>` : ''}
-                    </h4>`;
-
-                    if (orphanedTasks.length === 0) {
-                        html += `<p style="color:var(--success);font-size:0.85rem;">✅ No orphaned assignments found.</p>`;
-                    } else {
-                        html += `<div style="max-height:150px;overflow-y:auto;">`;
-                        orphanedTasks.forEach(t => {
-                            const workerNames = (t.assignedWorkerId || '').split(',').filter(Boolean)
-                                .map(id => {
-                                    const w = workers.find(w => String(w.id) === id.trim());
-                                    return w?.name || 'Unknown';
-                                }).join(', ') || 'Unassigned';
-                            html += `
-                                <div style="display:flex;justify-content:space-between;font-size:0.8rem;padding:0.2rem 0;border-bottom:1px solid #eee;align-items:center;">
-                                    <span>${t.vehicleNumber || 'Non-Vehicle'} – ${t.taskName}</span>
-                                    <span style="color:var(--dark-gray);">👷 ${workerNames}</span>
-                                    <button class="btn btn-sm btn-primary unassign-task-btn" data-taskid="${t.id}" style="font-size:0.65rem;padding:0.1rem 0.4rem;">Unassign</button>
-                                </div>
-                            `;
-                        });
-                        html += `</div>`;
-                    }
-
-                    html += `</div>`;
-
-                    modal.open({
-                        title: '🐞 Cleanup & Debug Tool',
-                        body: html,
-                        confirmText: 'Close',
-                        showCancel: false,
-                        onConfirm: () => {
-                            modal.close();
-                            updateStatusDot();
-                        }
-                    });
-
-                    // ---- Bind actions ----
-                    document.querySelectorAll('.delete-task-btn').forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            const taskId = btn.dataset.taskid;
-                            if (!confirm('Delete this task permanently?')) return;
-                            loader.show();
-                            try {
-                                await db.collection('production').doc(taskId).delete();
-                                toast.show('✅ Task deleted', 'success');
-                                modal.close();
-                                setTimeout(openCleanupModal, 300);
-                            } catch (err) {
-                                toast.show('Error: ' + err.message, 'error');
-                            } finally {
-                                loader.hide();
-                            }
-                        });
-                    });
-
-                    document.querySelectorAll('.delete-sales-btn').forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            const salesId = btn.dataset.salesid;
-                            if (!confirm('Delete this sales order?')) return;
-                            loader.show();
-                            try {
-                                await DataService.deleteSales(salesId);
-                                toast.show('✅ Sales order deleted', 'success');
-                                modal.close();
-                                setTimeout(openCleanupModal, 300);
-                            } catch (err) {
-                                toast.show('Error: ' + err.message, 'error');
-                            } finally {
-                                loader.hide();
-                            }
-                        });
-                    });
-
-                    document.querySelectorAll('.unassign-task-btn').forEach(btn => {
-                        btn.addEventListener('click', async (e) => {
-                            e.stopPropagation();
-                            const taskId = btn.dataset.taskid;
-                            if (!confirm('Unassign all workers from this completed task?')) return;
-                            loader.show();
-                            try {
-                                await DataService.updateProduction(taskId, { assignedWorkerId: '' });
-                                toast.show('✅ Worker unassigned', 'success');
-                                modal.close();
-                                setTimeout(openCleanupModal, 300);
-                            } catch (err) {
-                                toast.show('Error: ' + err.message, 'error');
-                            } finally {
-                                loader.hide();
-                            }
-                        });
-                    });
-
-                    // ---- Fix All Duplicate Tasks ----
-                    document.querySelector('.fix-duplicate-tasks')?.addEventListener('click', async () => {
-                        if (!confirm(`Delete all duplicate production tasks (keep one per group)?`)) return;
-                        loader.show();
-                        try {
-                            let count = 0;
-                            for (const group of duplicateTasks) {
-                                const toDelete = group.slice(1);
-                                for (const task of toDelete) {
-                                    await db.collection('production').doc(task.id).delete();
-                                    count++;
-                                }
-                            }
-                            toast.show(`✅ ${count} duplicate tasks deleted`, 'success');
-                            modal.close();
-                            setTimeout(openCleanupModal, 300);
-                        } catch (err) {
-                            toast.show('Error: ' + err.message, 'error');
-                        } finally {
-                            loader.hide();
-                        }
-                    });
-
-                    // ---- Fix All Duplicate Sales ----
-                    document.querySelector('.fix-duplicate-sales')?.addEventListener('click', async () => {
-                        if (!confirm(`Delete all duplicate sales orders (keep one per vehicle)?`)) return;
-                        loader.show();
-                        try {
-                            let count = 0;
-                            for (const group of duplicateSales) {
-                                const toDelete = group.slice(1);
-                                for (const order of toDelete) {
-                                    await DataService.deleteSales(order.id);
-                                    count++;
-                                }
-                            }
-                            toast.show(`✅ ${count} duplicate sales orders deleted`, 'success');
-                            modal.close();
-                            setTimeout(openCleanupModal, 300);
-                        } catch (err) {
-                            toast.show('Error: ' + err.message, 'error');
-                        } finally {
-                            loader.hide();
-                        }
-                    });
-
-                    // ---- Fix All Orphaned ----
-                    document.querySelector('.fix-orphaned')?.addEventListener('click', async () => {
-                        if (!confirm(`Unassign all workers from ${orphanedTasks.length} completed tasks?`)) return;
-                        loader.show();
-                        try {
-                            let count = 0;
-                            for (const task of orphanedTasks) {
-                                await DataService.updateProduction(task.id, { assignedWorkerId: '' });
-                                count++;
-                            }
-                            toast.show(`✅ ${count} workers unassigned from completed tasks`, 'success');
-                            modal.close();
-                            setTimeout(openCleanupModal, 300);
-                        } catch (err) {
-                            toast.show('Error: ' + err.message, 'error');
-                        } finally {
-                            loader.hide();
-                        }
-                    });
-
-                    // ---- Fix All Issues ----
-                    document.getElementById('fixAllBtn')?.addEventListener('click', async () => {
-                        const total = duplicateTasks.reduce((s, g) => s + g.length - 1, 0) + 
-                                     duplicateSales.reduce((s, g) => s + g.length - 1, 0) + 
-                                     orphanedTasks.length;
-                        if (!confirm(`This will fix ${total} issues across all categories. Continue?`)) return;
-                        loader.show();
-                        try {
-                            let count = 0;
-                            for (const group of duplicateTasks) {
-                                const toDelete = group.slice(1);
-                                for (const task of toDelete) {
-                                    await db.collection('production').doc(task.id).delete();
-                                    count++;
-                                }
-                            }
-                            for (const group of duplicateSales) {
-                                const toDelete = group.slice(1);
-                                for (const order of toDelete) {
-                                    await DataService.deleteSales(order.id);
-                                    count++;
-                                }
-                            }
-                            for (const task of orphanedTasks) {
-                                await DataService.updateProduction(task.id, { assignedWorkerId: '' });
-                                count++;
-                            }
-                            toast.show(`✅ All issues fixed (${count} items cleaned up)`, 'success');
-                            modal.close();
-                            setTimeout(openCleanupModal, 300);
-                        } catch (err) {
-                            toast.show('Error: ' + err.message, 'error');
-                        } finally {
-                            loader.hide();
-                        }
-                    });
-
-                    // Update dot after modal closes
-                    setTimeout(updateStatusDot, 500);
-                    loader.hide();
-
-                } catch (err) {
-                    toast.show('Error loading data: ' + err.message, 'error');
-                    loader.hide();
-                }
-            }
-
-            // ---- Also re-check dot when page becomes visible ----
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) {
-                    setTimeout(updateStatusDot, 500);
-                }
-            });
-
-            // ---- And when any modal closes ----
-            const origModalClose = Components.Modal.prototype.close;
-            Components.Modal.prototype.close = function() {
-                origModalClose.call(this);
-                setTimeout(updateStatusDot, 300);
-            };
-
-            console.log('🐞 Cleanup &  Tool ready.');
-        }
-    })();
-    </script>
+      
            <!-- ==============================================================
      SUPERVISOR TASK MANAGER – FORCED & RELIABLE
      ============================================================== -->
@@ -11552,6 +11056,321 @@
             };
 
             console.log('🔔 Pending Approvals ready.');
+        }
+    })();
+    </script>
+        <!-- ==============================================================
+     WORKER TASK PRIORITY & SORTING PATCH
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof Pages !== 'undefined' && Pages.Worker) {
+                clearInterval(waitForApp);
+                applyWorkerPatch();
+            }
+        }, 100);
+
+        function applyWorkerPatch() {
+            console.log('🔧 Applying Worker task priority & sorting patch...');
+
+            // ---- Helper: get priority based on delivery date ----
+            function getPriority(deliveryDate) {
+                if (!deliveryDate) return { label: 'Low', color: '#28a745', className: 'priority-low' };
+                const days = Utils.dateUtils.daysUntil(deliveryDate);
+                if (days < 0) return { label: '⚠️ Overdue', color: '#dc3545', className: 'priority-high' };
+                if (days <= 2) return { label: '🔴 High', color: '#dc3545', className: 'priority-high' };
+                if (days <= 5) return { label: '🟠 Medium', color: '#fd7e14', className: 'priority-medium' };
+                return { label: '🟢 Low', color: '#28a745', className: 'priority-low' };
+            }
+
+            // ---- Override the renderTasks method ----
+            const origRenderTasks = Pages.Worker.prototype.renderTasks;
+
+            Pages.Worker.prototype.renderTasks = function() {
+                // Sort tasks by delivery date (earliest first)
+                this.assignedTasks.sort((a, b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000); // far future
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+
+                // Call original render to build the cards
+                origRenderTasks.call(this);
+
+                // Now add priority badges to each card
+                const taskCards = document.querySelectorAll('#workerTaskCards .worker-task-card');
+                taskCards.forEach((card, index) => {
+                    const task = this.assignedTasks[index];
+                    if (!task) return;
+                    const priority = getPriority(task.deliveryDate);
+                    // Find the task-meta div inside task-info
+                    const metaDiv = card.querySelector('.task-meta');
+                    if (metaDiv) {
+                        // Check if priority badge already exists
+                        let badge = metaDiv.querySelector('.priority-badge');
+                        if (!badge) {
+                            badge = document.createElement('span');
+                            badge.className = 'priority-badge';
+                            badge.style.cssText = `
+                                margin-left: 0.5rem;
+                                font-weight: 600;
+                                font-size: 0.7rem;
+                                padding: 0.1rem 0.4rem;
+                                border-radius: 12px;
+                                color: white;
+                                background: ${priority.color};
+                                display: inline-block;
+                            `;
+                            metaDiv.appendChild(badge);
+                        }
+                        badge.textContent = priority.label;
+                        badge.style.background = priority.color;
+                    }
+                });
+            };
+
+            // ---- Re-render if Worker is already open ----
+            const currentPage = window.__app?.router?.currentPage;
+            if (currentPage instanceof Pages.Worker) {
+                console.log('🔄 Worker is active – re‑rendering with priority sorting.');
+                currentPage.renderTasks();
+            }
+
+            console.log('✅ Worker priority patch applied.');
+        }
+    })();
+    </script>
+        <!-- ==============================================================
+     SPECIAL INSTRUCTIONS PATCH – Extra Add‑ons for Body Coach, Electrical, etc.
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof Pages !== 'undefined' && Pages.Sales && Pages.Worker) {
+                clearInterval(waitForApp);
+                applySpecialInstructionsPatch();
+            }
+        }, 100);
+
+        function applySpecialInstructionsPatch() {
+            console.log('🔧 Applying Special Instructions patch...');
+
+            // ---- 1. PATCH: Sales Order Form (add the textarea) ----
+            const origShowForm = Pages.Sales.prototype.showForm;
+
+            Pages.Sales.prototype.showForm = function(order) {
+                // Call original to build the form
+                origShowForm.call(this, order);
+
+                // Wait for modal to render
+                setTimeout(() => {
+                    const formContainer = document.querySelector('#salesForm');
+                    if (!formContainer) return;
+
+                    // Check if field already exists
+                    if (formContainer.querySelector('#specialInstructions')) return;
+
+                    // Find the fieldset with Production Requirements
+                    const fieldset = formContainer.querySelector('fieldset');
+                    if (!fieldset) return;
+
+                    // Parse existing req if editing
+                    let req = {};
+                    try { req = order?.requirements ? JSON.parse(order.requirements) : {}; } catch(e) { req = {}; }
+
+                    // Create the new field
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'form-group';
+                    wrapper.style.marginTop = '0.8rem';
+                    wrapper.innerHTML = `
+                        <label for="specialInstructions">📝 Special Instructions / Add‑ons</label>
+                        <textarea id="specialInstructions" name="specialInstructions" rows="2" 
+                            placeholder="e.g. Extra storage box, additional switchboard, custom water tank, etc."
+                            style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);font-size:0.95rem;">${req.specialInstructions || ''}</textarea>
+                        <small style="color:var(--dark-gray);font-size:0.7rem;">Write any extra demands not covered above (e.g., extra box, extra switch, custom storage).</small>
+                    `;
+
+                    // Insert before the "Remarks" field if it exists, or at the end of the fieldset
+                    const remarksGroup = fieldset.querySelector('.form-group:last-child');
+                    if (remarksGroup) {
+                        fieldset.insertBefore(wrapper, remarksGroup);
+                    } else {
+                        fieldset.appendChild(wrapper);
+                    }
+
+                    // ---- Patch the confirm handler to include specialInstructions ----
+                    // Since the original onConfirm already builds `requirements`, we need to intercept.
+                    // We'll override the modal's onConfirm temporarily.
+                    const modal = this.modal;
+                    const origOnConfirm = modal.onConfirm;
+
+                    modal.onConfirm = async function() {
+                        // Get the value from the textarea
+                        const specialInput = document.getElementById('specialInstructions');
+                        const specialValue = specialInput ? specialInput.value : '';
+
+                        // Update the form data before original onConfirm runs
+                        // We need to get the current form data and add this field
+                        const fd = new FormData(document.getElementById('salesForm'));
+                        // Add the special instructions manually
+                        fd.append('specialInstructions', specialValue);
+
+                        // Now call the original onConfirm (which uses the form data)
+                        // But the original uses `data` from Object.fromEntries(fd.entries()).
+                        // We need to modify the original code's data object.
+                        // Easiest: override the `requirements` construction inside the original.
+                        // But we can't easily patch that without replacing the whole function.
+                        // So we'll just store it in a global variable for the original to pick up.
+                        window.__specialInstructions = specialValue;
+
+                        // Call original onConfirm
+                        await origOnConfirm.call(this);
+                    };
+
+                }, 200);
+            };
+
+            // ---- 2. PATCH: Worker Work Log (display the instructions) ----
+            const origOpenWorkLog = Pages.Worker.prototype.openWorkLog;
+
+            Pages.Worker.prototype.openWorkLog = async function(taskId, type) {
+                // Call original first
+                await origOpenWorkLog.call(this, taskId, type);
+
+                // Wait for modal to render
+                setTimeout(() => {
+                    const workLog = document.querySelector('.work-log');
+                    if (!workLog) return;
+
+                    // Find the task data (we need the requirements)
+                    // We can fetch the task again, but we already have it in the original.
+                    // Instead, we'll grab it from the cached data.
+                    const task = this.assignedTasks.find(t => t.id === taskId);
+                    if (!task) return;
+
+                    let req = {};
+                    try { req = JSON.parse(task.requirements || '{}'); } catch(e) { req = {}; }
+
+                    if (req.specialInstructions) {
+                        // Check if already added
+                        if (workLog.querySelector('.special-instructions-box')) return;
+
+                        const box = document.createElement('div');
+                        box.className = 'special-instructions-box';
+                        box.style.cssText = `
+                            background: #fff3cd;
+                            border-left: 4px solid #ffc107;
+                            padding: 0.6rem 0.8rem;
+                            border-radius: var(--radius);
+                            margin: 0.5rem 0;
+                            font-size: 0.9rem;
+                            color: #856404;
+                        `;
+                        box.innerHTML = `
+                            <strong>📝 Special Instructions / Add‑ons:</strong>
+                            <div style="margin-top:0.2rem;white-space:pre-wrap;">${req.specialInstructions}</div>
+                        `;
+
+                        // Insert after the design photo section or near the top
+                        const header = workLog.querySelector('.work-log-header');
+                        if (header) {
+                            header.after(box);
+                        } else {
+                            workLog.prepend(box);
+                        }
+                    }
+                }, 300);
+            };
+
+            console.log('✅ Special Instructions patch applied.');
+            console.log('📌 The Sales form now has a "Special Instructions" field.');
+            console.log('📌 Workers will see these instructions in their task details.');
+        }
+    })();
+    </script>
+        <!-- ==============================================================
+     NAVIGATION: Hide Worker for Owner/Ops, Add Performance
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && window.__app.router && window.__app.auth) {
+                clearInterval(waitForApp);
+                applyNavigationChanges();
+            }
+        }, 100);
+
+        function applyNavigationChanges() {
+            console.log('🔄 Applying navigation changes...');
+
+            const user = window.__app.auth.getCurrentUser();
+            const isOwnerOrOps = user && ['owner', 'operations_manager'].includes(user.role);
+
+            // ---- 1. Remove Worker from sidebar (only for owner/ops) ----
+            const sidebar = document.getElementById('sidebarNav');
+            if (sidebar && isOwnerOrOps) {
+                const workerNav = sidebar.querySelector('[data-page="worker"]');
+                if (workerNav) workerNav.remove();
+                console.log('✅ Removed Worker from sidebar (owner/ops only).');
+            }
+
+            // ---- 2. Remove Worker from bottom nav (only for owner/ops) ----
+            const bottomNav = document.getElementById('bottomNav');
+            if (bottomNav && isOwnerOrOps) {
+                const workerBtn = bottomNav.querySelector('[data-page="worker"]');
+                if (workerBtn) workerBtn.remove();
+                console.log('✅ Removed Worker from bottom nav (owner/ops only).');
+            }
+
+            // ---- 3. Ensure Performance page exists (if not already added) ----
+            const router = window.__app.router;
+            if (router && !router.pages.performance) {
+                if (typeof Pages !== 'undefined' && Pages.Performance) {
+                    router.pages.performance = Pages.Performance;
+                    console.log('✅ Performance page added to router.');
+                } else {
+                    console.warn('⚠️ Performance page class not found. Please apply the Performance patch first.');
+                }
+            }
+
+            // ---- 4. Redirect if owner/ops on Worker page ----
+            const currentHash = window.location.hash.slice(1) || 'dashboard';
+            if (currentHash === 'worker' && isOwnerOrOps) {
+                console.log('🔄 Redirecting from Worker to Dashboard (owner/ops).');
+                window.location.hash = '#dashboard';
+            }
+
+            // ---- 5. Add Performance to sidebar and bottom nav (only for owner/ops) ----
+            if (isOwnerOrOps) {
+                // Add Performance to sidebar if not present
+                const existingPerf = sidebar?.querySelector('[data-page="performance"]');
+                if (!existingPerf && sidebar) {
+                    const perfItem = document.createElement('a');
+                    perfItem.href = '#performance';
+                    perfItem.className = 'nav-item';
+                    perfItem.dataset.page = 'performance';
+                    perfItem.innerHTML = `<span class="material-icons">emoji_events</span><span class="nav-label">Performance</span>`;
+                    const users = sidebar.querySelector('[data-page="users"]');
+                    if (users) sidebar.insertBefore(perfItem, users);
+                    else sidebar.appendChild(perfItem);
+                    console.log('✅ Performance added to sidebar.');
+                }
+
+                const existingPerfBtn = bottomNav?.querySelector('[data-page="performance"]');
+                if (!existingPerfBtn && bottomNav) {
+                    const perfBtn = document.createElement('button');
+                    perfBtn.className = 'nav-btn';
+                    perfBtn.dataset.page = 'performance';
+                    perfBtn.innerHTML = `<span class="material-icons">emoji_events</span><span class="nav-label">Perf</span>`;
+                    const assignments = bottomNav.querySelector('[data-page="assignments"]');
+                    if (assignments) bottomNav.insertBefore(perfBtn, assignments);
+                    else bottomNav.appendChild(perfBtn);
+                    console.log('✅ Performance added to bottom nav.');
+                }
+            }
+
+            console.log('✅ Navigation changes applied.');
         }
     })();
     </script>
