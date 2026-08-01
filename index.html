@@ -11374,5 +11374,536 @@
         }
     })();
     </script>
+        <!-- ==============================================================
+     WORKER PAGE – TABS: Active & Completed Tasks
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof Pages !== 'undefined' && Pages.Worker) {
+                clearInterval(waitForApp);
+                applyWorkerTabs();
+            }
+        }, 100);
+
+        function applyWorkerTabs() {
+            console.log('📋 Applying Worker tabs: Active & Completed...');
+
+            const workerProto = Pages.Worker.prototype;
+
+            // ---- 1. Store original methods ----
+            const origRender = workerProto.render;
+            const origLoadData = workerProto.loadData;
+            const origRenderTasks = workerProto.renderTasks;
+            const origCompleteTask = workerProto.completeTask;
+
+            // ---- 2. New: load ALL assigned tasks (including completed) ----
+            workerProto.loadAllTasks = async function() {
+                this.loader.show();
+                try {
+                    const [inventory, production, fcTasks, workers, sales] = await Promise.all([
+                        DataService.getInventory(),
+                        DataService.getProduction(),
+                        DataService.getFCTasks(),
+                        DataService.getWorkers(),
+                        DataService.getSales()
+                    ]);
+                    this.workers = workers;
+                    this.salesCache = sales;
+                    this.vehiclePhotos = {};
+                    inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
+                    
+                    const allTasks = [...production, ...fcTasks.map(t => ({ ...t, type: 'fc' }))];
+                    const myId = String(this.currentUser?.id || this.currentUser?.uid || '');
+                    
+                    // Store ALL assigned tasks (including completed)
+                    this.allTasks = allTasks.filter(t => {
+                        if (!t.assignedWorkerId) return false;
+                        const workerIds = t.assignedWorkerId.split(',').map(s => s.trim());
+                        return workerIds.includes(myId);
+                    });
+                    
+                    // Split into active and completed
+                    this.activeTasks = this.allTasks.filter(t => t.status !== 'completed');
+                    this.completedTasks = this.allTasks.filter(t => t.status === 'completed');
+                    
+                    // Sort active by delivery date (earliest first)
+                    this.activeTasks.sort((a, b) => {
+                        const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                        const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                        return dateA - dateB;
+                    });
+                    
+                    // Sort completed by endTime (newest first)
+                    this.completedTasks.sort((a, b) => {
+                        const dateA = a.endTime ? new Date(a.endTime) : new Date(0);
+                        const dateB = b.endTime ? new Date(b.endTime) : new Date(0);
+                        return dateB - dateA;
+                    });
+                    
+                    // Set default to active
+                    this.currentTab = 'active';
+                } catch (e) {
+                    this.toast.show('Failed to load tasks: ' + (e.message || e), 'error');
+                } finally {
+                    this.loader.hide();
+                }
+            };
+
+            // ---- 3. Override render: add tabs and content ----
+            workerProto.render = async function(container) {
+                // Load all tasks first
+                await this.loadAllTasks();
+
+                container.innerHTML = `
+                    <div class="page-header">
+                        <h2>My Work</h2>
+                        <p style="color:var(--dark-gray);font-size:0.85rem;">
+                            ${this.activeTasks.length} active tasks · ${this.completedTasks.length} completed
+                        </p>
+                    </div>
+                    <div class="tabs-container" style="margin-bottom:1rem;">
+                        <button class="tab-btn active" data-tab="active">📋 Active Tasks <span class="badge badge-in_progress" style="font-size:0.6rem;margin-left:0.3rem;">${this.activeTasks.length}</span></button>
+                        <button class="tab-btn" data-tab="completed">✅ Completed Tasks <span class="badge badge-completed" style="font-size:0.6rem;margin-left:0.3rem;">${this.completedTasks.length}</span></button>
+                    </div>
+                    <div id="workerTaskContent"></div>
+                `;
+
+                // Render the active tab by default
+                this.renderTab('active');
+
+                // Bind tab clicks
+                container.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const tab = btn.dataset.tab;
+                        container.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                        btn.classList.add('active');
+                        this.renderTab(tab);
+                    });
+                });
+            };
+
+            // ---- 4. Render a specific tab ----
+            workerProto.renderTab = function(tab) {
+                this.currentTab = tab;
+                const container = document.getElementById('workerTaskContent');
+                if (!container) return;
+
+                if (tab === 'active') {
+                    this.renderActiveTasks(container);
+                } else {
+                    this.renderCompletedTasks(container);
+                }
+            };
+
+            // ---- 5. Render Active Tasks ----
+            workerProto.renderActiveTasks = function(container) {
+                const tasks = this.activeTasks || [];
+                if (tasks.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center" style="padding:2rem;color:var(--dark-gray);">
+                            <span class="material-icons" style="font-size:2.5rem;">check_circle</span>
+                            <p>No active tasks assigned to you right now.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `<div class="worker-task-list">`;
+                tasks.forEach(t => {
+                    const photoUrl = this.vehiclePhotos[t.vehicleNumber] || '';
+                    const photoHtml = photoUrl
+                        ? `<img class="task-vehicle-photo" src="${photoUrl}" />`
+                        : `<div class="task-vehicle-photo-placeholder"><span class="material-icons" style="font-size:2rem;">directions_car</span></div>`;
+                    
+                    let actionBtn = '';
+                    const isFc = t.type === 'fc';
+                    if (t.status === 'pending' || t.status === 'in_progress') {
+                        actionBtn += `<button class="btn btn-secondary btn-sm view-worklog" data-id="${t.id}" data-type="${isFc ? 'fc' : 'production'}"><span class="material-icons" style="font-size:16px;">assignment</span> Open</button>`;
+                    }
+                    if (t.status === 'in_progress') {
+                        actionBtn += `<button class="btn btn-success btn-sm complete-task" data-id="${t.id}" data-type="${isFc ? 'fc' : 'production'}"><span class="material-icons" style="font-size:16px;">check_circle</span> Complete</button>`;
+                    }
+                    
+                    const typeLabel = isFc ? '🔧 FC' : '🏭 Prod';
+                    const statusBadge = t.status === 'pending_approval' ? 'badge-pending_approval' : `badge-${t.status}`;
+                    
+                    // Priority based on delivery date
+                    let priorityHtml = '';
+                    if (t.deliveryDate) {
+                        const days = Utils.dateUtils.daysUntil(t.deliveryDate);
+                        if (days < 0) {
+                            priorityHtml = `<span class="badge badge-danger" style="font-size:0.6rem;">⚠️ Overdue</span>`;
+                        } else if (days <= 2) {
+                            priorityHtml = `<span class="badge badge-danger" style="font-size:0.6rem;">🔴 High</span>`;
+                        } else if (days <= 5) {
+                            priorityHtml = `<span class="badge badge-warning" style="font-size:0.6rem;">🟠 Medium</span>`;
+                        } else {
+                            priorityHtml = `<span class="badge badge-success" style="font-size:0.6rem;">🟢 Low</span>`;
+                        }
+                    }
+
+                    // Scope / special instructions
+                    let scopeText = '';
+                    try {
+                        const req = JSON.parse(t.requirements || '{}');
+                        scopeText = req.specialInstructions || req.remarks || '';
+                    } catch(e) {}
+
+                    html += `
+                        <div class="worker-task-card" style="${priorityHtml.includes('Overdue') ? 'border-left:4px solid #dc3545;' : priorityHtml.includes('High') ? 'border-left:4px solid #dc3545;' : priorityHtml.includes('Medium') ? 'border-left:4px solid #fd7e14;' : 'border-left:4px solid #28a745;'}">
+                            ${photoHtml}
+                            <div class="task-info">
+                                <div class="task-vehicle-number">
+                                    ${t.vehicleNumber || 'Non-Vehicle'}
+                                    <span style="font-size:0.7rem;color:var(--dark-gray);">${typeLabel}</span>
+                                    ${priorityHtml}
+                                </div>
+                                <div class="task-name">${t.taskName}</div>
+                                ${scopeText ? `<div style="font-size:0.75rem;color:var(--primary-blue);background:#e8f0fe;padding:0.1rem 0.4rem;border-radius:8px;margin:0.2rem 0;">📌 ${scopeText}</div>` : ''}
+                                <div class="task-meta">
+                                    <span>Est. ${t.estimatedHours || '--'}</span>
+                                    &nbsp;•&nbsp; <span class="badge ${statusBadge}">${t.status}</span>
+                                    ${t.deliveryDate ? `&nbsp;•&nbsp; 📅 ${Utils.dateUtils.format(t.deliveryDate)}` : ''}
+                                </div>
+                            </div>
+                            <div class="task-actions">${actionBtn}</div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+
+                // Bind events
+                container.querySelectorAll('.view-worklog').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const taskId = btn.dataset.id;
+                        const type = btn.dataset.type;
+                        // Store the task for the openWorkLog method
+                        const task = this.allTasks.find(t => t.id === taskId);
+                        if (task) this.openWorkLog(taskId, type);
+                    });
+                });
+                container.querySelectorAll('.complete-task').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const taskId = btn.dataset.id;
+                        const type = btn.dataset.type;
+                        // Find the task
+                        const task = this.allTasks.find(t => t.id === taskId);
+                        if (task) this.completeTask(taskId, type);
+                    });
+                });
+            };
+
+            // ---- 6. Render Completed Tasks ----
+            workerProto.renderCompletedTasks = function(container) {
+                const tasks = this.completedTasks || [];
+                if (tasks.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-center" style="padding:2rem;color:var(--dark-gray);">
+                            <span class="material-icons" style="font-size:2.5rem;">check_circle</span>
+                            <p>No completed tasks yet. Keep up the good work!</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `<div class="worker-task-list">`;
+                tasks.forEach(t => {
+                    const photoUrl = this.vehiclePhotos[t.vehicleNumber] || '';
+                    const photoHtml = photoUrl
+                        ? `<img class="task-vehicle-photo" src="${photoUrl}" />`
+                        : `<div class="task-vehicle-photo-placeholder"><span class="material-icons" style="font-size:2rem;">directions_car</span></div>`;
+                    
+                    const duration = t.actualHours ? t.actualHours.toFixed(1) + ' hrs' : '—';
+                    const start = t.startTime ? new Date(t.startTime).toLocaleDateString() : '—';
+                    const end = t.endTime ? new Date(t.endTime).toLocaleDateString() : '—';
+                    
+                    // Worker names (who did it)
+                    const workerIds = (t.assignedWorkerId || '').split(',').filter(Boolean);
+                    const workerNames = workerIds.map(id => {
+                        const w = this.workers.find(w => String(w.id) === id.trim());
+                        return w?.name || 'Unknown';
+                    }).join(', ') || 'Unassigned';
+
+                    html += `
+                        <div class="worker-task-card" style="border-left:4px solid var(--success);opacity:0.9;">
+                            ${photoHtml}
+                            <div class="task-info">
+                                <div class="task-vehicle-number">${t.vehicleNumber || 'Non-Vehicle'} <span style="font-size:0.7rem;color:var(--success);">✅ Completed</span></div>
+                                <div class="task-name">${t.taskName}</div>
+                                <div class="task-meta">
+                                    <span>👷 ${workerNames}</span>
+                                    <span>⏱️ ${duration}</span>
+                                    <span>📅 ${start} → ${end}</span>
+                                    ${t.remarks ? `<span style="color:var(--dark-gray);">📝 ${t.remarks}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+                container.innerHTML = html;
+            };
+
+            // ---- 7. Override loadData to use loadAllTasks ----
+            workerProto.loadData = function() {
+                return this.loadAllTasks();
+            };
+
+            // ---- 8. Override renderTasks to render the current tab ----
+            workerProto.renderTasks = function() {
+                const container = document.getElementById('workerTaskContent');
+                if (container) {
+                    this.renderTab(this.currentTab || 'active');
+                }
+            };
+
+            // ---- 9. Override completeTask to refresh the tabs ----
+            workerProto.completeTask = async function(taskId, type) {
+                // Call the original completeTask (it opens the work log)
+                await origCompleteTask.call(this, taskId, type);
+                // After completion, reload all tasks and refresh the current tab
+                await this.loadAllTasks();
+                this.renderTab(this.currentTab || 'active');
+                // Also update the tab counts
+                const tabs = document.querySelectorAll('.tab-btn');
+                if (tabs.length >= 2) {
+                    tabs[0].innerHTML = `📋 Active Tasks <span class="badge badge-in_progress" style="font-size:0.6rem;margin-left:0.3rem;">${this.activeTasks.length}</span>`;
+                    tabs[1].innerHTML = `✅ Completed Tasks <span class="badge badge-completed" style="font-size:0.6rem;margin-left:0.3rem;">${this.completedTasks.length}</span>`;
+                }
+            };
+
+            // ---- 10. If Worker is already open, re-render ----
+            const currentPage = window.__app?.router?.currentPage;
+            if (currentPage instanceof Pages.Worker) {
+                console.log('🔄 Worker is active – reloading with tabs.');
+                currentPage.loadAllTasks().then(() => {
+                    currentPage.renderTab('active');
+                });
+            }
+
+            console.log('✅ Worker tabs applied: Active & Completed.');
+        }
+    })();
+    </script>
+        <!-- ==============================================================
+     SUPERVISOR – ADD MANUAL PRODUCTION TASK (Small Works)
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor && typeof DataService !== 'undefined') {
+                clearInterval(waitForApp);
+                applyManualTaskFeature();
+            }
+        }, 100);
+
+        function applyManualTaskFeature() {
+            console.log('🔧 Adding Manual Task feature to Supervisor...');
+
+            // ---- 1. EXTEND DATASERVICE ----
+            DataService.addManualProductionTask = async function(data) {
+                const id = Utils.genId();
+                const now = Utils.dateUtils.now();
+
+                // Build a minimal production task
+                const task = {
+                    id,
+                    salesOrderId: `manual_${id}`, // unique identifier for manual tasks
+                    vehicleNumber: data.vehicleNumber || '',
+                    customerName: data.customerName || 'Manual Job',
+                    taskName: data.taskName || 'General Work',
+                    department: data.department || '',
+                    assignedWorkerId: data.assignedWorkerId || '',
+                    status: 'pending',
+                    estimatedHours: data.estimatedHours || '4 hours',
+                    actualHours: null,
+                    startTime: null,
+                    endTime: null,
+                    remarks: data.remarks || '',
+                    scope: data.scope || '', // dedicated field for small works
+                    deliveryDate: data.deliveryDate || '',
+                    priorityScore: 0,
+                    dependencyFlags: '[]',
+                    forceStart: false,
+                    beforePhotoUploaded: false,
+                    afterPhotoUploaded: false,
+                    photoUploadedAt: null,
+                    createdAt: now,
+                    updatedAt: now,
+                    // Store the special instructions for the worker
+                    requirements: JSON.stringify({
+                        specialInstructions: data.scope || data.remarks || '',
+                        remarks: data.remarks || ''
+                    })
+                };
+
+                await db.collection('production').doc(id).set(task);
+                return { success: true, id };
+            };
+
+            // ---- 2. OVERRIDE SUPERVISOR RENDER TO ADD BUTTON ----
+            const origSupervisorRender = Pages.Supervisor.prototype.render;
+
+            Pages.Supervisor.prototype.render = async function(container) {
+                // Call original render
+                await origSupervisorRender.call(this, container);
+
+                // Add the "Manual Task" button in the priority queue header
+                const queueHeader = container.querySelector('.priority-queue .flex');
+                if (queueHeader) {
+                    // Check if button already exists
+                    if (queueHeader.querySelector('#manualTaskBtn')) return;
+
+                    const btn = document.createElement('button');
+                    btn.id = 'manualTaskBtn';
+                    btn.className = 'btn btn-primary btn-sm';
+                    btn.innerHTML = `<span class="material-icons" style="font-size:18px;">add</span> Manual Task`;
+                    btn.style.marginLeft = '0.5rem';
+                    btn.addEventListener('click', () => this.showManualTaskModal());
+                    queueHeader.appendChild(btn);
+                }
+            };
+
+            // ---- 3. SHOW MODAL FOR MANUAL TASK ----
+            Pages.Supervisor.prototype.showManualTaskModal = function() {
+                const modal = new Components.Modal();
+                const toast = new Components.Toast();
+                const loader = new Components.Loader();
+
+                // Get workers for dropdown
+                const workers = this.workers || [];
+
+                const form = `
+                    <form id="manualTaskForm">
+                        <div class="form-group">
+                            <label>Task Name *</label>
+                            <select name="taskName" required>
+                                <option value="">-- Select --</option>
+                                <option value="Tinkering">Tinkering</option>
+                                <option value="Mechanical">Mechanical</option>
+                                <option value="Dummy Closing">Dummy Closing</option>
+                                <option value="Body Coach">Body Coach</option>
+                                <option value="Kitchen Layout">Kitchen Layout</option>
+                                <option value="Painting">Painting</option>
+                                <option value="ACP Work">ACP Work</option>
+                                <option value="Vehicle Electrical">Vehicle Electrical</option>
+                                <option value="Coach Electrical">Coach Electrical</option>
+                                <option value="Plumbing">Plumbing</option>
+                                <option value="Canopy">Canopy</option>
+                                <option value="Tyre Change">Tyre Change</option>
+                                <option value="Glass Checking">Glass Checking</option>
+                                <option value="Branding">Branding</option>
+                                <option value="Solar">Solar</option>
+                                <option value="UPS">UPS</option>
+                                <option value="Camera">Camera</option>
+                                <option value="QC">QC</option>
+                                <option value="Delivery">Delivery</option>
+                                <option value="Other">Other (type below)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Custom Task Name (if "Other" selected)</label>
+                            <input type="text" name="customTaskName" placeholder="e.g. Small Repair" />
+                        </div>
+                        <div class="form-group">
+                            <label>Vehicle Number (optional)</label>
+                            <input type="text" name="vehicleNumber" placeholder="e.g. KA11B7007" />
+                        </div>
+                        <div class="form-group">
+                            <label>📝 Scope / Work Description *</label>
+                            <textarea name="scope" rows="3" required placeholder="e.g. Paint only bonnet and front bumper – Pearl White"></textarea>
+                        </div>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Estimated Hours</label>
+                                <input type="text" name="estimatedHours" placeholder="e.g. 2 hours, 1 day" value="4 hours" />
+                            </div>
+                            <div class="form-group">
+                                <label>Delivery Date (optional)</label>
+                                <input type="date" name="deliveryDate" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Assign to Worker (optional)</label>
+                            <select name="assignedWorkerId">
+                                <option value="">-- Not assigned yet --</option>
+                                ${workers.map(w => `<option value="${w.id}">${w.name} (${w.department || 'No dept'})</option>`).join('')}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Customer / Job Name (optional)</label>
+                            <input type="text" name="customerName" placeholder="e.g. Walk-in Customer, John's Repair" />
+                        </div>
+                    </form>
+                `;
+
+                modal.open({
+                    title: '➕ Add Manual Production Task',
+                    body: form,
+                    confirmText: 'Add Task',
+                    onConfirm: async () => {
+                        const fd = new FormData(document.getElementById('manualTaskForm'));
+                        const data = Object.fromEntries(fd.entries());
+
+                        if (!data.taskName && !data.customTaskName) {
+                            toast.show('Please select or enter a task name.', 'warning');
+                            return;
+                        }
+                        if (!data.scope) {
+                            toast.show('Please describe the work scope.', 'warning');
+                            return;
+                        }
+
+                        const finalTaskName = data.taskName === 'Other' ? data.customTaskName : data.taskName;
+
+                        loader.show();
+                        try {
+                            await DataService.addManualProductionTask({
+                                taskName: finalTaskName,
+                                vehicleNumber: data.vehicleNumber || '',
+                                scope: data.scope,
+                                remarks: data.scope,
+                                estimatedHours: data.estimatedHours || '4 hours',
+                                deliveryDate: data.deliveryDate || '',
+                                assignedWorkerId: data.assignedWorkerId || '',
+                                customerName: data.customerName || 'Manual Job',
+                                department: '' // Will be auto-detected or left empty
+                            });
+
+                            toast.show('✅ Manual task added to queue.', 'success');
+                            modal.close();
+
+                            // Refresh the Supervisor page
+                            await this.loadData();
+                            this.renderQueue();
+                            this.renderStats();
+                            this.renderAssignmentsOverview();
+
+                        } catch (err) {
+                            toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    }
+                });
+            };
+
+            // ---- 4. Force re-render if Supervisor is already open ----
+            const currentPage = window.__app?.router?.currentPage;
+            if (currentPage instanceof Pages.Supervisor) {
+                console.log('🔄 Supervisor is active – adding Manual Task button.');
+                // Re-run render to add the button
+                const container = document.getElementById('pageContent');
+                if (container) {
+                    currentPage.render(container);
+                }
+            }
+
+            console.log('✅ Manual Task feature ready.');
+        }
+    })();
+    </script>
 </body>
 </html>
