@@ -11905,5 +11905,114 @@
         }
     })();
     </script>
+        <!-- ==============================================================
+     FC PREP – SEARCH OPTION
+     ============================================================== -->
+    <script>
+    (function() {
+        const waitForApp = setInterval(() => {
+            if (window.__app && typeof Pages !== 'undefined' && Pages.FCPrep) {
+                clearInterval(waitForApp);
+                applyFCSearch();
+            }
+        }, 100);
+
+        function applyFCSearch() {
+            console.log('🔍 Adding search to FC Prep...');
+
+            // ---- 1. Store original renderCards ----
+            const origRenderCards = Pages.FCPrep.prototype.renderCards;
+
+            // ---- 2. Override render to add search bar ----
+            Pages.FCPrep.prototype.render = async function(container) {
+                // Call original render first (it will call renderCards)
+                await origRenderCards.call(this, container);
+
+                // Add search input above the cards
+                const cardsContainer = document.getElementById('fcInventoryCards');
+                if (!cardsContainer) return;
+
+                // Check if search already exists
+                if (cardsContainer.parentElement.querySelector('#fcSearchInput')) return;
+
+                const searchWrapper = document.createElement('div');
+                searchWrapper.style.cssText = `
+                    display: flex;
+                    gap: 0.5rem;
+                    margin-bottom: 0.8rem;
+                    flex-wrap: wrap;
+                    align-items: center;
+                `;
+                searchWrapper.innerHTML = `
+                    <div style="flex:1;min-width:200px;position:relative;">
+                        <span class="material-icons" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--dark-gray);font-size:20px;">search</span>
+                        <input type="text" id="fcSearchInput" placeholder="🔍 Search by vehicle number or name..." style="width:100%;padding:0.4rem 0.6rem 0.4rem 2.2rem;border:1px solid var(--gray);border-radius:var(--radius);font-size:0.95rem;" />
+                    </div>
+                    <button id="fcSearchClear" class="btn btn-secondary btn-sm">Clear</button>
+                    <span id="fcSearchCount" style="font-size:0.8rem;color:var(--dark-gray);"></span>
+                `;
+
+                // Insert the search bar before the cards container
+                cardsContainer.parentElement.insertBefore(searchWrapper, cardsContainer);
+
+                // Bind events
+                const searchInput = document.getElementById('fcSearchInput');
+                const clearBtn = document.getElementById('fcSearchClear');
+                const countSpan = document.getElementById('fcSearchCount');
+
+                function filterCards() {
+                    const term = searchInput.value.trim().toLowerCase();
+                    const cards = cardsContainer.querySelectorAll('.inv-card');
+                    let visibleCount = 0;
+                    cards.forEach(card => {
+                        const vehicleNumber = card.dataset.vehicle || '';
+                        const name = card.querySelector('.inv-name')?.textContent || '';
+                        const number = card.querySelector('.inv-number')?.textContent || '';
+                        const match = vehicleNumber.toLowerCase().includes(term) ||
+                                     name.toLowerCase().includes(term) ||
+                                     number.toLowerCase().includes(term);
+                        card.style.display = match ? '' : 'none';
+                        if (match) visibleCount++;
+                    });
+                    countSpan.textContent = `${visibleCount} / ${cards.length} vehicles`;
+                }
+
+                searchInput.addEventListener('input', filterCards);
+                clearBtn.addEventListener('click', () => {
+                    searchInput.value = '';
+                    filterCards();
+                });
+
+                // Initial count
+                filterCards();
+            };
+
+            // ---- 3. Also override renderCards to re-apply search after data changes ----
+            Pages.FCPrep.prototype.renderCards = function() {
+                // Call original to build cards
+                origRenderCards.call(this);
+
+                // If search input exists, re-run filter
+                const searchInput = document.getElementById('fcSearchInput');
+                if (searchInput) {
+                    searchInput.dispatchEvent(new Event('input'));
+                }
+            };
+
+            // ---- 4. If FC Prep is already open, re-render ----
+            const currentPage = window.__app?.router?.currentPage;
+            if (currentPage instanceof Pages.FCPrep) {
+                console.log('🔄 FC Prep active – adding search.');
+                // Re-run render to add search bar
+                const container = document.getElementById('pageContent');
+                if (container) {
+                    currentPage.render(container);
+                }
+            }
+
+            console.log('✅ FC Prep search added.');
+        }
+    })();
+    </script>
 </body>
 </html>
