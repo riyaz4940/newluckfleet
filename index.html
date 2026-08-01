@@ -11905,8 +11905,8 @@
         }
     })();
     </script>
-        <!-- ==============================================================
-     FC PREP – SEARCH OPTION
+         <!-- ==============================================================
+     FC PREP – SEARCH OPTION (Fixed)
      ============================================================== -->
     <script>
     (function() {
@@ -11920,22 +11920,24 @@
         function applyFCSearch() {
             console.log('🔍 Adding search to FC Prep...');
 
-            // ---- 1. Store original renderCards ----
+            const origRender = Pages.FCPrep.prototype.render;
             const origRenderCards = Pages.FCPrep.prototype.renderCards;
 
-            // ---- 2. Override render to add search bar ----
+            // ---- 1. Override render to add the search bar ----
             Pages.FCPrep.prototype.render = async function(container) {
-                // Call original render first (it will call renderCards)
-                await origRenderCards.call(this, container);
+                // Call original render
+                await origRender.call(this, container);
 
-                // Add search input above the cards
+                // Add search bar only if not already present
                 const cardsContainer = document.getElementById('fcInventoryCards');
                 if (!cardsContainer) return;
 
+                const parent = cardsContainer.parentElement;
                 // Check if search already exists
-                if (cardsContainer.parentElement.querySelector('#fcSearchInput')) return;
+                if (parent.querySelector('#fcSearchInput')) return;
 
                 const searchWrapper = document.createElement('div');
+                searchWrapper.id = 'fcSearchWrapper';
                 searchWrapper.style.cssText = `
                     display: flex;
                     gap: 0.5rem;
@@ -11952,10 +11954,10 @@
                     <span id="fcSearchCount" style="font-size:0.8rem;color:var(--dark-gray);"></span>
                 `;
 
-                // Insert the search bar before the cards container
-                cardsContainer.parentElement.insertBefore(searchWrapper, cardsContainer);
+                // Insert before the cards container
+                parent.insertBefore(searchWrapper, cardsContainer);
 
-                // Bind events
+                // ---- Bind filter events ----
                 const searchInput = document.getElementById('fcSearchInput');
                 const clearBtn = document.getElementById('fcSearchClear');
                 const countSpan = document.getElementById('fcSearchCount');
@@ -11965,12 +11967,12 @@
                     const cards = cardsContainer.querySelectorAll('.inv-card');
                     let visibleCount = 0;
                     cards.forEach(card => {
-                        const vehicleNumber = card.dataset.vehicle || '';
-                        const name = card.querySelector('.inv-name')?.textContent || '';
-                        const number = card.querySelector('.inv-number')?.textContent || '';
-                        const match = vehicleNumber.toLowerCase().includes(term) ||
-                                     name.toLowerCase().includes(term) ||
-                                     number.toLowerCase().includes(term);
+                        const vehicleNumber = (card.dataset.vehicle || '').toLowerCase();
+                        const name = (card.querySelector('.inv-name')?.textContent || '').toLowerCase();
+                        const number = (card.querySelector('.inv-number')?.textContent || '').toLowerCase();
+                        const match = vehicleNumber.includes(term) ||
+                                     name.includes(term) ||
+                                     number.includes(term);
                         card.style.display = match ? '' : 'none';
                         if (match) visibleCount++;
                     });
@@ -11983,34 +11985,33 @@
                     filterCards();
                 });
 
-                // Initial count
-                filterCards();
+                // Initial filter
+                setTimeout(filterCards, 100);
             };
 
-            // ---- 3. Also override renderCards to re-apply search after data changes ----
+            // ---- 2. Override renderCards to re-apply filter after cards update ----
             Pages.FCPrep.prototype.renderCards = function() {
-                // Call original to build cards
+                // Call original renderCards
                 origRenderCards.call(this);
 
-                // If search input exists, re-run filter
+                // Re-apply filter if search input exists
                 const searchInput = document.getElementById('fcSearchInput');
                 if (searchInput) {
                     searchInput.dispatchEvent(new Event('input'));
                 }
             };
 
-            // ---- 4. If FC Prep is already open, re-render ----
+            // ---- 3. If FC Prep is already open, re-render ----
             const currentPage = window.__app?.router?.currentPage;
             if (currentPage instanceof Pages.FCPrep) {
                 console.log('🔄 FC Prep active – adding search.');
-                // Re-run render to add search bar
                 const container = document.getElementById('pageContent');
                 if (container) {
                     currentPage.render(container);
                 }
             }
 
-            console.log('✅ FC Prep search added.');
+            console.log('✅ FC Prep search added (fixed).');
         }
     })();
     </script>
