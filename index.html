@@ -12015,5 +12015,65 @@
         }
     })();
     </script>
+    <!-- ==============================================================
+     FIX: Ensure Supervisor Queue is Sorted by Delivery Date
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(waitForApp);
+            applySortFix();
+        }
+    }, 100);
+
+    function applySortFix() {
+        console.log('🔧 Applying sort fix: ensure priorityQueue sorted by delivery date...');
+
+        const origLoadData = Pages.Supervisor.prototype.loadData;
+
+        Pages.Supervisor.prototype.loadData = async function() {
+            await origLoadData.call(this);
+            // After loading, sort priorityQueue by deliveryDate ascending
+            if (this.priorityQueue) {
+                this.priorityQueue.sort((a, b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+                this._sortedQueue = this.priorityQueue;
+            }
+        };
+
+        // Also patch renderQueue to ensure sorting before rendering if no filters applied
+        const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+        Pages.Supervisor.prototype.renderQueue = function() {
+            // Ensure the priorityQueue is sorted before rendering (if no filters or default sort)
+            if (this.priorityQueue && (!this.filterState || 
+                (this.filterState.status === 'all' && this.filterState.workerType === 'all' && 
+                 this.filterState.sortBy === 'deliveryDateAsc'))) {
+                this.priorityQueue.sort((a, b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+            }
+            // Call original renderQueue (which may be our overridden one)
+            origRenderQueue.call(this);
+        };
+
+        // If supervisor is already open, reload data to re-sort
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.Supervisor) {
+            console.log('🔄 Supervisor active – reloading data to apply sort.');
+            currentPage.loadData().then(() => {
+                currentPage.renderQueue();
+            });
+        }
+
+        console.log('✅ Sort fix applied.');
+    }
+})();
+</script>
 </body>
 </html>
