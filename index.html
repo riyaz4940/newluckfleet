@@ -12075,5 +12075,633 @@
     }
 })();
 </script>
+    <!-- ==============================================================
+     FIX: FC/INSURANCE CHECKBOX IN SALES ORDER FORM (RELIABLE)
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Sales) {
+            clearInterval(waitForApp);
+            applySalesFcCheckboxFix();
+        }
+    }, 100);
+
+    function applySalesFcCheckboxFix() {
+        console.log('🛠️ Applying RELIABLE FC/Insurance checkbox to Sales Order form...');
+
+        // ---- 1. OVERRIDE THE showForm METHOD COMPLETELY ----
+        const origShowForm = Pages.Sales.prototype.showForm;
+
+        Pages.Sales.prototype.showForm = function(order) {
+            // Build the form using the original method first
+            origShowForm.call(this, order);
+
+            // Wait for the modal to fully render
+            setTimeout(() => {
+                // Find the form
+                const form = document.getElementById('salesForm');
+                if (!form) {
+                    console.warn('Sales form not found, retrying...');
+                    setTimeout(() => this._addFcCheckboxToForm(), 500);
+                    return;
+                }
+                this._addFcCheckboxToForm(order);
+            }, 300);
+        };
+
+        // ---- 2. HELPER METHOD TO ADD CHECKBOX ----
+        Pages.Sales.prototype._addFcCheckboxToForm = function(order) {
+            const form = document.getElementById('salesForm');
+            if (!form) return;
+
+            // Check if checkbox already exists
+            if (form.querySelector('#salesNeedsFcPrep')) return;
+
+            // Find where to insert - after the Production Requirements fieldset
+            const fieldset = form.querySelector('fieldset');
+            if (!fieldset) {
+                console.warn('Fieldset not found, trying alternative insertion');
+                // Try to find by text
+                const allElements = form.querySelectorAll('.form-group, fieldset');
+                let insertPoint = null;
+                for (const el of allElements) {
+                    if (el.textContent.includes('Production Requirements') || 
+                        el.textContent.includes('Remarks')) {
+                        insertPoint = el;
+                        break;
+                    }
+                }
+                if (!insertPoint) {
+                    // Fallback: append to end of form before remarks
+                    const remarksGroup = form.querySelector('textarea[name="remarks"]')?.closest('.form-group');
+                    if (remarksGroup) {
+                        insertPoint = remarksGroup;
+                    } else {
+                        // Just append at the end
+                        insertPoint = form.querySelector('.form-group:last-child');
+                    }
+                }
+                if (!insertPoint) return;
+                this._injectFcCheckbox(insertPoint, order);
+                return;
+            }
+
+            // Find the last child of the fieldset (usually Remarks)
+            const lastGroup = fieldset.querySelector('.form-group:last-child');
+            if (lastGroup) {
+                this._injectFcCheckbox(lastGroup, order);
+            } else {
+                // If no form-group found, just append to fieldset
+                this._injectFcCheckbox(fieldset, order);
+            }
+        };
+
+        // ---- 3. INJECT THE CHECKBOX HTML ----
+        Pages.Sales.prototype._injectFcCheckbox = function(insertBeforeElement, order) {
+            // Get current value
+            let needsFcPrep = false;
+            if (order) {
+                if (order.needsFcPrep !== undefined) {
+                    needsFcPrep = order.needsFcPrep === true;
+                } else if (order.vehicleNumber) {
+                    // Try to get from inventory cache
+                    const inventory = window.__app?.inventoryCache || [];
+                    const vehicle = inventory.find(v => v.vehicleNumber === order.vehicleNumber);
+                    if (vehicle) needsFcPrep = vehicle.needsFcPrep === true;
+                }
+            }
+
+            // Create the checkbox wrapper
+            const wrapper = document.createElement('div');
+            wrapper.className = 'form-group';
+            wrapper.style.cssText = `
+                margin-top: 0.8rem;
+                margin-bottom: 0.8rem;
+                padding: 0.8rem 1rem;
+                background: #fff8e1;
+                border-radius: var(--radius);
+                border-left: 4px solid #ffc107;
+            `;
+            wrapper.innerHTML = `
+                <label style="display:flex;align-items:center;gap:0.6rem;font-weight:600;color:var(--primary-dark);cursor:pointer;font-size:0.95rem;">
+                    <input type="checkbox" id="salesNeedsFcPrep" name="needsFcPrep" 
+                           ${needsFcPrep ? 'checked' : ''} 
+                           style="width:20px;height:20px;accent-color:#ff6f00;cursor:pointer;" />
+                    <span>🛠️ <span style="color:#e65100;">Requires FC / Insurance Renewal</span></span>
+                </label>
+                <small style="color:#6d4c00;font-size:0.75rem;display:block;margin-top:0.3rem;">
+                    ⚠️ <strong>Check this box</strong> if the vehicle's FC or Insurance is expired or about to expire. 
+                    The FC team will ONLY work on vehicles marked with this checkbox.
+                </small>
+            `;
+
+            // Insert before the target element
+            if (insertBeforeElement.parentNode) {
+                insertBeforeElement.parentNode.insertBefore(wrapper, insertBeforeElement);
+            } else {
+                // Fallback: append to form
+                const form = document.getElementById('salesForm');
+                if (form) form.appendChild(wrapper);
+            }
+
+            console.log('✅ FC/Insurance checkbox added to Sales form.');
+        };
+
+        // ---- 4. OVERRIDE THE CONFIRM HANDLER TO CAPTURE THE VALUE ----
+        // We need to patch the modal's onConfirm
+        const origSalesConfirm = Pages.Sales.prototype.showForm;
+
+        Pages.Sales.prototype.showForm = function(order) {
+            // Call original to build everything
+            origSalesConfirm.call(this, order);
+
+            // Now override the modal's onConfirm
+            const modal = this.modal;
+            const originalOnConfirm = modal.onConfirm;
+
+            modal.onConfirm = async function() {
+                // Get the checkbox value
+                const fcCheckbox = document.getElementById('salesNeedsFcPrep');
+                const needsFcPrep = fcCheckbox ? fcCheckbox.checked : false;
+
+                // Store in a temporary global for the original handler to pick up
+                window.__salesNeedsFcPrep = needsFcPrep;
+
+                // Also directly set it on the form data if we can
+                const form = document.getElementById('salesForm');
+                if (form) {
+                    // Add hidden input or modify existing
+                    let hiddenInput = form.querySelector('input[name="needsFcPrep"]');
+                    if (!hiddenInput) {
+                        hiddenInput = document.createElement('input');
+                        hiddenInput.type = 'hidden';
+                        hiddenInput.name = 'needsFcPrep';
+                        form.appendChild(hiddenInput);
+                    }
+                    hiddenInput.value = needsFcPrep ? 'true' : 'false';
+                }
+
+                // Call the original onConfirm
+                await originalOnConfirm.call(this);
+
+                // Clean up
+                delete window.__salesNeedsFcPrep;
+            };
+        };
+
+        // ---- 5. PATCH DataService.addSales TO SYNC NEEDSFC PREP ----
+        const origAddSales = DataService.addSales;
+        DataService.addSales = async function(data) {
+            // Capture needsFcPrep from data
+            const needsFcPrep = data.needsFcPrep === true || data.needsFcPrep === 'true';
+
+            // Store it in the sales data
+            data.needsFcPrep = needsFcPrep;
+
+            // Call original addSales
+            const result = await origAddSales.call(this, data);
+
+            // If there's a vehicle number, update the inventory record
+            if (data.vehicleNumber && data.orderType === 'vehicle') {
+                try {
+                    const inventory = await this.getInventory();
+                    const vehicle = inventory.find(v => v.vehicleNumber === data.vehicleNumber);
+                    if (vehicle) {
+                        await this.updateInventory(vehicle.id, { needsFcPrep: needsFcPrep });
+                        console.log(`✅ Synced needsFcPrep=${needsFcPrep} to inventory for ${data.vehicleNumber}`);
+                    }
+                } catch (err) {
+                    console.warn('Could not sync needsFcPrep to inventory:', err);
+                }
+            }
+
+            return result;
+        };
+
+        // ---- 6. PATCH DataService.updateSales TO SYNC NEEDSFC PREP ----
+        const origUpdateSales = DataService.updateSales;
+        DataService.updateSales = async function(id, data) {
+            const needsFcPrep = data.needsFcPrep === true || data.needsFcPrep === 'true';
+            data.needsFcPrep = needsFcPrep;
+
+            // Call original updateSales
+            const result = await origUpdateSales.call(this, id, data);
+
+            // If there's a vehicle number, update the inventory record
+            if (data.vehicleNumber) {
+                try {
+                    const inventory = await this.getInventory();
+                    const vehicle = inventory.find(v => v.vehicleNumber === data.vehicleNumber);
+                    if (vehicle) {
+                        await this.updateInventory(vehicle.id, { needsFcPrep: needsFcPrep });
+                        console.log(`✅ Synced needsFcPrep=${needsFcPrep} to inventory for ${data.vehicleNumber}`);
+                    }
+                } catch (err) {
+                    console.warn('Could not sync needsFcPrep to inventory:', err);
+                }
+            }
+
+            return result;
+        };
+
+        // ---- 7. PATCH DataService.linkVehicleToSales TO SYNC NEEDSFC PREP ----
+        const origLinkVehicle = DataService.linkVehicleToSales;
+        DataService.linkVehicleToSales = async function(salesId, vehicleNumber) {
+            // Call original link function first
+            const result = await origLinkVehicle.call(this, salesId, vehicleNumber);
+
+            // Get the sales order to read needsFcPrep
+            try {
+                const salesDoc = await db.collection('sales').doc(salesId).get();
+                if (salesDoc.exists) {
+                    const salesData = salesDoc.data();
+                    const needsFcPrep = salesData.needsFcPrep === true;
+
+                    // Update the inventory record
+                    const inventory = await this.getInventory();
+                    const vehicle = inventory.find(v => v.vehicleNumber === vehicleNumber);
+                    if (vehicle) {
+                        await this.updateInventory(vehicle.id, { needsFcPrep: needsFcPrep });
+                        console.log(`✅ Synced needsFcPrep=${needsFcPrep} to inventory for ${vehicleNumber}`);
+                    }
+                }
+            } catch (err) {
+                console.warn('Could not sync needsFcPrep to inventory:', err);
+            }
+
+            return result;
+        };
+
+        // ---- 8. ENSURE FC PREP PAGE USES THE INVENTORY FLAG ----
+        const origFcLoadData = Pages.FCPrep?.prototype?.loadData;
+        if (origFcLoadData) {
+            Pages.FCPrep.prototype.loadData = async function() {
+                this.loader.show();
+                try {
+                    const [inventory, fcTasks, workers, production] = await Promise.all([
+                        DataService.getInventory(),
+                        DataService.getFCTasks(),
+                        DataService.getWorkers(),
+                        DataService.getProduction()
+                    ]);
+                    this.productionTasks = production;
+                    this.workers = workers;
+                    this.fcTasks = fcTasks;
+
+                    // ---- FILTER: Only vehicles marked for FC Prep ----
+                    let filtered = inventory.filter(v => 
+                        v.inventoryStatus !== 'Delivered' && 
+                        v.fcStatus !== 'ready' &&
+                        v.needsFcPrep === true // <-- GATEKEEPER
+                    );
+
+                    // Further filter based on production completion logic
+                    const finalList = [];
+                    for (const v of filtered) {
+                        const prodTasks = production.filter(p => p.vehicleNumber === v.vehicleNumber);
+                        const hasProd = prodTasks.length > 0;
+                        if (!hasProd) {
+                            finalList.push(v);
+                        } else {
+                            const requiredTasks = ['Tinkering', 'Mechanical', 'Painting'];
+                            const allCompleted = requiredTasks.every(taskName => {
+                                const task = prodTasks.find(p => p.taskName === taskName);
+                                return task && task.status === 'completed';
+                            });
+                            if (allCompleted) {
+                                finalList.push(v);
+                            }
+                        }
+                    }
+                    this.inventory = finalList;
+                    this.vehiclePhotos = {};
+                    this.inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
+                } catch (e) {
+                    this.toast.show('Failed to load data: ' + (e.message || e), 'error');
+                } finally {
+                    this.loader.hide();
+                }
+            };
+        }
+
+        // ---- 9. IF SALES IS OPEN, RE-RENDER ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.Sales) {
+            console.log('🔄 Sales page active – reloading with FC checkbox.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
+        }
+
+        console.log('✅ Reliable FC/Insurance checkbox patch applied.');
+        console.log('📌 The checkbox will appear in the Sales Order form under "Production Requirements".');
+        console.log('📌 It will be highlighted with a yellow background for visibility.');
+    }
+})();
+</script>
+    <!-- ==============================================================
+     ADD 'fc' ROLE TO USER MANAGEMENT & AUTH
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Users) {
+            clearInterval(waitForApp);
+            applyFcRoleSupport();
+        }
+    }, 100);
+
+    function applyFcRoleSupport() {
+        console.log('🔐 Adding "fc" role to User Management and Auth...');
+
+        // ---- 1. PATCH USERS PAGE: Add "fc" to role dropdown ----
+        const origUsersShowForm = Pages.Users.prototype.showForm;
+
+        Pages.Users.prototype.showForm = function(item) {
+            // Call original to build the form
+            origUsersShowForm.call(this, item);
+
+            // Wait for modal to render and then add 'fc' to the role select
+            setTimeout(() => {
+                const roleSelect = document.querySelector('select[name="role"]');
+                if (!roleSelect) return;
+
+                // Check if 'fc' already exists
+                let fcOption = roleSelect.querySelector('option[value="fc"]');
+                if (!fcOption) {
+                    fcOption = document.createElement('option');
+                    fcOption.value = 'fc';
+                    fcOption.textContent = 'FC Team (Fitness Certificate)';
+                    // Insert before the last option or at end
+                    roleSelect.appendChild(fcOption);
+                    console.log('✅ Added "fc" option to role dropdown.');
+                }
+            }, 300);
+        };
+
+        // ---- 2. ENSURE AUTH PERMISSIONS INCLUDE 'fc' ----
+        const auth = window.__app.auth;
+        if (auth) {
+            // Override hasPermission to include 'fc'
+            const origHasPermission = auth.hasPermission;
+            auth.hasPermission = function(page) {
+                const user = this.getCurrentUser();
+                if (!user) return false;
+                const role = user.role || 'worker';
+
+                // Define permissions including 'fc'
+                const permissions = {
+                    owner: ['*'],
+                    operations_manager: ['*'],
+                    supervisor: ['dashboard', 'supervisor', 'assignments', 'fcprep', 'vehiclehistory', 'taskanalytics'],
+                    sales: ['dashboard', 'inventory', 'sales', 'leads'],
+                    inventory: ['dashboard', 'inventory', 'purchase_inventory'],
+                    worker: ['dashboard', 'worker'],
+                    fc: ['dashboard', 'fcprep']   // FC Team: only Dashboard and FC Prep
+                };
+
+                const allowed = permissions[role] || [];
+                if (allowed.includes('*')) return true;
+                return allowed.includes(page);
+            };
+            console.log('✅ Auth permissions updated with "fc" role.');
+        }
+
+        // ---- 3. ENSURE NAVIGATION IS FILTERED FOR FC USERS ----
+        const app = window.__app;
+        if (app) {
+            // Override renderApp to hide irrelevant nav items for fc
+            const origRenderApp = app.renderApp;
+            app.renderApp = function() {
+                origRenderApp.call(this);
+                const user = this.auth.getCurrentUser();
+                if (user && user.role === 'fc') {
+                    // Hide sidebar items other than Dashboard and FC Prep
+                    const sidebar = document.getElementById('sidebarNav');
+                    if (sidebar) {
+                        const items = sidebar.querySelectorAll('.nav-item');
+                        items.forEach(item => {
+                            const page = item.dataset.page;
+                            if (page !== 'dashboard' && page !== 'fcprep') {
+                                item.style.display = 'none';
+                            }
+                        });
+                    }
+                    // Hide bottom nav items other than Dashboard and FC Prep
+                    const bottomNav = document.getElementById('bottomNav');
+                    if (bottomNav) {
+                        const btns = bottomNav.querySelectorAll('.nav-btn');
+                        btns.forEach(btn => {
+                            const page = btn.dataset.page;
+                            if (page !== 'dashboard' && page !== 'fcprep') {
+                                btn.style.display = 'none';
+                            }
+                        });
+                    }
+                }
+            };
+            console.log('✅ Navigation filtering for "fc" role applied.');
+        }
+
+        // ---- 4. IF USERS PAGE IS OPEN, RE-RENDER TO SHOW THE NEW ROLE ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.Users) {
+            console.log('🔄 Users page active – reloading to show "fc" role.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
+        }
+
+        console.log('✅ "fc" role fully supported. You can now create FC users.');
+        console.log('📌 FC users will only see Dashboard and FC Prep pages.');
+    }
+})();
+</script>
+    <!-- ==============================================================
+     FC PREP: SORT VEHICLES BY DELIVERY DATE (EARLIEST FIRST)
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.FCPrep && typeof DataService !== 'undefined') {
+            clearInterval(waitForApp);
+            applyFcSortByDelivery();
+        }
+    }, 100);
+
+    function applyFcSortByDelivery() {
+        console.log('📅 Sorting FC Prep vehicles by delivery date (earliest first)...');
+
+        const origFcLoadData = Pages.FCPrep.prototype.loadData;
+
+        Pages.FCPrep.prototype.loadData = async function() {
+            this.loader.show();
+            try {
+                // Fetch all required data
+                const [inventory, fcTasks, workers, production, sales] = await Promise.all([
+                    DataService.getInventory(),
+                    DataService.getFCTasks(),
+                    DataService.getWorkers(),
+                    DataService.getProduction(),
+                    DataService.getSales()
+                ]);
+
+                this.productionTasks = production;
+                this.workers = workers;
+                this.fcTasks = fcTasks;
+                this.sales = sales; // Store for later use
+
+                // ---- Step 1: Filter vehicles ----
+                let filtered = inventory.filter(v => 
+                    v.inventoryStatus !== 'Delivered' && 
+                    v.fcStatus !== 'ready' &&
+                    v.needsFcPrep === true // Gatekeeper
+                );
+
+                // ---- Step 2: Further filter by production completion ----
+                const finalList = [];
+                for (const v of filtered) {
+                    const prodTasks = production.filter(p => p.vehicleNumber === v.vehicleNumber);
+                    const hasProd = prodTasks.length > 0;
+                    if (!hasProd) {
+                        finalList.push(v);
+                    } else {
+                        const requiredTasks = ['Tinkering', 'Mechanical', 'Painting'];
+                        const allCompleted = requiredTasks.every(taskName => {
+                            const task = prodTasks.find(p => p.taskName === taskName);
+                            return task && task.status === 'completed';
+                        });
+                        if (allCompleted) {
+                            finalList.push(v);
+                        }
+                    }
+                }
+
+                // ---- Step 3: Attach delivery date from sales orders ----
+                // Build a map: vehicleNumber -> deliveryDate (from active sales)
+                const salesMap = {};
+                sales.forEach(s => {
+                    if (s.vehicleNumber && s.status !== 'delivered' && s.status !== 'cancelled') {
+                        // If multiple orders, use the earliest delivery date (most urgent)
+                        const existing = salesMap[s.vehicleNumber];
+                        if (!existing || new Date(s.deliveryDate) < new Date(existing)) {
+                            salesMap[s.vehicleNumber] = s.deliveryDate;
+                        }
+                    }
+                    // Also check productName for non-vehicle (though FC prep is usually for vehicles)
+                    if (s.productName && !s.vehicleNumber && s.status !== 'delivered' && s.status !== 'cancelled') {
+                        const existing = salesMap[s.productName];
+                        if (!existing || new Date(s.deliveryDate) < new Date(existing)) {
+                            salesMap[s.productName] = s.deliveryDate;
+                        }
+                    }
+                });
+
+                // Attach deliveryDate to each inventory item
+                finalList.forEach(v => {
+                    v._deliveryDate = salesMap[v.vehicleNumber] || null;
+                });
+
+                // ---- Step 4: Sort by delivery date (earliest first) ----
+                finalList.sort((a, b) => {
+                    const dateA = a._deliveryDate ? new Date(a._deliveryDate) : new Date(8640000000000000); // Far future = no date
+                    const dateB = b._deliveryDate ? new Date(b._deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+
+                this.inventory = finalList;
+                this.vehiclePhotos = {};
+                this.inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
+
+                console.log(`✅ FC Prep: ${this.inventory.length} vehicles sorted by delivery date.`);
+
+            } catch (e) {
+                this.toast.show('Failed to load data: ' + (e.message || e), 'error');
+            } finally {
+                this.loader.hide();
+            }
+        };
+
+        // ---- Optional: Display delivery date on the card ----
+        const origFcRenderCards = Pages.FCPrep.prototype.renderCards;
+
+        Pages.FCPrep.prototype.renderCards = function() {
+            // Call original render
+            origFcRenderCards.call(this);
+
+            // Now add delivery date badge to each card if not present
+            const cards = document.querySelectorAll('#fcInventoryCards .inv-card');
+            cards.forEach(card => {
+                const vehicleNumber = card.dataset.vehicle;
+                if (!vehicleNumber) return;
+
+                // Find the vehicle in our sorted inventory
+                const vehicle = this.inventory.find(v => v.vehicleNumber === vehicleNumber);
+                if (!vehicle) return;
+
+                // Check if delivery date badge already exists
+                if (card.querySelector('.fc-delivery-badge')) return;
+
+                const deliveryDate = vehicle._deliveryDate;
+                if (deliveryDate) {
+                    const days = Utils.dateUtils.daysUntil(deliveryDate);
+                    const formatted = Utils.dateUtils.format(deliveryDate);
+                    let badgeHtml = '';
+                    let bgColor = '';
+
+                    if (days < 0) {
+                        badgeHtml = `⚠️ Overdue (${formatted})`;
+                        bgColor = '#dc3545';
+                    } else if (days <= 2) {
+                        badgeHtml = `🔴 Urgent - ${days} day(s) left (${formatted})`;
+                        bgColor = '#dc3545';
+                    } else if (days <= 7) {
+                        badgeHtml = `🟠 ${days} day(s) left (${formatted})`;
+                        bgColor = '#fd7e14';
+                    } else {
+                        badgeHtml = `🟢 ${days} day(s) left (${formatted})`;
+                        bgColor = '#28a745';
+                    }
+
+                    // Find the inv-header or inv-name to insert the badge
+                    const header = card.querySelector('.inv-header');
+                    if (header) {
+                        const badge = document.createElement('span');
+                        badge.className = 'fc-delivery-badge';
+                        badge.style.cssText = `
+                            font-size: 0.65rem;
+                            font-weight: 600;
+                            padding: 0.1rem 0.5rem;
+                            border-radius: 12px;
+                            background: ${bgColor};
+                            color: white;
+                            margin-left: 0.3rem;
+                            white-space: nowrap;
+                        `;
+                        badge.textContent = badgeHtml;
+                        header.appendChild(badge);
+                    }
+                }
+            });
+        };
+
+        // ---- If FC Prep is already open, reload ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.FCPrep) {
+            console.log('🔄 FC Prep active – reloading with delivery date sorting.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
+        }
+
+        console.log('✅ FC Prep now sorts vehicles by delivery date (earliest first).');
+        console.log('📅 Urgent deliveries appear at the top with color-coded badges.');
+    }
+})();
+</script>
 </body>
 </html>
