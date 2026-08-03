@@ -11687,224 +11687,6 @@
         }
     })();
     </script>
-        <!-- ==============================================================
-     SUPERVISOR – ADD MANUAL PRODUCTION TASK (Small Works)
-     ============================================================== -->
-    <script>
-    (function() {
-        const waitForApp = setInterval(() => {
-            if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor && typeof DataService !== 'undefined') {
-                clearInterval(waitForApp);
-                applyManualTaskFeature();
-            }
-        }, 100);
-
-        function applyManualTaskFeature() {
-            console.log('🔧 Adding Manual Task feature to Supervisor...');
-
-            // ---- 1. EXTEND DATASERVICE ----
-            DataService.addManualProductionTask = async function(data) {
-                const id = Utils.genId();
-                const now = Utils.dateUtils.now();
-
-                // Build a minimal production task
-                const task = {
-                    id,
-                    salesOrderId: `manual_${id}`, // unique identifier for manual tasks
-                    vehicleNumber: data.vehicleNumber || '',
-                    customerName: data.customerName || 'Manual Job',
-                    taskName: data.taskName || 'General Work',
-                    department: data.department || '',
-                    assignedWorkerId: data.assignedWorkerId || '',
-                    status: 'pending',
-                    estimatedHours: data.estimatedHours || '4 hours',
-                    actualHours: null,
-                    startTime: null,
-                    endTime: null,
-                    remarks: data.remarks || '',
-                    scope: data.scope || '', // dedicated field for small works
-                    deliveryDate: data.deliveryDate || '',
-                    priorityScore: 0,
-                    dependencyFlags: '[]',
-                    forceStart: false,
-                    beforePhotoUploaded: false,
-                    afterPhotoUploaded: false,
-                    photoUploadedAt: null,
-                    createdAt: now,
-                    updatedAt: now,
-                    // Store the special instructions for the worker
-                    requirements: JSON.stringify({
-                        specialInstructions: data.scope || data.remarks || '',
-                        remarks: data.remarks || ''
-                    })
-                };
-
-                await db.collection('production').doc(id).set(task);
-                return { success: true, id };
-            };
-
-            // ---- 2. OVERRIDE SUPERVISOR RENDER TO ADD BUTTON ----
-            const origSupervisorRender = Pages.Supervisor.prototype.render;
-
-            Pages.Supervisor.prototype.render = async function(container) {
-                // Call original render
-                await origSupervisorRender.call(this, container);
-
-                // Add the "Manual Task" button in the priority queue header
-                const queueHeader = container.querySelector('.priority-queue .flex');
-                if (queueHeader) {
-                    // Check if button already exists
-                    if (queueHeader.querySelector('#manualTaskBtn')) return;
-
-                    const btn = document.createElement('button');
-                    btn.id = 'manualTaskBtn';
-                    btn.className = 'btn btn-primary btn-sm';
-                    btn.innerHTML = `<span class="material-icons" style="font-size:18px;">add</span> Manual Task`;
-                    btn.style.marginLeft = '0.5rem';
-                    btn.addEventListener('click', () => this.showManualTaskModal());
-                    queueHeader.appendChild(btn);
-                }
-            };
-
-            // ---- 3. SHOW MODAL FOR MANUAL TASK ----
-            Pages.Supervisor.prototype.showManualTaskModal = function() {
-                const modal = new Components.Modal();
-                const toast = new Components.Toast();
-                const loader = new Components.Loader();
-
-                // Get workers for dropdown
-                const workers = this.workers || [];
-
-                const form = `
-                    <form id="manualTaskForm">
-                        <div class="form-group">
-                            <label>Task Name *</label>
-                            <select name="taskName" required>
-                                <option value="">-- Select --</option>
-                                <option value="Tinkering">Tinkering</option>
-                                <option value="Mechanical">Mechanical</option>
-                                <option value="Dummy Closing">Dummy Closing</option>
-                                <option value="Body Coach">Body Coach</option>
-                                <option value="Kitchen Layout">Kitchen Layout</option>
-                                <option value="Painting">Painting</option>
-                                <option value="ACP Work">ACP Work</option>
-                                <option value="Vehicle Electrical">Vehicle Electrical</option>
-                                <option value="Coach Electrical">Coach Electrical</option>
-                                <option value="Plumbing">Plumbing</option>
-                                <option value="Canopy">Canopy</option>
-                                <option value="Tyre Change">Tyre Change</option>
-                                <option value="Glass Checking">Glass Checking</option>
-                                <option value="Branding">Branding</option>
-                                <option value="Solar">Solar</option>
-                                <option value="UPS">UPS</option>
-                                <option value="Camera">Camera</option>
-                                <option value="QC">QC</option>
-                                <option value="Delivery">Delivery</option>
-                                <option value="Other">Other (type below)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Custom Task Name (if "Other" selected)</label>
-                            <input type="text" name="customTaskName" placeholder="e.g. Small Repair" />
-                        </div>
-                        <div class="form-group">
-                            <label>Vehicle Number (optional)</label>
-                            <input type="text" name="vehicleNumber" placeholder="e.g. KA11B7007" />
-                        </div>
-                        <div class="form-group">
-                            <label>📝 Scope / Work Description *</label>
-                            <textarea name="scope" rows="3" required placeholder="e.g. Paint only bonnet and front bumper – Pearl White"></textarea>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Estimated Hours</label>
-                                <input type="text" name="estimatedHours" placeholder="e.g. 2 hours, 1 day" value="4 hours" />
-                            </div>
-                            <div class="form-group">
-                                <label>Delivery Date (optional)</label>
-                                <input type="date" name="deliveryDate" />
-                            </div>
-                        </div>
-                        <div class="form-group">
-                            <label>Assign to Worker (optional)</label>
-                            <select name="assignedWorkerId">
-                                <option value="">-- Not assigned yet --</option>
-                                ${workers.map(w => `<option value="${w.id}">${w.name} (${w.department || 'No dept'})</option>`).join('')}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Customer / Job Name (optional)</label>
-                            <input type="text" name="customerName" placeholder="e.g. Walk-in Customer, John's Repair" />
-                        </div>
-                    </form>
-                `;
-
-                modal.open({
-                    title: '➕ Add Manual Production Task',
-                    body: form,
-                    confirmText: 'Add Task',
-                    onConfirm: async () => {
-                        const fd = new FormData(document.getElementById('manualTaskForm'));
-                        const data = Object.fromEntries(fd.entries());
-
-                        if (!data.taskName && !data.customTaskName) {
-                            toast.show('Please select or enter a task name.', 'warning');
-                            return;
-                        }
-                        if (!data.scope) {
-                            toast.show('Please describe the work scope.', 'warning');
-                            return;
-                        }
-
-                        const finalTaskName = data.taskName === 'Other' ? data.customTaskName : data.taskName;
-
-                        loader.show();
-                        try {
-                            await DataService.addManualProductionTask({
-                                taskName: finalTaskName,
-                                vehicleNumber: data.vehicleNumber || '',
-                                scope: data.scope,
-                                remarks: data.scope,
-                                estimatedHours: data.estimatedHours || '4 hours',
-                                deliveryDate: data.deliveryDate || '',
-                                assignedWorkerId: data.assignedWorkerId || '',
-                                customerName: data.customerName || 'Manual Job',
-                                department: '' // Will be auto-detected or left empty
-                            });
-
-                            toast.show('✅ Manual task added to queue.', 'success');
-                            modal.close();
-
-                            // Refresh the Supervisor page
-                            await this.loadData();
-                            this.renderQueue();
-                            this.renderStats();
-                            this.renderAssignmentsOverview();
-
-                        } catch (err) {
-                            toast.show('Error: ' + err.message, 'error');
-                        } finally {
-                            loader.hide();
-                        }
-                    }
-                });
-            };
-
-            // ---- 4. Force re-render if Supervisor is already open ----
-            const currentPage = window.__app?.router?.currentPage;
-            if (currentPage instanceof Pages.Supervisor) {
-                console.log('🔄 Supervisor is active – adding Manual Task button.');
-                // Re-run render to add the button
-                const container = document.getElementById('pageContent');
-                if (container) {
-                    currentPage.render(container);
-                }
-            }
-
-            console.log('✅ Manual Task feature ready.');
-        }
-    })();
-    </script>
          <!-- ==============================================================
      FC PREP – SEARCH OPTION (Fixed)
      ============================================================== -->
@@ -12520,7 +12302,7 @@
     }
 })();
 </script>
-    <!-- ==============================================================
+<!-- ==============================================================
      FC PREP: SORT VEHICLES BY DELIVERY DATE (EARLIEST FIRST)
      ============================================================== -->
 <script>
@@ -12700,6 +12482,424 @@
 
         console.log('✅ FC Prep now sorts vehicles by delivery date (earliest first).');
         console.log('📅 Urgent deliveries appear at the top with color-coded badges.');
+    }
+})();
+</script>
+<!-- ==============================================================
+     SUPERVISOR: ADD SMALL WORK & PREVENT DUPLICATE ASSIGNMENTS
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor && typeof DataService !== 'undefined') {
+            clearInterval(waitForApp);
+            applySmallWorkFeature();
+        }
+    }, 100);
+
+    function applySmallWorkFeature() {
+        console.log('🔧 Adding "Small Work" button to Supervisor queue...');
+
+        // ---- 1. Store original renderQueue ----
+        const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+
+        // ---- 2. Override renderQueue to add the button ----
+        Pages.Supervisor.prototype.renderQueue = function() {
+            origRenderQueue.call(this);
+
+            // Add "Small Work" button to each vehicle card
+            const cards = document.querySelectorAll('.worker-task-card');
+            cards.forEach(card => {
+                const actions = card.querySelector('.task-actions');
+                if (!actions) return;
+                if (actions.querySelector('.small-work-btn')) return;
+
+                const vehicle = card.querySelector('.task-info')?.dataset?.vehicle ||
+                                card.querySelector('.task-vehicle-number')?.textContent?.trim() ||
+                                card.dataset?.vehicle;
+                if (!vehicle) return;
+
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-sm btn-secondary small-work-btn';
+                btn.innerHTML = `<span class="material-icons" style="font-size:16px;">add_task</span> Small Work`;
+                btn.style.marginRight = '0.3rem';
+                btn.dataset.vehicle = vehicle;
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.openSmallWorkModal(vehicle);
+                });
+
+                // Insert before the first button or at the start
+                const firstBtn = actions.querySelector('button');
+                if (firstBtn) {
+                    actions.insertBefore(btn, firstBtn);
+                } else {
+                    actions.prepend(btn);
+                }
+            });
+
+            // ---- Prevent duplicate assignment clicks ----
+            document.querySelectorAll('.assign-task-btn, .task-action-btn.btn-assign').forEach(btn => {
+                btn.addEventListener('click', function(e) {
+                    // Disable after click to prevent double submission
+                    if (this.dataset.clicked === 'true') {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                    }
+                    this.dataset.clicked = 'true';
+                    // Re-enable after 3 seconds (in case of error, reset)
+                    setTimeout(() => { this.dataset.clicked = 'false'; }, 3000);
+                });
+            });
+        };
+
+        // ---- 3. Open modal to add small work ----
+        Pages.Supervisor.prototype.openSmallWorkModal = function(vehicleNumber) {
+            const modal = new Components.Modal();
+            const toast = new Components.Toast();
+            const loader = new Components.Loader();
+
+            // Get workers for dropdown
+            const workers = this.workers || [];
+
+            // Common small tasks (you can customize)
+            const smallTasks = [
+                'Tinkering', 'Mechanical', 'Dummy Closing', 'Body Coach',
+                'Kitchen Layout', 'Painting', 'ACP Work', 'Vehicle Electrical',
+                'Coach Electrical', 'Plumbing', 'Canopy', 'Tyre Change',
+                'Glass Checking', 'Branding', 'Solar', 'UPS', 'Camera',
+                'QC', 'Delivery', 'Small Repair', 'Polishing', 'Welding', 'Other'
+            ];
+
+            const form = `
+                <form id="smallWorkForm">
+                    <div class="form-group">
+                        <label>Vehicle</label>
+                        <input type="text" value="${vehicleNumber}" disabled style="font-weight:600;color:var(--primary-blue);" />
+                    </div>
+                    <div class="form-group">
+                        <label>Task Type *</label>
+                        <select name="taskName" required>
+                            <option value="">-- Select --</option>
+                            ${smallTasks.map(t => `<option value="${t}">${t}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Custom Task (if "Other" selected)</label>
+                        <input type="text" name="customTask" placeholder="e.g. Small electrical fix" />
+                    </div>
+                    <div class="form-group">
+                        <label>Assign to Worker (optional)</label>
+                        <select name="assignedWorkerId">
+                            <option value="">-- Not assigned --</option>
+                            ${workers.map(w => `<option value="${w.id}">${w.name} (${w.department || 'No dept'})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Scope / Description</label>
+                        <textarea name="scope" rows="2" placeholder="Brief description of work..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Estimated Hours</label>
+                        <input type="text" name="estimatedHours" placeholder="e.g. 2 hours, 1 day" value="4 hours" />
+                    </div>
+                </form>
+            `;
+
+            modal.open({
+                title: `➕ Add Small Work - ${vehicleNumber}`,
+                body: form,
+                confirmText: 'Add Task',
+                onConfirm: async () => {
+                    const fd = new FormData(document.getElementById('smallWorkForm'));
+                    const data = Object.fromEntries(fd.entries());
+
+                    // Determine task name
+                    let taskName = data.taskName;
+                    if (taskName === 'Other') {
+                        if (!data.customTask.trim()) {
+                            toast.show('Please enter a custom task name.', 'warning');
+                            return;
+                        }
+                        taskName = data.customTask.trim();
+                    }
+                    if (!taskName) {
+                        toast.show('Please select a task type.', 'warning');
+                        return;
+                    }
+
+                    // ---- Check for duplicate task on this vehicle ----
+                    const existingTasks = await DataService.getProduction();
+                    const duplicate = existingTasks.some(t =>
+                        t.vehicleNumber === vehicleNumber &&
+                        t.taskName === taskName &&
+                        t.status !== 'completed' && t.status !== 'rejected'
+                    );
+                    if (duplicate) {
+                        toast.show(`❌ Task "${taskName}" already exists for this vehicle and is not completed.`, 'error', 5000);
+                        return;
+                    }
+
+                    loader.show();
+                    try {
+                        await DataService.addManualProductionTask({
+                            vehicleNumber: vehicleNumber,
+                            taskName: taskName,
+                            assignedWorkerId: data.assignedWorkerId || '',
+                            scope: data.scope || taskName,
+                            remarks: data.scope || '',
+                            estimatedHours: data.estimatedHours || '4 hours',
+                            customerName: 'Manual Work',
+                            department: '' // will be auto-detected
+                        });
+
+                        toast.show(`✅ Task "${taskName}" added to ${vehicleNumber}`, 'success');
+                        modal.close();
+
+                        // Refresh supervisor data
+                        await this.loadData();
+                        this.renderQueue();
+                        this.renderStats();
+                        this.renderAssignmentsOverview();
+
+                    } catch (err) {
+                        toast.show('Error: ' + err.message, 'error');
+                    } finally {
+                        loader.hide();
+                    }
+                }
+            });
+        };
+
+        // ---- 4. If Supervisor is already open, re-render ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.Supervisor) {
+            console.log('🔄 Supervisor active – re-rendering with Small Work button.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
+        }
+
+        console.log('✅ Small Work feature added.');
+        console.log('📌 Each vehicle card now has a "Small Work" button.');
+        console.log('📌 Duplicate assignments are prevented (button disabled after click).');
+    }
+})();
+</script>
+<!-- ==============================================================
+     SUPERVISOR: REMOVE REDUNDANT ASSIGNMENTS OVERVIEW
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(waitForApp);
+            removeAssignmentsOverview();
+        }
+    }, 100);
+
+    function removeAssignmentsOverview() {
+        console.log('🗑️ Removing redundant Assignments Overview from Supervisor...');
+
+        // ---- Override the render method to skip the sidebar ----
+        const origRender = Pages.Supervisor.prototype.render;
+
+        Pages.Supervisor.prototype.render = async function(container) {
+            // Call the original render
+            await origRender.call(this, container);
+
+            // Now remove the assignments overview sidebar element
+            const sidebar = container.querySelector('.sup-sidebar');
+            if (sidebar) {
+                sidebar.remove();
+                console.log('✅ Removed Assignments Overview sidebar.');
+            }
+
+            // Also ensure the main content takes full width
+            const mainContent = container.querySelector('.sup-main');
+            if (mainContent) {
+                mainContent.style.width = '100%';
+                mainContent.style.maxWidth = '100%';
+            }
+
+            // Adjust the layout – remove the flex row if needed
+            const supLayout = container.querySelector('.sup-layout');
+            if (supLayout) {
+                supLayout.style.display = 'block';
+            }
+        };
+
+        // ---- If Supervisor is already open, reload ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.Supervisor) {
+            console.log('🔄 Supervisor active – re-rendering without assignments overview.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
+        }
+
+        console.log('✅ Assignments Overview removed from Supervisor.');
+        console.log('📌 You can still view assignments via the dedicated "Assignments" page.');
+    }
+})();
+</script>
+<!-- ==============================================================
+     FIX: Supervisor Queue Excludes Delivered Vehicles (Reliable)
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor && typeof DataService !== 'undefined') {
+            clearInterval(waitForApp);
+            applyDeliveredFilterFix();
+        }
+    }, 100);
+
+    function applyDeliveredFilterFix() {
+        console.log('🚫 Applying reliable delivered vehicle filter for Supervisor...');
+
+        // ---- Override loadData completely ----
+        Pages.Supervisor.prototype.loadData = async function() {
+            this.loader.show();
+            try {
+                const [inventory, production, deptRes, workers, sales] = await Promise.all([
+                    DataService.getInventory(),
+                    DataService.getProduction(),
+                    DataService.getDepartmentTypes(),
+                    DataService.getWorkers(),
+                    DataService.getSales()
+                ]);
+
+                // Store inventory for later filtering
+                this.inventory = inventory;
+                this.allSales = sales;
+
+                // Build vehicle photos
+                this.vehiclePhotos = {};
+                inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
+
+                this.data = production;
+                this.departmentTypes = deptRes.departmentTypes || {};
+                this.workers = workers;
+
+                // ---- Step 1: Build grouped priority queue ----
+                const grouped = {};
+                this.data.forEach(t => {
+                    const key = t.vehicleNumber || t.salesOrderId;
+                    if (!grouped[key]) {
+                        const salesOrder = this.allSales.find(s => s.id === t.salesOrderId);
+                        const orderType = salesOrder?.orderType || 'vehicle';
+                        const productName = salesOrder?.productName || salesOrder?.productType || '';
+                        const vehicleNumber = t.vehicleNumber || (orderType === 'non-vehicle' ? productName : '');
+                        let designDescription = '';
+                        let bodyCoachMaterial = 'None';
+                        let waterTank = 'None';
+                        let kitchenDesignPhoto = salesOrder?.kitchenDesignPhoto || '';
+                        let bodyCoachDesignPhoto = salesOrder?.bodyCoachDesignPhoto || '';
+                        try {
+                            const req = JSON.parse(salesOrder?.requirements || '{}');
+                            designDescription = req.designDescription || '';
+                            bodyCoachMaterial = req.bodyCoachMaterial || 'None';
+                            waterTank = req.waterTank || 'None';
+                        } catch (e) {}
+                        grouped[key] = {
+                            vehicleNumber: vehicleNumber,
+                            customerName: t.customerName,
+                            deliveryDate: t.deliveryDate,
+                            department: t.department || '',
+                            employeeType: 'Company',
+                            tasks: [],
+                            status: 'pending',
+                            orderType: orderType,
+                            productName: productName,
+                            token: salesOrder?.token || '',
+                            designDescription: designDescription,
+                            bodyCoachMaterial: bodyCoachMaterial,
+                            waterTank: waterTank,
+                            kitchenDesignPhoto: kitchenDesignPhoto,
+                            bodyCoachDesignPhoto: bodyCoachDesignPhoto
+                        };
+                    }
+                    grouped[key].tasks.push(t);
+                    const dept = t.department || '';
+                    const type = this.departmentTypes[dept] || 'Company';
+                    grouped[key].employeeType = type;
+                    const statuses = grouped[key].tasks.map(t => t.status);
+                    if (statuses.every(s => s === 'completed')) grouped[key].status = 'completed';
+                    else if (statuses.some(s => s === 'pending_approval')) grouped[key].status = 'pending_approval';
+                    else if (statuses.some(s => s === 'in_progress')) grouped[key].status = 'in_progress';
+                    else grouped[key].status = 'pending';
+                });
+
+                // ---- Step 2: Filter out delivered vehicles ----
+                // Build set of delivered vehicle numbers from inventory
+                const deliveredVehicles = new Set();
+                inventory.forEach(v => {
+                    if (v.inventoryStatus === 'Delivered') {
+                        deliveredVehicles.add(v.vehicleNumber);
+                    }
+                });
+                // Also mark sales with status 'delivered'
+                sales.forEach(s => {
+                    if (s.status === 'delivered' && s.vehicleNumber) {
+                        deliveredVehicles.add(s.vehicleNumber);
+                    }
+                });
+
+                // Filter grouped by vehicleNumber
+                const filteredGrouped = {};
+                Object.keys(grouped).forEach(key => {
+                    const vehicleNumber = grouped[key].vehicleNumber;
+                    if (!deliveredVehicles.has(vehicleNumber)) {
+                        filteredGrouped[key] = grouped[key];
+                    }
+                });
+
+                this.priorityQueue = Object.values(filteredGrouped);
+
+                // ---- Step 3: Sort by delivery date ----
+                this.priorityQueue.sort((a, b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+
+                // ---- Step 4: Initialize toggle state ----
+                this.priorityQueue.forEach(v => {
+                    const key = v.vehicleNumber || v.productName;
+                    if (!this.toggleState[key]) {
+                        const hasUnassigned = v.tasks.some(t => !t.assignedWorkerId && t.status !== 'completed');
+                        this.toggleState[key] = hasUnassigned ? 'assign' : 'assigned';
+                    }
+                });
+
+                console.log(`✅ Filtered out ${deliveredVehicles.size} delivered vehicles. Remaining: ${this.priorityQueue.length}`);
+            } catch (e) {
+                console.error(e);
+                this.toast.show('Failed to load data: ' + (e.message || e), 'error');
+            } finally {
+                this.loader.hide();
+            }
+        };
+
+        // ---- Override renderQueue to use the new data ----
+        // No need to change renderQueue, it will use this.priorityQueue.
+
+        // ---- If Supervisor is already open, force reload ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage instanceof Pages.Supervisor) {
+            console.log('🔄 Supervisor active – reloading with delivered filter.');
+            currentPage.loadData().then(() => {
+                currentPage.renderQueue();
+                currentPage.renderStats();
+                currentPage.renderAssignmentsOverview();
+            });
+        }
+
+        console.log('✅ Delivered vehicle filter applied reliably.');
     }
 })();
 </script>
