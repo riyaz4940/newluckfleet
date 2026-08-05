@@ -12896,10 +12896,304 @@
                 currentPage.renderQueue();
                 currentPage.renderStats();
                 currentPage.renderAssignmentsOverview();
+         
             });
         }
 
         console.log('✅ Delivered vehicle filter applied reliably.');
+    }
+})();
+</script>
+    <!-- ==============================================================
+     FIX: Supervisor Sorting + Delete + Small Work (All-in-One)
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(waitForApp);
+            applyAllFixes();
+        }
+    }, 100);
+
+    function applyAllFixes() {
+        console.log('🚀 Applying all Supervisor fixes: sorting, delete, small work...');
+
+        // ---- 1. Delete method for DataService ----
+        if (typeof DataService.deleteProduction !== 'function') {
+            DataService.deleteProduction = async function(id) {
+                await db.collection('production').doc(id).delete();
+                return { success: true };
+            };
+            console.log('✅ DataService.deleteProduction added.');
+        }
+
+        // ---- 2. Override loadData to sort by delivery date ----
+        const origLoadData = Pages.Supervisor.prototype.loadData;
+
+        Pages.Supervisor.prototype.loadData = async function() {
+            await origLoadData.call(this);
+
+            // After loading, sort priorityQueue by deliveryDate ascending
+            if (this.priorityQueue) {
+                this.priorityQueue.sort((a, b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+                console.log('📅 Sorted priorityQueue by delivery date.');
+            }
+        };
+
+        // ---- 3. Override renderQueue to re-sort and add delete buttons ----
+        const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+
+        Pages.Supervisor.prototype.renderQueue = function() {
+            // Ensure sorting before rendering
+            if (this.priorityQueue) {
+                this.priorityQueue.sort((a, b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+            }
+
+            // Call original render
+            origRenderQueue.call(this);
+
+            // ---- Add delete buttons to pending manual tasks ----
+            const container = document.getElementById('supTable');
+            if (!container) return;
+
+            container.querySelectorAll('.task-item').forEach(item => {
+                if (item.querySelector('.delete-task-btn')) return;
+
+                const assignBtn = item.querySelector('.assign-task-btn');
+                const unassignBtn = item.querySelector('.unassign-task-btn');
+                let taskId = null;
+                if (assignBtn) taskId = assignBtn.dataset.taskid;
+                else if (unassignBtn) taskId = unassignBtn.dataset.taskid;
+                if (!taskId) return;
+
+                const task = this.data.find(t => t.id === taskId);
+                if (!task) return;
+                // Only show delete for pending tasks without salesOrderId (manual tasks)
+                if (task.status !== 'pending') return;
+                if (task.salesOrderId && task.salesOrderId !== '') return;
+
+                const actionsDiv = item.querySelector('.task-item > div:last-child') || item;
+                if (!actionsDiv) return;
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'task-action-btn btn-danger delete-task-btn';
+                delBtn.dataset.taskid = taskId;
+                delBtn.innerHTML = `<span class="material-icons" style="font-size:16px;">delete</span> Delete`;
+                delBtn.style.cssText = 'margin-left:0.3rem;background:#dc3545;color:white;border:none;padding:0.15rem 0.5rem;border-radius:16px;font-size:0.7rem;display:inline-flex;align-items:center;gap:0.2rem;cursor:pointer;';
+                actionsDiv.appendChild(delBtn);
+
+                delBtn.addEventListener('click', async (e) => {
+                    e.stopPropagation();
+                    const id = delBtn.dataset.taskid;
+                    const confirmDialog = new Components.ConfirmationDialog();
+                    confirmDialog.open({
+                        title: 'Delete Task',
+                        body: 'Delete this manual task permanently?',
+                        onConfirm: async () => {
+                            const loader = new Components.Loader();
+                            loader.show();
+                            try {
+                                await DataService.deleteProduction(id);
+                                new Components.Toast().show('✅ Task deleted.', 'success');
+                                await this.loadData();
+                                this.renderQueue();
+                                this.renderStats();
+                                this.renderAssignmentsOverview();
+                            } catch (err) {
+                                new Components.Toast().show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        }
+                    });
+                });
+            });
+        };
+
+        // ---- 4. Fix Small Work (direct Firestore insert) ----
+        const origOpenSmallWork = Pages.Supervisor.prototype.openSmallWorkModal;
+
+        Pages.Supervisor.prototype.openSmallWorkModal = function(vehicleNumber) {
+            const modal = new Components.Modal();
+            const toast = new Components.Toast();
+            const loader = new Components.Loader();
+
+            const workers = this.workers || [];
+            const smallTasks = [
+                'Tinkering', 'Mechanical', 'Dummy Closing', 'Body Coach',
+                'Kitchen Layout', 'Painting', 'ACP Work', 'Vehicle Electrical',
+                'Coach Electrical', 'Plumbing', 'Canopy', 'Tyre Change',
+                'Glass Checking', 'Branding', 'Solar', 'UPS', 'Camera',
+                'QC', 'Delivery', 'Small Repair', 'Polishing', 'Welding', 'Other'
+            ];
+
+            const form = `
+                <form id="smallWorkForm">
+                    <div class="form-group">
+                        <label>Vehicle</label>
+                        <input type="text" value="${vehicleNumber}" disabled style="font-weight:600;color:var(--primary-blue);" />
+                    </div>
+                    <div class="form-group">
+                        <label>Task Type *</label>
+                        <select name="taskName" required>
+                            <option value="">-- Select --</option>
+                            ${smallTasks.map(t => `<option value="${t}">${t}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Custom Task (if "Other" selected)</label>
+                        <input type="text" name="customTask" placeholder="e.g. Small electrical fix" />
+                    </div>
+                    <div class="form-group">
+                        <label>Assign to Worker (optional)</label>
+                        <select name="assignedWorkerId">
+                            <option value="">-- Not assigned --</option>
+                            ${workers.map(w => `<option value="${w.id}">${w.name} (${w.department || 'No dept'})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Scope / Description</label>
+                        <textarea name="scope" rows="2" placeholder="Brief description of work..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>Estimated Hours</label>
+                        <input type="text" name="estimatedHours" placeholder="e.g. 2 hours, 1 day" value="4 hours" />
+                    </div>
+                </form>
+            `;
+
+            modal.open({
+                title: `➕ Add Small Work - ${vehicleNumber}`,
+                body: form,
+                confirmText: 'Add Task',
+                onConfirm: async () => {
+                    const fd = new FormData(document.getElementById('smallWorkForm'));
+                    const data = Object.fromEntries(fd.entries());
+
+                    let taskName = data.taskName;
+                    if (taskName === 'Other') {
+                        if (!data.customTask.trim()) {
+                            toast.show('Please enter a custom task name.', 'warning');
+                            return;
+                        }
+                        taskName = data.customTask.trim();
+                    }
+                    if (!taskName) {
+                        toast.show('Please select a task type.', 'warning');
+                        return;
+                    }
+
+                    // Duplicate check
+                    const existingTasks = await DataService.getProduction();
+                    const duplicate = existingTasks.some(t =>
+                        t.vehicleNumber === vehicleNumber &&
+                        t.taskName === taskName &&
+                        t.status !== 'completed' && t.status !== 'rejected'
+                    );
+                    if (duplicate) {
+                        toast.show(`❌ Task "${taskName}" already exists for this vehicle.`, 'error', 5000);
+                        return;
+                    }
+
+                    // Direct Firestore insert
+                    const id = Utils.genId();
+                    const now = Utils.dateUtils.now();
+
+                    const deptMap = {
+                        'Tinkering': 'Tinkering',
+                        'Mechanical': 'Mechanical',
+                        'Dummy Closing': 'Dummy Closing',
+                        'Body Coach': 'Body Coach',
+                        'Kitchen Layout': 'Kitchen Layout',
+                        'Painting': 'Painting',
+                        'ACP Work': 'ACP',
+                        'Vehicle Electrical': 'Electrical',
+                        'Coach Electrical': 'Electrical',
+                        'Plumbing': 'Plumbing',
+                        'Canopy': 'Canopy',
+                        'Tyre Change': 'Tyres',
+                        'Glass Checking': 'Glass',
+                        'Branding': 'Branding',
+                        'Solar': 'Solar',
+                        'UPS': 'UPS',
+                        'Camera': 'Camera',
+                        'QC': 'QC',
+                        'Delivery': 'Delivery',
+                        'Small Repair': 'General',
+                        'Polishing': 'General',
+                        'Welding': 'General'
+                    };
+                    const department = deptMap[taskName] || 'General';
+
+                    const task = {
+                        id,
+                        vehicleNumber: vehicleNumber,
+                        taskName,
+                        department,
+                        assignedWorkerId: data.assignedWorkerId || '',
+                        assignedTeamId: '',
+                        status: 'pending',
+                        estimatedHours: data.estimatedHours || '4 hours',
+                        actualHours: null,
+                        startTime: null,
+                        endTime: null,
+                        remarks: data.scope || taskName,
+                        deliveryDate: null,
+                        priorityScore: 0,
+                        dependencyFlags: '[]',
+                        forceStart: false,
+                        beforePhotoUploaded: false,
+                        afterPhotoUploaded: false,
+                        photoUploadedAt: null,
+                        createdAt: now,
+                        updatedAt: now,
+                        salesOrderId: null,
+                        customerName: 'Manual Work',
+                        qcStatus: null,
+                        qcRemarks: null,
+                        qcDate: null,
+                        type: 'production'
+                    };
+
+                    loader.show();
+                    try {
+                        await db.collection('production').doc(id).set(task);
+                        toast.show(`✅ Task "${taskName}" added to ${vehicleNumber}`, 'success');
+                        modal.close();
+                        await this.loadData();
+                        this.renderQueue();
+                        this.renderStats();
+                        this.renderAssignmentsOverview();
+                    } catch (err) {
+                        toast.show('Error: ' + err.message, 'error');
+                    } finally {
+                        loader.hide();
+                    }
+                }
+            });
+        };
+
+        // ---- 5. If Supervisor is already open, reload ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage && currentPage.constructor.name === 'Supervisor') {
+            console.log('🔄 Supervisor active – reloading all fixes.');
+            currentPage.loadData().then(() => {
+                currentPage.renderQueue();
+                currentPage.renderStats();
+                currentPage.renderAssignmentsOverview();
+            });
+        }
+
+        console.log('✅ All fixes applied: sorting, delete, small work.');
     }
 })();
 </script>
