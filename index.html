@@ -13197,5 +13197,452 @@
     }
 })();
 </script>
+    <!-- ==============================================================
+     CRITICAL FIXES: Missing Methods, Scope & Script Issues
+     ============================================================== -->
+<script>
+    (function() {
+        console.log('🔧 Applying critical fixes...');
+
+        // ---- 1. FIX: Add missing DataService.addManualProductionTask ----
+        if (typeof DataService !== 'undefined' && typeof DataService.addManualProductionTask === 'undefined') {
+            DataService.addManualProductionTask = async function(data) {
+                try {
+                    const id = Utils.genId();
+                    const now = Utils.dateUtils.now();
+
+                    // Auto-detect department based on task name
+                    const deptMap = {
+                        'Tinkering': 'Tinkering',
+                        'Mechanical': 'Mechanical',
+                        'Dummy Closing': 'Dummy Closing',
+                        'Body Coach': 'Body Coach',
+                        'Kitchen Layout': 'Kitchen Layout',
+                        'Painting': 'Painting',
+                        'ACP Work': 'ACP',
+                        'Vehicle Electrical': 'Electrical',
+                        'Coach Electrical': 'Electrical',
+                        'Plumbing': 'Plumbing',
+                        'Canopy': 'Canopy',
+                        'Tyre Change': 'Tyres',
+                        'Glass Checking': 'Glass',
+                        'Branding': 'Branding',
+                        'Solar': 'Solar',
+                        'UPS': 'UPS',
+                        'Camera': 'Camera',
+                        'QC': 'QC',
+                        'Delivery': 'Delivery',
+                        'Small Repair': 'General',
+                        'Polishing': 'General',
+                        'Welding': 'General'
+                    };
+                    const department = deptMap[data.taskName] || data.department || 'General';
+
+                    const task = {
+                        id: id,
+                        vehicleNumber: data.vehicleNumber || '',
+                        taskName: data.taskName || 'Manual Task',
+                        department: department,
+                        assignedWorkerId: data.assignedWorkerId || '',
+                        assignedTeamId: data.assignedTeamId || '',
+                        status: data.status || 'pending',
+                        estimatedHours: data.estimatedHours || '4 hours',
+                        actualHours: null,
+                        startTime: null,
+                        endTime: null,
+                        remarks: data.remarks || data.scope || '',
+                        deliveryDate: data.deliveryDate || null,
+                        priorityScore: data.priorityScore || 0,
+                        dependencyFlags: data.dependencyFlags || '[]',
+                        forceStart: data.forceStart || false,
+                        beforePhotoUploaded: false,
+                        afterPhotoUploaded: false,
+                        photoUploadedAt: null,
+                        createdAt: now,
+                        updatedAt: now,
+                        salesOrderId: data.salesOrderId || null,
+                        customerName: data.customerName || 'Manual Work',
+                        qcStatus: null,
+                        qcRemarks: null,
+                        qcDate: null,
+                        type: 'production'
+                    };
+
+                    await db.collection('production').doc(id).set(task);
+                    console.log('✅ Manual task added:', task.taskName, 'for', task.vehicleNumber);
+                    return { success: true, id: id };
+                } catch (err) {
+                    console.error('❌ Failed to add manual task:', err);
+                    throw err;
+                }
+            };
+            console.log('✅ DataService.addManualTask added.');
+        }
+
+        // ---- 2. FIX: Ensure Components is globally accessible ----
+        if (typeof window.Components === 'undefined' && typeof Components !== 'undefined') {
+            window.Components = Components;
+            console.log('✅ Components exposed globally.');
+        }
+
+        // ---- 3. FIX: Supervisor - openSmallWorkModal (ensure Components in scope) ----
+        if (typeof Pages !== 'undefined' && Pages.Supervisor) {
+            const origOpenSmallWork = Pages.Supervisor.prototype.openSmallWorkModal;
+
+            // Only patch if it exists and is the original
+            if (origOpenSmallWork && !origOpenSmallWork._patched) {
+                Pages.Supervisor.prototype.openSmallWorkModal = function(vehicleNumber) {
+                    // Use the global Components or the local one
+                    const Modal = window.Components?.Modal || Components.Modal;
+                    const Toast = window.Components?.Toast || Components.Toast;
+                    const Loader = window.Components?.Loader || Components.Loader;
+                    const ConfirmationDialog = window.Components?.ConfirmationDialog || Components.ConfirmationDialog;
+
+                    const modal = new Modal();
+                    const toast = new Toast();
+                    const loader = new Loader();
+
+                    const workers = this.workers || [];
+                    const smallTasks = [
+                        'Tinkering', 'Mechanical', 'Dummy Closing', 'Body Coach',
+                        'Kitchen Layout', 'Painting', 'ACP Work', 'Vehicle Electrical',
+                        'Coach Electrical', 'Plumbing', 'Canopy', 'Tyre Change',
+                        'Glass Checking', 'Branding', 'Solar', 'UPS', 'Camera',
+                        'QC', 'Delivery', 'Small Repair', 'Polishing', 'Welding', 'Other'
+                    ];
+
+                    const form = `
+                        <form id="smallWorkForm">
+                            <div class="form-group">
+                                <label>Vehicle</label>
+                                <input type="text" value="${vehicleNumber}" disabled style="font-weight:600;color:var(--primary-blue);" />
+                            </div>
+                            <div class="form-group">
+                                <label>Task Type *</label>
+                                <select name="taskName" required>
+                                    <option value="">-- Select --</option>
+                                    ${smallTasks.map(t => `<option value="${t}">${t}</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Custom Task (if "Other" selected)</label>
+                                <input type="text" name="customTask" placeholder="e.g. Small electrical fix" />
+                            </div>
+                            <div class="form-group">
+                                <label>Assign to Worker (optional)</label>
+                                <select name="assignedWorkerId">
+                                    <option value="">-- Not assigned --</option>
+                                    ${workers.map(w => `<option value="${w.id}">${w.name} (${w.department || 'No dept'})</option>`).join('')}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>Scope / Description</label>
+                                <textarea name="scope" rows="2" placeholder="Brief description of work..."></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>Estimated Hours</label>
+                                <input type="text" name="estimatedHours" placeholder="e.g. 2 hours, 1 day" value="4 hours" />
+                            </div>
+                        </form>
+                    `;
+
+                    modal.open({
+                        title: `➕ Add Small Work - ${vehicleNumber}`,
+                        body: form,
+                        confirmText: 'Add Task',
+                        onConfirm: async () => {
+                            const fd = new FormData(document.getElementById('smallWorkForm'));
+                            const data = Object.fromEntries(fd.entries());
+
+                            let taskName = data.taskName;
+                            if (taskName === 'Other') {
+                                if (!data.customTask.trim()) {
+                                    toast.show('Please enter a custom task name.', 'warning');
+                                    return;
+                                }
+                                taskName = data.customTask.trim();
+                            }
+                            if (!taskName) {
+                                toast.show('Please select a task type.', 'warning');
+                                return;
+                            }
+
+                            // Check for duplicate
+                            const existingTasks = await DataService.getProduction();
+                            const duplicate = existingTasks.some(t =>
+                                t.vehicleNumber === vehicleNumber &&
+                                t.taskName === taskName &&
+                                t.status !== 'completed' && t.status !== 'rejected'
+                            );
+                            if (duplicate) {
+                                toast.show(`❌ Task "${taskName}" already exists for this vehicle.`, 'error', 5000);
+                                return;
+                            }
+
+                            loader.show();
+                            try {
+                                // Use the fixed DataService method
+                                await DataService.addManualProductionTask({
+                                    vehicleNumber: vehicleNumber,
+                                    taskName: taskName,
+                                    assignedWorkerId: data.assignedWorkerId || '',
+                                    scope: data.scope || taskName,
+                                    remarks: data.scope || '',
+                                    estimatedHours: data.estimatedHours || '4 hours',
+                                    customerName: 'Manual Work'
+                                });
+
+                                toast.show(`✅ Task "${taskName}" added to ${vehicleNumber}`, 'success');
+                                modal.close();
+
+                                await this.loadData();
+                                this.renderQueue();
+                                this.renderStats();
+                                if (typeof this.renderAssignmentsOverview === 'function') {
+                                    this.renderAssignmentsOverview();
+                                }
+
+                            } catch (err) {
+                                toast.show('Error: ' + err.message, 'error');
+                            } finally {
+                                loader.hide();
+                            }
+                        }
+                    });
+                };
+                Pages.Supervisor.prototype.openSmallWorkModal._patched = true;
+                console.log('✅ Supervisor.openSmallWorkModal patched with Components fix.');
+            }
+
+            // ---- 4. FIX: applyTaskManager from earlier scripts ----
+            // Re-run the task manager application if needed
+            if (typeof applyTaskManager === 'undefined') {
+                // Define a safe version
+                window.applyTaskManager = function() {
+                    console.log('🔧 Applying Task Manager (safe version)...');
+                    if (typeof Pages === 'undefined' || !Pages.Supervisor) return;
+
+                    const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+                    if (origRenderQueue && !origRenderQueue._taskManagerPatched) {
+                        Pages.Supervisor.prototype.renderQueue = function() {
+                            origRenderQueue.call(this);
+                            // Add "Small Work" button if not present
+                            const cards = document.querySelectorAll('.worker-task-card');
+                            cards.forEach(card => {
+                                const actions = card.querySelector('.task-actions');
+                                if (!actions) return;
+                                if (actions.querySelector('.small-work-btn')) return;
+
+                                const vehicleEl = card.querySelector('.task-vehicle-number');
+                                const vehicle = vehicleEl ? vehicleEl.textContent.trim() : null;
+                                if (!vehicle) return;
+
+                                const btn = document.createElement('button');
+                                btn.className = 'btn btn-sm btn-secondary small-work-btn';
+                                btn.innerHTML =
+                                    `<span class="material-icons" style="font-size:16px;">add_task</span> Small Work`;
+                                btn.dataset.vehicle = vehicle;
+                                btn.addEventListener('click', (e) => {
+                                    e.stopPropagation();
+                                    if (this.openSmallWorkModal) {
+                                        this.openSmallWorkModal(vehicle);
+                                    }
+                                });
+                                actions.prepend(btn);
+                            });
+                        };
+                        Pages.Supervisor.prototype.renderQueue._taskManagerPatched = true;
+                        console.log('✅ Task Manager applied (safe version).');
+                    }
+                };
+
+                // Run it
+                setTimeout(window.applyTaskManager, 500);
+                console.log('✅ applyTaskManager defined and scheduled.');
+            }
+        }
+
+        // ---- 5. FIX: Ensure FC Prep loadData doesn't break ----
+        if (typeof Pages !== 'undefined' && Pages.FCPrep) {
+            const origFcLoad = Pages.FCPrep.prototype.loadData;
+            if (origFcLoad && !origFcLoad._fixed) {
+                Pages.FCPrep.prototype.loadData = async function() {
+                    try {
+                        await origFcLoad.call(this);
+                    } catch (err) {
+                        console.warn('FC Prep loadData error (fallback):', err);
+                        // Fallback: load data directly
+                        this.loader && this.loader.show();
+                        try {
+                            const [inventory, fcTasks, workers, production] = await Promise.all([
+                                DataService.getInventory(),
+                                DataService.getFCTasks(),
+                                DataService.getWorkers(),
+                                DataService.getProduction()
+                            ]);
+                            this.productionTasks = production || [];
+                            this.workers = workers || [];
+                            this.fcTasks = fcTasks || [];
+                            // Filter: only vehicles marked for FC Prep
+                            let filtered = (inventory || []).filter(v =>
+                                v.inventoryStatus !== 'Delivered' &&
+                                v.fcStatus !== 'ready' &&
+                                v.needsFcPrep === true
+                            );
+                            // Further filter by production completion
+                            const finalList = [];
+                            for (const v of filtered) {
+                                const prodTasks = (production || []).filter(p => p.vehicleNumber === v.vehicleNumber);
+                                const hasProd = prodTasks.length > 0;
+                                if (!hasProd) {
+                                    finalList.push(v);
+                                } else {
+                                    const requiredTasks = ['Tinkering', 'Mechanical', 'Painting'];
+                                    const allCompleted = requiredTasks.every(taskName => {
+                                        const task = prodTasks.find(p => p.taskName === taskName);
+                                        return task && task.status === 'completed';
+                                    });
+                                    if (allCompleted) {
+                                        finalList.push(v);
+                                    }
+                                }
+                            }
+                            this.inventory = finalList || [];
+                            this.vehiclePhotos = {};
+                            this.inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl ||
+                                    ''; });
+                        } catch (e2) {
+                            console.error('FC Prep fallback failed:', e2);
+                            this.inventory = [];
+                        }
+                        this.loader && this.loader.hide();
+                    }
+                };
+                Pages.FCPrep.prototype.loadData._fixed = true;
+                console.log('✅ FC Prep loadData patched with fallback.');
+            }
+        }
+
+        // ---- 6. FIX: Make Utils globally accessible for all scripts ----
+        if (typeof window.Utils === 'undefined' && typeof Utils !== 'undefined') {
+            window.Utils = Utils;
+            console.log('✅ Utils exposed globally.');
+        }
+
+        // ---- 7. FIX: Handle any missing Components in later scripts ----
+        if (typeof window.Components === 'undefined') {
+            window.Components = Components || {};
+            console.log('✅ Components exposed globally (fallback).');
+        }
+
+        console.log('✅ All critical fixes applied.');
+        console.log('📌 The page should now reload without errors.');
+        console.log('📌 Supervisor, Stock Inventory, and FC Prep should work properly.');
+    })();
+</script>
+
+<!-- ==============================================================
+     SAFETY NET: Re-run fixes if needed (for dynamic loading)
+     ============================================================== -->
+<script>
+    (function() {
+        // If any critical function is still missing, re-apply after a delay
+        setTimeout(function() {
+            if (typeof DataService !== 'undefined' && typeof DataService.addManualProductionTask === 'undefined') {
+                console.warn('⚠️ DataService.addManualProductionTask still missing – re-applying...');
+                DataService.addManualProductionTask = async function(data) {
+                    const id = Utils.genId();
+                    const now = Utils.dateUtils.now();
+                    const deptMap = {
+                        'Tinkering': 'Tinkering',
+                        'Mechanical': 'Mechanical',
+                        'Dummy Closing': 'Dummy Closing',
+                        'Body Coach': 'Body Coach',
+                        'Kitchen Layout': 'Kitchen Layout',
+                        'Painting': 'Painting',
+                        'ACP Work': 'ACP',
+                        'Vehicle Electrical': 'Electrical',
+                        'Coach Electrical': 'Electrical',
+                        'Plumbing': 'Plumbing',
+                        'Canopy': 'Canopy',
+                        'Tyre Change': 'Tyres',
+                        'Glass Checking': 'Glass',
+                        'Branding': 'Branding',
+                        'Solar': 'Solar',
+                        'UPS': 'UPS',
+                        'Camera': 'Camera',
+                        'QC': 'QC',
+                        'Delivery': 'Delivery',
+                        'Small Repair': 'General',
+                        'Polishing': 'General',
+                        'Welding': 'General'
+                    };
+                    const department = deptMap[data.taskName] || data.department || 'General';
+                    const task = {
+                        id: id,
+                        vehicleNumber: data.vehicleNumber || '',
+                        taskName: data.taskName || 'Manual Task',
+                        department: department,
+                        assignedWorkerId: data.assignedWorkerId || '',
+                        assignedTeamId: data.assignedTeamId || '',
+                        status: data.status || 'pending',
+                        estimatedHours: data.estimatedHours || '4 hours',
+                        actualHours: null,
+                        startTime: null,
+                        endTime: null,
+                        remarks: data.remarks || data.scope || '',
+                        deliveryDate: data.deliveryDate || null,
+                        priorityScore: 0,
+                        dependencyFlags: '[]',
+                        forceStart: false,
+                        beforePhotoUploaded: false,
+                        afterPhotoUploaded: false,
+                        photoUploadedAt: null,
+                        createdAt: now,
+                        updatedAt: now,
+                        salesOrderId: data.salesOrderId || null,
+                        customerName: data.customerName || 'Manual Work',
+                        qcStatus: null,
+                        qcRemarks: null,
+                        qcDate: null,
+                        type: 'production'
+                    };
+                    await db.collection('production').doc(id).set(task);
+                    return { success: true, id: id };
+                };
+                console.log('✅ DataService.addManualProductionTask re-applied (safety net).');
+            }
+
+            // Also ensure Components is global
+            if (typeof window.Components === 'undefined' && typeof Components !== 'undefined') {
+                window.Components = Components;
+                console.log('✅ Components re-exposed (safety net).');
+            }
+
+            // Try to apply task manager again
+            if (typeof window.applyTaskManager === 'function') {
+                setTimeout(window.applyTaskManager, 200);
+            }
+        }, 1500);
+        console.log('🛡️ Safety net installed (will re-apply fixes if needed).');
+    })();
+</script>
+
+<!-- ==============================================================
+     FINAL VERIFICATION: Show status in console
+     ============================================================== -->
+<script>
+    (function() {
+        console.log('📊 ==== NEWLUCK FLEET ERP STATUS ====');
+        console.log('✅ DataService available:', typeof DataService !== 'undefined');
+        console.log('✅ DataService.addManualProductionTask:', typeof DataService?.addManualProductionTask === 'function');
+        console.log('✅ Components available:', typeof Components !== 'undefined');
+        console.log('✅ Utils available:', typeof Utils !== 'undefined');
+        console.log('✅ Pages available:', typeof Pages !== 'undefined');
+        console.log('✅ Router available:', typeof window.__app?.router !== 'undefined');
+        console.log('📌 If any of the above is "false", please refresh the page.');
+        console.log('=====================================');
+    })();
+</script>
 </body>
 </html>
