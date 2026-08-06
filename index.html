@@ -14136,5 +14136,343 @@
     }
 })();
 </script>
+<!-- ==============================================================
+     COMPREHENSIVE FIX: Supervisor re-render & missing pages
+     ============================================================== -->
+<script>
+(function() {
+    console.log('🔧 Applying comprehensive Supervisor re-render fix...');
+
+    // ---- 1. Ensure History and Performance pages are registered ----
+    if (typeof Pages !== 'undefined') {
+        // If VehicleHistory page is not defined, define it
+        if (!Pages.VehicleHistory) {
+            Pages.VehicleHistory = class {
+                constructor(app) {
+                    this.app = app;
+                    this.toast = new Components.Toast();
+                    this.loader = new Components.Loader();
+                    this.modal = new Components.Modal();
+                    this.workers = [];
+                    this.production = [];
+                    this.inventory = [];
+                    this.searchTerm = '';
+                }
+                async render(container) {
+                    // Minimal render for history
+                    container.innerHTML = `
+                        <div class="page-header">
+                            <h2>🚗 Vehicle History</h2>
+                            <p style="color:var(--dark-gray);">Search completed tasks by vehicle number.</p>
+                        </div>
+                        <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
+                            <input type="text" id="vhSearchInput" placeholder="🔍 Enter vehicle number..." style="flex:1;padding:0.4rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);">
+                            <button class="btn btn-primary" id="vhSearchBtn">Search</button>
+                        </div>
+                        <div id="vhResults"></div>
+                    `;
+                    // Load data and handle search...
+                    try {
+                        const [workers, production, inventory] = await Promise.all([
+                            DataService.getWorkers(),
+                            DataService.getProduction(),
+                            DataService.getInventory()
+                        ]);
+                        this.workers = workers;
+                        this.production = production.filter(t => t.status === 'completed');
+                        this.inventory = inventory;
+                    } catch(e) { console.warn('History data error:', e); }
+
+                    document.getElementById('vhSearchBtn').addEventListener('click', () => {
+                        const term = document.getElementById('vhSearchInput').value.trim();
+                        if (!term) { this.toast.show('Enter a vehicle number.', 'warning'); return; }
+                        this.renderResults(term);
+                    });
+                }
+                renderResults(term) {
+                    const container = document.getElementById('vhResults');
+                    const matched = this.production.filter(t => 
+                        (t.vehicleNumber || '').toLowerCase().includes(term.toLowerCase())
+                    );
+                    if (matched.length === 0) {
+                        container.innerHTML = `<p>No completed tasks found for "${term}".</p>`;
+                        return;
+                    }
+                    let html = '';
+                    matched.forEach(t => {
+                        const workerNames = (t.assignedWorkerId || '').split(',').filter(Boolean)
+                            .map(id => this.workers.find(w => String(w.id) === id.trim())?.name || 'Unknown')
+                            .join(', ') || 'Unassigned';
+                        html += `<div style="background:#f8fafc;padding:0.5rem;border-bottom:1px solid #eee;">
+                            <strong>${t.vehicleNumber}</strong> – ${t.taskName}<br>
+                            👷 ${workerNames} | ⏱️ ${t.actualHours ? t.actualHours.toFixed(1) + ' hrs' : '--'}
+                            ${t.endTime ? ' | 📅 ' + new Date(t.endTime).toLocaleDateString() : ''}
+                        </div>`;
+                    });
+                    container.innerHTML = html;
+                }
+            };
+            console.log('✅ VehicleHistory page defined.');
+        }
+
+        if (!Pages.Performance) {
+            Pages.Performance = class {
+                constructor(app) {
+                    this.app = app;
+                }
+                async render(container) {
+                    container.innerHTML = `
+                        <div class="page-header">
+                            <h2>📊 Performance Dashboard</h2>
+                            <p style="color:var(--dark-gray);">Performance metrics will appear here.</p>
+                        </div>
+                        <div style="padding:1rem;background:white;border-radius:var(--radius);box-shadow:var(--shadow);">
+                            <p>Work in progress. Check back later.</p>
+                        </div>
+                    `;
+                }
+            };
+            console.log('✅ Performance page defined.');
+        }
+    }
+
+    // ---- 2. Fix Supervisor render to be completely re-entrant ----
+    if (typeof Pages !== 'undefined' && Pages.Supervisor) {
+        // Save original render method
+        const origRender = Pages.Supervisor.prototype.render;
+
+        Pages.Supervisor.prototype.render = async function(container) {
+            console.log('🔄 Supervisor.render called');
+            // Ensure container is empty before building
+            container.innerHTML = ''; // Clear everything
+
+            // Now build the HTML structure (same as original but robust)
+            // We'll recreate all elements with unique IDs (or ensure they are fresh)
+            container.innerHTML = `
+                <div class="page-header"><h2>Supervisor</h2></div>
+                <div class="supervisor-search">
+                    <input type="text" id="supSearchInput" placeholder="🔍 Search by vehicle, customer, task..." />
+                    <button class="search-clear" id="supSearchClear">✕ Clear</button>
+                </div>
+                <div class="sup-layout">
+                    <div class="sup-main">
+                        <div class="dashboard-stats" id="supStats"></div>
+                        <div class="department-status"><h3>Department Status</h3><div class="dept-cards" id="deptCards"></div></div>
+                        <div class="department-status">
+                            <h3>Average Task Duration</h3>
+                            <div id="taskAnalytics"></div>
+                        </div>
+                        <div class="priority-queue">
+                            <div class="flex justify-between items-center" style="margin-bottom:0.8rem;">
+                                <h3>Production Queue</h3>
+                                <div class="filter-group">
+                                    <label>Worker Type:</label>
+                                    <select id="typeFilter">
+                                        <option value="All">All</option>
+                                        <option value="Contractual">Contractual Only</option>
+                                        <option value="Company">Company Only</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="supTable"></div>
+                        </div>
+                    </div>
+                    <div class="sup-sidebar" id="assignSidebar">
+                        <h3>👷 Assignments Overview</h3>
+                        <div id="assignmentsOverview"></div>
+                    </div>
+                </div>
+            `;
+
+            // Now call the original render logic (which assumes the structure is there)
+            // But we need to bind events and load data
+            // We'll call the original loadData and then renderQueue, etc.
+            await this.loadData();
+
+            // Re-bind search events
+            const searchInput = document.getElementById('supSearchInput');
+            const clearBtn = document.getElementById('supSearchClear');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    this.searchTerm = e.target.value.trim().toLowerCase();
+                    this.renderQueue();
+                });
+            }
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => {
+                    if (searchInput) searchInput.value = '';
+                    this.searchTerm = '';
+                    this.renderQueue();
+                });
+            }
+
+            // Render stats, dept, analytics, queue, assignments
+            this.renderStats();
+            this.renderDeptStatus();
+            this.renderTaskAnalytics();
+            this.renderQueue();
+            this.renderAssignmentsOverview();
+
+            // Bind type filter
+            const typeFilter = document.getElementById('typeFilter');
+            if (typeFilter) {
+                typeFilter.addEventListener('change', (e) => {
+                    this.filterType = e.target.value;
+                    this.renderQueue();
+                });
+            }
+
+            // Bind assignment clicks
+            const supTable = document.getElementById('supTable');
+            if (supTable) {
+                supTable.addEventListener('click', (e) => {
+                    const target = e.target.closest('.assign-team');
+                    if (target) {
+                        e.preventDefault();
+                        this.assignTeam(target.dataset.vehicle);
+                    }
+                });
+            }
+
+            console.log('✅ Supervisor rendered successfully.');
+        };
+
+        // ---- 3. Also patch loadData to not rely on stale elements ----
+        const origLoadData = Pages.Supervisor.prototype.loadData;
+        Pages.Supervisor.prototype.loadData = async function() {
+            try {
+                await origLoadData.call(this);
+            } catch (e) {
+                console.warn('loadData error, using fallback:', e);
+                // Fallback: try loading data directly
+                const [inventory, production, deptRes, workers, sales] = await Promise.all([
+                    DataService.getInventory(),
+                    DataService.getProduction(),
+                    DataService.getDepartmentTypes(),
+                    DataService.getWorkers(),
+                    DataService.getSales()
+                ]);
+                this.inventory = inventory;
+                this.allSales = sales;
+                this.vehiclePhotos = {};
+                inventory.forEach(v => { this.vehiclePhotos[v.vehicleNumber] = v.frontPhotoUrl || ''; });
+                this.data = production;
+                this.departmentTypes = deptRes.departmentTypes || {};
+                this.workers = workers;
+
+                // Build priorityQueue
+                const grouped = {};
+                this.data.forEach(t => {
+                    const key = t.vehicleNumber || t.salesOrderId;
+                    if (!grouped[key]) {
+                        const salesOrder = this.allSales.find(s => s.id === t.salesOrderId);
+                        const orderType = salesOrder?.orderType || 'vehicle';
+                        const productName = salesOrder?.productName || salesOrder?.productType || '';
+                        const vehicleNumber = t.vehicleNumber || (orderType === 'non-vehicle' ? productName : '');
+                        let designDescription = '', bodyCoachMaterial = 'None', waterTank = 'None';
+                        let kitchenDesignPhoto = salesOrder?.kitchenDesignPhoto || '';
+                        let bodyCoachDesignPhoto = salesOrder?.bodyCoachDesignPhoto || '';
+                        try {
+                            const req = JSON.parse(salesOrder?.requirements || '{}');
+                            designDescription = req.designDescription || '';
+                            bodyCoachMaterial = req.bodyCoachMaterial || 'None';
+                            waterTank = req.waterTank || 'None';
+                        } catch (e) {}
+                        grouped[key] = {
+                            vehicleNumber: vehicleNumber,
+                            customerName: t.customerName,
+                            deliveryDate: t.deliveryDate,
+                            department: t.department || '',
+                            employeeType: 'Company',
+                            tasks: [],
+                            status: 'pending',
+                            orderType: orderType,
+                            productName: productName,
+                            token: salesOrder?.token || '',
+                            designDescription: designDescription,
+                            bodyCoachMaterial: bodyCoachMaterial,
+                            waterTank: waterTank,
+                            kitchenDesignPhoto: kitchenDesignPhoto,
+                            bodyCoachDesignPhoto: bodyCoachDesignPhoto
+                        };
+                    }
+                    grouped[key].tasks.push(t);
+                    const dept = t.department || '';
+                    const type = this.departmentTypes[dept] || 'Company';
+                    grouped[key].employeeType = type;
+                    const statuses = grouped[key].tasks.map(t => t.status);
+                    if (statuses.every(s => s === 'completed')) grouped[key].status = 'completed';
+                    else if (statuses.some(s => s === 'pending_approval')) grouped[key].status = 'pending_approval';
+                    else if (statuses.some(s => s === 'in_progress')) grouped[key].status = 'in_progress';
+                    else grouped[key].status = 'pending';
+                });
+                this.priorityQueue = Object.values(grouped);
+                this.priorityQueue.sort((a,b) => {
+                    const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                    const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                    return dateA - dateB;
+                });
+                // toggleState
+                this.toggleState = {};
+                this.priorityQueue.forEach(v => {
+                    const key = v.vehicleNumber || v.productName;
+                    if (!this.toggleState[key]) {
+                        const hasUnassigned = v.tasks.some(t => !t.assignedWorkerId && t.status !== 'completed');
+                        this.toggleState[key] = hasUnassigned ? 'assign' : 'assigned';
+                    }
+                });
+            }
+        };
+
+        // ---- 4. Patch renderAssignmentsOverview to handle missing element gracefully ----
+        const origRenderAssign = Pages.Supervisor.prototype.renderAssignmentsOverview;
+        Pages.Supervisor.prototype.renderAssignmentsOverview = function() {
+            const container = document.getElementById('assignmentsOverview');
+            if (!container) {
+                console.warn('⚠️ assignmentsOverview element missing, skipping render.');
+                return;
+            }
+            // Use original if it exists, else fallback
+            if (typeof origRenderAssign === 'function') {
+                try {
+                    origRenderAssign.call(this);
+                } catch(e) {
+                    container.innerHTML = '<div class="no-assignments">Error loading assignments.</div>';
+                }
+            } else {
+                container.innerHTML = '<div class="no-assignments">No assignments overview.</div>';
+            }
+        };
+
+        console.log('✅ Supervisor re-render fix applied.');
+    }
+
+    // ---- 5. Force register pages in router if missing ----
+    const router = window.__app?.router;
+    if (router) {
+        if (!router.pages.vehiclehistory && Pages.VehicleHistory) {
+            router.pages.vehiclehistory = Pages.VehicleHistory;
+            console.log('✅ Router: vehiclehistory registered.');
+        }
+        if (!router.pages.performance && Pages.Performance) {
+            router.pages.performance = Pages.Performance;
+            console.log('✅ Router: performance registered.');
+        }
+    }
+
+    // ---- 6. If Supervisor is currently open, trigger re-render ----
+    const currentPage = window.__app?.router?.currentPage;
+    if (currentPage && currentPage.constructor.name === 'Supervisor') {
+        console.log('🔄 Supervisor active – forcing re-render with fixes.');
+        const container = document.getElementById('pageContent');
+        if (container) {
+            // Clear and re-run render
+            currentPage.render(container);
+        }
+    }
+
+    console.log('✅ All fixes applied. Supervisor should now reload without errors.');
+})();
+</script>
 </body>
 </html>
