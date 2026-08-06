@@ -13841,5 +13841,87 @@
     }
 })();
 </script>
+    <!-- ==============================================================
+     FIX: Supervisor null element errors (assignmentsOverview)
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(waitForApp);
+            applySupervisorNullFix();
+        }
+    }, 100);
+
+    function applySupervisorNullFix() {
+        console.log('🔧 Applying Supervisor null element fixes...');
+
+        // ---- 1. Patch renderAssignmentsOverview ----
+        const origRenderAssignments = Pages.Supervisor.prototype.renderAssignmentsOverview;
+        if (origRenderAssignments) {
+            Pages.Supervisor.prototype.renderAssignmentsOverview = function() {
+                const container = document.getElementById('assignmentsOverview');
+                if (!container) {
+                    // Container was removed – skip silently
+                    return;
+                }
+                origRenderAssignments.call(this);
+            };
+            console.log('✅ Supervisor.renderAssignmentsOverview patched with null check.');
+        }
+
+        // ---- 2. Patch renderStats ----
+        const origRenderStats = Pages.Supervisor.prototype.renderStats;
+        if (origRenderStats) {
+            Pages.Supervisor.prototype.renderStats = function() {
+                const container = document.getElementById('supStats');
+                if (!container) return;
+                origRenderStats.call(this);
+            };
+            console.log('✅ Supervisor.renderStats patched.');
+        }
+
+        // ---- 3. Patch renderDeptStatus ----
+        const origRenderDeptStatus = Pages.Supervisor.prototype.renderDeptStatus;
+        if (origRenderDeptStatus) {
+            Pages.Supervisor.prototype.renderDeptStatus = function() {
+                const container = document.getElementById('deptCards');
+                if (!container) return;
+                origRenderDeptStatus.call(this);
+            };
+            console.log('✅ Supervisor.renderDeptStatus patched.');
+        }
+
+        // ---- 4. Patch renderQueue to catch any errors ----
+        const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+        if (origRenderQueue) {
+            Pages.Supervisor.prototype.renderQueue = function() {
+                try {
+                    origRenderQueue.call(this);
+                } catch (e) {
+                    console.warn('⚠️ Supervisor.renderQueue error:', e);
+                    const container = document.getElementById('supTable');
+                    if (container) {
+                        container.innerHTML = '<p style="color:var(--dark-gray);">Error loading queue. Please refresh.</p>';
+                    }
+                }
+            };
+            console.log('✅ Supervisor.renderQueue patched with error handling.');
+        }
+
+        // ---- 5. If Supervisor is currently open, re-render ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage && currentPage.constructor.name === 'Supervisor') {
+            console.log('🔄 Supervisor active – re-rendering with fixes.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
+        }
+
+        console.log('✅ Supervisor null element fixes applied.');
+    }
+})();
+</script>
 </body>
 </html>
