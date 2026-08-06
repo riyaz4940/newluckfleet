@@ -14137,117 +14137,53 @@
 })();
 </script>
 <!-- ==============================================================
-     COMPREHENSIVE FIX: Supervisor re-render & missing pages
+     COMPREHENSIVE FIX: Supervisor, History, Performance
      ============================================================== -->
 <script>
 (function() {
-    console.log('🔧 Applying comprehensive Supervisor re-render fix...');
+    console.log('🔧 Applying comprehensive fixes for Supervisor, History, Performance...');
 
-    // ---- 1. Ensure History and Performance pages are registered ----
-    if (typeof Pages !== 'undefined') {
-        // If VehicleHistory page is not defined, define it
-        if (!Pages.VehicleHistory) {
-            Pages.VehicleHistory = class {
-                constructor(app) {
-                    this.app = app;
-                    this.toast = new Components.Toast();
-                    this.loader = new Components.Loader();
-                    this.modal = new Components.Modal();
-                    this.workers = [];
-                    this.production = [];
-                    this.inventory = [];
-                    this.searchTerm = '';
-                }
-                async render(container) {
-                    // Minimal render for history
-                    container.innerHTML = `
-                        <div class="page-header">
-                            <h2>🚗 Vehicle History</h2>
-                            <p style="color:var(--dark-gray);">Search completed tasks by vehicle number.</p>
-                        </div>
-                        <div style="display:flex;gap:0.5rem;margin-bottom:1rem;">
-                            <input type="text" id="vhSearchInput" placeholder="🔍 Enter vehicle number..." style="flex:1;padding:0.4rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);">
-                            <button class="btn btn-primary" id="vhSearchBtn">Search</button>
-                        </div>
-                        <div id="vhResults"></div>
-                    `;
-                    // Load data and handle search...
-                    try {
-                        const [workers, production, inventory] = await Promise.all([
-                            DataService.getWorkers(),
-                            DataService.getProduction(),
-                            DataService.getInventory()
-                        ]);
-                        this.workers = workers;
-                        this.production = production.filter(t => t.status === 'completed');
-                        this.inventory = inventory;
-                    } catch(e) { console.warn('History data error:', e); }
-
-                    document.getElementById('vhSearchBtn').addEventListener('click', () => {
-                        const term = document.getElementById('vhSearchInput').value.trim();
-                        if (!term) { this.toast.show('Enter a vehicle number.', 'warning'); return; }
-                        this.renderResults(term);
-                    });
-                }
-                renderResults(term) {
-                    const container = document.getElementById('vhResults');
-                    const matched = this.production.filter(t => 
-                        (t.vehicleNumber || '').toLowerCase().includes(term.toLowerCase())
-                    );
-                    if (matched.length === 0) {
-                        container.innerHTML = `<p>No completed tasks found for "${term}".</p>`;
-                        return;
-                    }
-                    let html = '';
-                    matched.forEach(t => {
-                        const workerNames = (t.assignedWorkerId || '').split(',').filter(Boolean)
-                            .map(id => this.workers.find(w => String(w.id) === id.trim())?.name || 'Unknown')
-                            .join(', ') || 'Unassigned';
-                        html += `<div style="background:#f8fafc;padding:0.5rem;border-bottom:1px solid #eee;">
-                            <strong>${t.vehicleNumber}</strong> – ${t.taskName}<br>
-                            👷 ${workerNames} | ⏱️ ${t.actualHours ? t.actualHours.toFixed(1) + ' hrs' : '--'}
-                            ${t.endTime ? ' | 📅 ' + new Date(t.endTime).toLocaleDateString() : ''}
-                        </div>`;
-                    });
-                    container.innerHTML = html;
-                }
-            };
-            console.log('✅ VehicleHistory page defined.');
+    // ---- Helper: Safe element getter ----
+    function safeGetElement(id, container) {
+        let el = document.getElementById(id);
+        if (!el && container) {
+            el = container.querySelector('#' + id);
         }
-
-        if (!Pages.Performance) {
-            Pages.Performance = class {
-                constructor(app) {
-                    this.app = app;
-                }
-                async render(container) {
-                    container.innerHTML = `
-                        <div class="page-header">
-                            <h2>📊 Performance Dashboard</h2>
-                            <p style="color:var(--dark-gray);">Performance metrics will appear here.</p>
-                        </div>
-                        <div style="padding:1rem;background:white;border-radius:var(--radius);box-shadow:var(--shadow);">
-                            <p>Work in progress. Check back later.</p>
-                        </div>
-                    `;
-                }
-            };
-            console.log('✅ Performance page defined.');
-        }
+        return el;
     }
 
-    // ---- 2. Fix Supervisor render to be completely re-entrant ----
-    if (typeof Pages !== 'undefined' && Pages.Supervisor) {
-        // Save original render method
+    // ---- Wait for Pages.Supervisor to exist ----
+    const waitForSupervisor = setInterval(() => {
+        if (typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(waitForSupervisor);
+            applyFixes();
+        }
+    }, 100);
+
+    function applyFixes() {
+        console.log('✅ Pages.Supervisor found, applying overrides...');
+
+        // ---- 1. Store original methods ----
         const origRender = Pages.Supervisor.prototype.render;
+        const origRenderQueue = Pages.Supervisor.prototype.renderQueue;
+        const origRenderStats = Pages.Supervisor.prototype.renderStats;
+        const origRenderDeptStatus = Pages.Supervisor.prototype.renderDeptStatus;
+        const origRenderTaskAnalytics = Pages.Supervisor.prototype.renderTaskAnalytics;
+        const origRenderAssignmentsOverview = Pages.Supervisor.prototype.renderAssignmentsOverview;
+        const origLoadData = Pages.Supervisor.prototype.loadData;
 
+        // ---- 2. Override render ----
         Pages.Supervisor.prototype.render = async function(container) {
-            console.log('🔄 Supervisor.render called');
-            // Ensure container is empty before building
-            container.innerHTML = ''; // Clear everything
+            // Ensure container exists
+            if (!container) {
+                container = document.getElementById('pageContent');
+                if (!container) {
+                    console.error('❌ Supervisor: pageContent container missing.');
+                    return;
+                }
+            }
 
-            // Now build the HTML structure (same as original but robust)
-            // We'll recreate all elements with unique IDs (or ensure they are fresh)
+            // Set up the HTML structure with all needed containers
             container.innerHTML = `
                 <div class="page-header"><h2>Supervisor</h2></div>
                 <div class="supervisor-search">
@@ -14258,10 +14194,7 @@
                     <div class="sup-main">
                         <div class="dashboard-stats" id="supStats"></div>
                         <div class="department-status"><h3>Department Status</h3><div class="dept-cards" id="deptCards"></div></div>
-                        <div class="department-status">
-                            <h3>Average Task Duration</h3>
-                            <div id="taskAnalytics"></div>
-                        </div>
+                        <!-- REMOVED: Task Analytics section -->
                         <div class="priority-queue">
                             <div class="flex justify-between items-center" style="margin-bottom:0.8rem;">
                                 <h3>Production Queue</h3>
@@ -14277,6 +14210,7 @@
                             <div id="supTable"></div>
                         </div>
                     </div>
+                    <!-- Sidebar for assignments – we keep it but render will be skipped if missing -->
                     <div class="sup-sidebar" id="assignSidebar">
                         <h3>👷 Assignments Overview</h3>
                         <div id="assignmentsOverview"></div>
@@ -14284,67 +14218,66 @@
                 </div>
             `;
 
-            // Now call the original render logic (which assumes the structure is there)
-            // But we need to bind events and load data
-            // We'll call the original loadData and then renderQueue, etc.
-            await this.loadData();
+            // Now load data and render sub-sections
+            try {
+                await this.loadData();
+                this.renderStats();
+                this.renderDeptStatus();
+                // Skip task analytics (removed)
+                // this.renderTaskAnalytics(); // deliberately omitted
+                this.renderQueue();
+                this.renderAssignmentsOverview();
 
-            // Re-bind search events
-            const searchInput = document.getElementById('supSearchInput');
-            const clearBtn = document.getElementById('supSearchClear');
-            if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    this.searchTerm = e.target.value.trim().toLowerCase();
-                    this.renderQueue();
-                });
+                // Bind search and filter events
+                const searchInput = document.getElementById('supSearchInput');
+                const clearBtn = document.getElementById('supSearchClear');
+                if (searchInput) {
+                    searchInput.addEventListener('input', (e) => {
+                        this.searchTerm = e.target.value.trim().toLowerCase();
+                        this.renderQueue();
+                    });
+                }
+                if (clearBtn) {
+                    clearBtn.addEventListener('click', () => {
+                        if (searchInput) searchInput.value = '';
+                        this.searchTerm = '';
+                        this.renderQueue();
+                    });
+                }
+                const typeFilter = document.getElementById('typeFilter');
+                if (typeFilter) {
+                    typeFilter.addEventListener('change', (e) => {
+                        this.filterType = e.target.value;
+                        this.renderQueue();
+                    });
+                }
+
+                // Event delegation for assign-team clicks
+                const supTable = document.getElementById('supTable');
+                if (supTable) {
+                    supTable.addEventListener('click', (e) => {
+                        const target = e.target.closest('.assign-team');
+                        if (target) {
+                            e.preventDefault();
+                            this.assignTeam(target.dataset.vehicle);
+                        }
+                    });
+                }
+            } catch (err) {
+                console.error('❌ Supervisor render error:', err);
+                container.innerHTML += `
+                    <div style="color:var(--danger);padding:1rem;background:#fff3cd;border-radius:var(--radius);margin-top:1rem;">
+                        <strong>Error loading Supervisor:</strong> ${err.message}
+                        <button class="btn btn-primary" onclick="location.reload()" style="margin-left:1rem;">Reload</button>
+                    </div>
+                `;
             }
-            if (clearBtn) {
-                clearBtn.addEventListener('click', () => {
-                    if (searchInput) searchInput.value = '';
-                    this.searchTerm = '';
-                    this.renderQueue();
-                });
-            }
-
-            // Render stats, dept, analytics, queue, assignments
-            this.renderStats();
-            this.renderDeptStatus();
-            this.renderTaskAnalytics();
-            this.renderQueue();
-            this.renderAssignmentsOverview();
-
-            // Bind type filter
-            const typeFilter = document.getElementById('typeFilter');
-            if (typeFilter) {
-                typeFilter.addEventListener('change', (e) => {
-                    this.filterType = e.target.value;
-                    this.renderQueue();
-                });
-            }
-
-            // Bind assignment clicks
-            const supTable = document.getElementById('supTable');
-            if (supTable) {
-                supTable.addEventListener('click', (e) => {
-                    const target = e.target.closest('.assign-team');
-                    if (target) {
-                        e.preventDefault();
-                        this.assignTeam(target.dataset.vehicle);
-                    }
-                });
-            }
-
-            console.log('✅ Supervisor rendered successfully.');
         };
 
-        // ---- 3. Also patch loadData to not rely on stale elements ----
-        const origLoadData = Pages.Supervisor.prototype.loadData;
+        // ---- 3. Override loadData (ensures data is loaded) ----
         Pages.Supervisor.prototype.loadData = async function() {
+            this.loader.show();
             try {
-                await origLoadData.call(this);
-            } catch (e) {
-                console.warn('loadData error, using fallback:', e);
-                // Fallback: try loading data directly
                 const [inventory, production, deptRes, workers, sales] = await Promise.all([
                     DataService.getInventory(),
                     DataService.getProduction(),
@@ -14360,7 +14293,7 @@
                 this.departmentTypes = deptRes.departmentTypes || {};
                 this.workers = workers;
 
-                // Build priorityQueue
+                // Build grouped priority queue
                 const grouped = {};
                 this.data.forEach(t => {
                     const key = t.vehicleNumber || t.salesOrderId;
@@ -14406,14 +14339,28 @@
                     else if (statuses.some(s => s === 'in_progress')) grouped[key].status = 'in_progress';
                     else grouped[key].status = 'pending';
                 });
-                this.priorityQueue = Object.values(grouped);
-                this.priorityQueue.sort((a,b) => {
+
+                // Filter out delivered vehicles
+                const deliveredVehicles = new Set();
+                inventory.forEach(v => { if (v.inventoryStatus === 'Delivered') deliveredVehicles.add(v.vehicleNumber); });
+                sales.forEach(s => { if (s.status === 'delivered' && s.vehicleNumber) deliveredVehicles.add(s.vehicleNumber); });
+                const filteredGrouped = {};
+                Object.keys(grouped).forEach(key => {
+                    const vehicleNumber = grouped[key].vehicleNumber;
+                    if (!deliveredVehicles.has(vehicleNumber)) {
+                        filteredGrouped[key] = grouped[key];
+                    }
+                });
+                this.priorityQueue = Object.values(filteredGrouped);
+
+                // Sort by delivery date
+                this.priorityQueue.sort((a, b) => {
                     const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
                     const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
                     return dateA - dateB;
                 });
-                // toggleState
-                this.toggleState = {};
+
+                // Initialize toggle state
                 this.priorityQueue.forEach(v => {
                     const key = v.vehicleNumber || v.productName;
                     if (!this.toggleState[key]) {
@@ -14421,22 +14368,72 @@
                         this.toggleState[key] = hasUnassigned ? 'assign' : 'assigned';
                     }
                 });
+            } catch (e) {
+                console.error(e);
+                this.toast.show('Failed to load data: ' + (e.message || e), 'error');
+            } finally {
+                this.loader.hide();
             }
         };
 
-        // ---- 4. Patch renderAssignmentsOverview to handle missing element gracefully ----
-        const origRenderAssign = Pages.Supervisor.prototype.renderAssignmentsOverview;
+        // ---- 4. Override renderStats (safe) ----
+        Pages.Supervisor.prototype.renderStats = function() {
+            const container = document.getElementById('supStats');
+            if (!container) return;
+            const stats = {
+                waiting: this.priorityQueue.filter(v => v.status === 'pending').length,
+                inProgress: this.priorityQueue.filter(v => v.status === 'in_progress').length,
+                pendingApproval: this.priorityQueue.filter(v => v.status === 'pending_approval').length,
+                delayed: this.priorityQueue.filter(v => { const days = Utils.dateUtils.daysUntil(v.deliveryDate); return days < 0 && v.status !== 'completed'; }).length
+            };
+            container.innerHTML = `
+                <div class="stat-card info"><div class="stat-label">Waiting Assignment</div><div class="stat-value">${stats.waiting}</div><span class="material-icons stat-icon">pending_actions</span></div>
+                <div class="stat-card warning"><div class="stat-label">In Progress</div><div class="stat-value">${stats.inProgress}</div><span class="material-icons stat-icon">build</span></div>
+                <div class="stat-card success"><div class="stat-label">Pending Approval</div><div class="stat-value">${stats.pendingApproval}</div><span class="material-icons stat-icon">approval</span></div>
+                <div class="stat-card danger"><div class="stat-label">Delayed</div><div class="stat-value">${stats.delayed}</div><span class="material-icons stat-icon">warning</span></div>
+            `;
+            // Update notification badge
+            const badge = document.getElementById('notifBadge');
+            if (badge) badge.textContent = stats.pendingApproval;
+        };
+
+        // ---- 5. Override renderDeptStatus (safe) ----
+        Pages.Supervisor.prototype.renderDeptStatus = function() {
+            const container = document.getElementById('deptCards');
+            if (!container) return;
+            const deptCounts = {};
+            this.data.forEach(t => { deptCounts[t.department] = (deptCounts[t.department] || 0) + 1; });
+            container.innerHTML = Object.entries(deptCounts).map(([name, count]) => {
+                const type = this.departmentTypes[name] || 'Company';
+                const bgColor = type === 'Contractual' ? '#ff6b6b' : '#4a90d9';
+                return `<div class="dept-card"><span class="dept-name">${name}</span><span class="dept-count" style="background:${bgColor};">${count}</span><span style="font-size:0.7rem;color:${type === 'Contractual' ? '#cc0000' : '#1a3a5c'};">${type}</span></div>`;
+            }).join('');
+        };
+
+        // ---- 6. Override renderQueue (safe) ----
+        Pages.Supervisor.prototype.renderQueue = function() {
+            const container = document.getElementById('supTable');
+            if (!container) return;
+            // (Full implementation is lengthy; we rely on the original but we'll call it safely)
+            // We'll call the original but catch errors.
+            try {
+                origRenderQueue.call(this);
+            } catch (e) {
+                console.warn('⚠️ renderQueue error:', e);
+                container.innerHTML = '<p style="color:var(--dark-gray);">Error loading queue. Please refresh.</p>';
+            }
+        };
+
+        // ---- 7. Override renderAssignmentsOverview (safe) ----
         Pages.Supervisor.prototype.renderAssignmentsOverview = function() {
             const container = document.getElementById('assignmentsOverview');
-            if (!container) {
-                console.warn('⚠️ assignmentsOverview element missing, skipping render.');
-                return;
-            }
-            // Use original if it exists, else fallback
-            if (typeof origRenderAssign === 'function') {
+            if (!container) return;
+            // Call original if exists, else fallback
+            if (typeof origRenderAssignmentsOverview === 'function') {
                 try {
-                    origRenderAssign.call(this);
-                } catch(e) {
+                    origRenderAssignmentsOverview.call(this);
+                } catch (e) {
+                    console.warn('⚠️ renderAssignmentsOverview error:', e);
                     container.innerHTML = '<div class="no-assignments">Error loading assignments.</div>';
                 }
             } else {
@@ -14444,34 +14441,59 @@
             }
         };
 
-        console.log('✅ Supervisor re-render fix applied.');
-    }
+        // ---- 8. Remove renderTaskAnalytics (do nothing) ----
+        Pages.Supervisor.prototype.renderTaskAnalytics = function() {
+            // Intentionally empty to remove the average task duration section
+            console.log('ℹ️ Task Analytics section removed from Supervisor.');
+        };
 
-    // ---- 5. Force register pages in router if missing ----
-    const router = window.__app?.router;
-    if (router) {
-        if (!router.pages.vehiclehistory && Pages.VehicleHistory) {
-            router.pages.vehiclehistory = Pages.VehicleHistory;
-            console.log('✅ Router: vehiclehistory registered.');
+        // ---- 9. Ensure History and Performance pages are registered ----
+        const router = window.__app?.router;
+        if (router) {
+            // History page – already exists from previous patch, but ensure it's in router
+            if (typeof Pages.VehicleHistory !== 'undefined' && !router.pages.vehiclehistory) {
+                router.pages.vehiclehistory = Pages.VehicleHistory;
+                console.log('✅ VehicleHistory registered.');
+            }
+            if (typeof Pages.TaskAnalytics !== 'undefined' && !router.pages.taskanalytics) {
+                router.pages.taskanalytics = Pages.TaskAnalytics;
+                console.log('✅ TaskAnalytics registered.');
+            }
+            // Performance – if it was added in a separate patch, it should be there.
+            // We'll add a dummy if missing to prevent errors.
+            if (!router.pages.performance) {
+                // Define a placeholder Performance page if not already defined
+                if (typeof Pages.Performance === 'undefined') {
+                    Pages.Performance = class {
+                        constructor(app) { this.app = app; }
+                        async render(container) {
+                            container.innerHTML = `
+                                <div class="page-header"><h2>Performance</h2></div>
+                                <div style="background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);">
+                                    <p>Performance metrics will be available soon.</p>
+                                </div>
+                            `;
+                        }
+                    };
+                    console.log('✅ Performance placeholder created.');
+                }
+                router.pages.performance = Pages.Performance;
+                console.log('✅ Performance registered.');
+            }
         }
-        if (!router.pages.performance && Pages.Performance) {
-            router.pages.performance = Pages.Performance;
-            console.log('✅ Router: performance registered.');
-        }
-    }
 
-    // ---- 6. If Supervisor is currently open, trigger re-render ----
-    const currentPage = window.__app?.router?.currentPage;
-    if (currentPage && currentPage.constructor.name === 'Supervisor') {
-        console.log('🔄 Supervisor active – forcing re-render with fixes.');
-        const container = document.getElementById('pageContent');
-        if (container) {
-            // Clear and re-run render
-            currentPage.render(container);
+        // ---- 10. If Supervisor is currently open, re-render ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage && currentPage.constructor.name === 'Supervisor') {
+            console.log('🔄 Supervisor active – re-rendering with fixes.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                currentPage.render(container);
+            }
         }
-    }
 
-    console.log('✅ All fixes applied. Supervisor should now reload without errors.');
+        console.log('✅ All Supervisor, History, Performance fixes applied.');
+    }
 })();
 </script>
 </body>
