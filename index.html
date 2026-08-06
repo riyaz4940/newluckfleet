@@ -13644,5 +13644,202 @@
         console.log('=====================================');
     })();
 </script>
+    <!-- ==============================================================
+     PURCHASE INVENTORY FIX: Convert string numbers to numbers
+     ============================================================== -->
+<script>
+(function() {
+    // Wait for the PurchaseInventory page to be defined
+    const waitForPage = setInterval(() => {
+        if (typeof Pages !== 'undefined' && Pages.PurchaseInventory) {
+            clearInterval(waitForPage);
+            applyPurchaseInventoryFix();
+        }
+    }, 100);
+
+    function applyPurchaseInventoryFix() {
+        console.log('🔧 Applying Purchase Inventory numeric fixes...');
+
+        // ---- Helper: safe toFixed ----
+        function safeToFixed(value, digits = 2) {
+            const num = parseFloat(value);
+            return isNaN(num) ? '0.00' : num.toFixed(digits);
+        }
+
+        // ---- Override loadData to parse numbers ----
+        const origLoadData = Pages.PurchaseInventory.prototype.loadData;
+        Pages.PurchaseInventory.prototype.loadData = async function() {
+            this.loader.show();
+            try {
+                // Call original to fetch data
+                await origLoadData.call(this);
+                // Now convert numeric fields in inventory and stockUsage
+                this.inventory = this.inventory.map(item => ({
+                    ...item,
+                    quantity: parseFloat(item.quantity) || 0,
+                    perPieceAmount: parseFloat(item.perPieceAmount) || 0,
+                    totalAmount: parseFloat(item.totalAmount) || 0
+                }));
+                this.stockUsage = this.stockUsage.map(usage => ({
+                    ...usage,
+                    quantity: parseFloat(usage.quantity) || 0
+                }));
+                console.log('✅ Purchase Inventory numeric fields converted.');
+            } catch (e) {
+                this.toast.show('Failed to load data: ' + (e.message || e), 'error');
+            } finally {
+                this.loader.hide();
+            }
+        };
+
+        // ---- Override renderRecentPurchases ----
+        const origRenderRecentPurchases = Pages.PurchaseInventory.prototype.renderRecentPurchases;
+        Pages.PurchaseInventory.prototype.renderRecentPurchases = async function() {
+            const container = document.getElementById('recentPurchases');
+            if (!container) return;
+            const recent = this.inventory.slice(0, 5);
+            if (recent.length === 0) {
+                container.innerHTML = '<p style="color:var(--dark-gray);">No purchases yet.</p>';
+                return;
+            }
+            let html = `<div class="table-container"><table><thead><tr><th>Product</th><th>Qty</th><th>Total Amount</th></tr></thead><tbody>`;
+            recent.forEach(p => {
+                const total = safeToFixed(p.totalAmount, 2);
+                html += `<tr><td>${p.productName}</td><td>${p.quantity}</td><td>₹${total}</td></tr>`;
+            });
+            html += `</tbody></table></div>`;
+            container.innerHTML = html;
+        };
+
+        // ---- Override renderStockTab ----
+        const origRenderStockTab = Pages.PurchaseInventory.prototype.renderStockTab;
+        Pages.PurchaseInventory.prototype.renderStockTab = function() {
+            const container = document.getElementById('stockTab');
+            if (!container) return;
+            if (this.inventory.length === 0) {
+                container.innerHTML = '<p style="color:var(--dark-gray);">No stock items yet. Add purchases first.</p>';
+                return;
+            }
+            let html = `<div class="inventory-cards">`;
+            this.inventory.forEach(item => {
+                const qty = parseFloat(item.quantity) || 0;
+                const isLow = qty < 3;
+                const statusBadge = isLow ?
+                    `<span class="badge badge-stock-low">⚠️ Low Stock (${qty})</span>` :
+                    `<span class="badge badge-stock-ok">✅ In Stock (${qty})</span>`;
+                const perPiece = safeToFixed(item.perPieceAmount, 2);
+                const total = safeToFixed(item.totalAmount, 2);
+                html += `
+                    <div class="purchase-inv-card">
+                        <div class="inv-header">
+                            <span class="inv-product">${item.productName}</span>
+                            <span class="inv-qty ${isLow ? 'low' : 'ok'}">${qty} units</span>
+                        </div>
+                        <div class="inv-details">
+                            Per Piece: ₹${perPiece} | Total: ₹${total}
+                            ${item.supplier ? `| Supplier: ${item.supplier}` : ''}
+                        </div>
+                        <div class="inv-status">${statusBadge}</div>
+                        <div class="inv-actions">
+                            <button class="btn btn-sm btn-secondary edit-stock" data-id="${item.id}">Edit</button>
+                            <button class="btn btn-sm btn-danger delete-stock" data-id="${item.id}">Delete</button>
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+            container.innerHTML = html;
+
+            // Re-bind events (handled by original code)
+            container.querySelectorAll('.edit-stock').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.editStockItem(btn.dataset.id);
+                });
+            });
+            container.querySelectorAll('.delete-stock').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.deleteStockItem(btn.dataset.id);
+                });
+            });
+        };
+
+        // ---- Override renderPurchaseTab to also use safeToFixed ----
+        const origRenderPurchaseTab = Pages.PurchaseInventory.prototype.renderPurchaseTab;
+        Pages.PurchaseInventory.prototype.renderPurchaseTab = function() {
+            // Call original to set up the form, then we'll override the recent purchases part
+            origRenderPurchaseTab.call(this);
+            // The original calls renderRecentPurchases, which we've overridden, so it will use our fixed version.
+        };
+
+        // ---- Also patch editStockItem to ensure numeric fields are parsed ----
+        const origEditStockItem = Pages.PurchaseInventory.prototype.editStockItem;
+        Pages.PurchaseInventory.prototype.editStockItem = async function(id) {
+            const item = this.inventory.find(i => i.id === id);
+            if (!item) return;
+            // Ensure numbers are parsed
+            const form = `
+                <form id="editStockForm">
+                    <div class="form-group"><label>Product Name</label><input type="text" name="productName" value="${item.productName}" required /></div>
+                    <div class="form-row">
+                        <div class="form-group"><label>Quantity</label><input type="number" name="quantity" step="0.01" value="${item.quantity}" required /></div>
+                        <div class="form-group"><label>Per Piece Amount (₹)</label><input type="number" name="perPieceAmount" step="0.01" value="${item.perPieceAmount}" required /></div>
+                    </div>
+                    <div class="form-group"><label>Total Amount (₹) (auto-calculated)</label><input type="number" name="totalAmount" step="0.01" value="${item.totalAmount}" readonly style="background:#f5f5f5;" /></div>
+                    <div class="form-group"><label>Supplier</label><input type="text" name="supplier" value="${item.supplier || ''}" /></div>
+                </form>
+            `;
+            this.modal.open({
+                title: 'Edit Stock Item',
+                body: form,
+                confirmText: 'Update',
+                onConfirm: async () => {
+                    const fd = new FormData(document.getElementById('editStockForm'));
+                    const data = Object.fromEntries(fd.entries());
+                    const qty = parseFloat(data.quantity) || 0;
+                    const perPiece = parseFloat(data.perPieceAmount) || 0;
+                    data.totalAmount = (qty * perPiece).toFixed(2);
+                    this.loader.show();
+                    try {
+                        await DataService.updatePurchaseInventory(id, data);
+                        this.toast.show('Stock updated', 'success');
+                        this.modal.close();
+                        await this.loadData();
+                        this.renderStockTab();
+                        this.renderOwnerTab();
+                    } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); } finally { this.loader.hide(); }
+                }
+            });
+            // Auto-calculate total on input change
+            const qtyInput = document.querySelector('input[name="quantity"]');
+            const perPieceInput = document.querySelector('input[name="perPieceAmount"]');
+            const totalInput = document.querySelector('input[name="totalAmount"]');
+            const calcTotal = () => {
+                const q = parseFloat(qtyInput.value) || 0;
+                const p = parseFloat(perPieceInput.value) || 0;
+                totalInput.value = (q * p).toFixed(2);
+            };
+            qtyInput.addEventListener('input', calcTotal);
+            perPieceInput.addEventListener('input', calcTotal);
+        };
+
+        // ---- If PurchaseInventory is already open, re-render ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage && currentPage.constructor.name === 'PurchaseInventory') {
+            console.log('🔄 PurchaseInventory active – reloading with numeric fixes.');
+            currentPage.loadData().then(() => {
+                currentPage.renderPurchaseTab();
+                currentPage.renderStockTab();
+                currentPage.renderUsageTab();
+                currentPage.renderOwnerTab();
+            });
+        }
+
+        console.log('✅ Purchase Inventory numeric fixes applied.');
+        console.log('📌 All numeric fields are now safely parsed and displayed.');
+    }
+})();
+</script>
 </body>
 </html>
