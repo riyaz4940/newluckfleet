@@ -14496,5 +14496,176 @@
     }
 })();
 </script>
+<!-- ==============================================================
+     SUPERVISOR – COMPLETE ALL & DELIVER (PERMANENT)
+     ============================================================== -->
+<script>
+(function() {
+    console.log('🚀 Installing Complete All & Deliver (permanent)...');
+
+    // ---- Wait for Pages.Supervisor to be defined ----
+    const waitForSupervisor = setInterval(() => {
+        if (typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(waitForSupervisor);
+            install();
+        }
+    }, 100);
+
+    function install() {
+        const SupProto = Pages.Supervisor.prototype;
+
+        // ---- 1. Define the delivery method ----
+        SupProto.completeAllAndDeliver = async function(vehicleNumber) {
+            const confirmDialog = new Components.ConfirmationDialog();
+            confirmDialog.open({
+                title: 'Complete All & Deliver',
+                body: `Complete ALL tasks for "${vehicleNumber}"?\n✅ All tasks → Completed\n📦 Progress → 100%\n📋 Order → Delivered\n🏷️ Inventory → Archived\n\n⚠️ Cannot be undone.`,
+                onConfirm: async () => {
+                    const loader = new Components.Loader();
+                    const toast = new Components.Toast();
+                    loader.show();
+
+                    try {
+                        const sales = await DataService.getSales();
+                        const order = sales.find(s => s.vehicleNumber === vehicleNumber && s.status !== 'delivered');
+                        if (!order) { toast.show('No active order.', 'warning'); loader.hide(); return; }
+
+                        const production = await DataService.getProduction();
+                        const vehicleTasks = production.filter(t => t.vehicleNumber === vehicleNumber);
+                        const batch = db.batch();
+                        const now = Utils.dateUtils.now();
+
+                        vehicleTasks.forEach(task => {
+                            batch.update(db.collection('production').doc(task.id), {
+                                status: 'completed',
+                                endTime: now,
+                                updatedAt: now,
+                                actualHours: task.actualHours || 0
+                            });
+                        });
+
+                        const inventory = await DataService.getInventory();
+                        const vehicle = inventory.find(v => v.vehicleNumber === vehicleNumber);
+                        if (vehicle) {
+                            batch.update(db.collection('inventory').doc(vehicle.id), {
+                                inventoryStatus: 'Delivered',
+                                updatedAt: now
+                            });
+                        }
+
+                        batch.update(db.collection('sales').doc(order.id), {
+                            status: 'delivered',
+                            progress: 100,
+                            deliveredAt: now,
+                            updatedAt: now
+                        });
+
+                        const historyRef = db.collection('vehicleHistory').doc();
+                        batch.set(historyRef, {
+                            vehicleNumber: vehicleNumber,
+                            action: 'Delivered (Complete All)',
+                            notes: 'All tasks completed & archived.',
+                            timestamp: now,
+                            createdAt: now
+                        });
+
+                        const deliveries = await DataService.getDelivery();
+                        let delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
+                        if (delivery) {
+                            batch.update(db.collection('delivery').doc(delivery.id), {
+                                status: 'Delivered',
+                                actualDate: now,
+                                updatedAt: now
+                            });
+                        } else {
+                            const deliveryRef = db.collection('delivery').doc();
+                            batch.set(deliveryRef, {
+                                vehicleNumber: vehicleNumber,
+                                status: 'Delivered',
+                                estimatedDate: order.deliveryDate || now,
+                                actualDate: now,
+                                keysHandoverPhotoUrl: '',
+                                remarks: 'Completed all tasks and archived.',
+                                createdAt: now,
+                                updatedAt: now
+                            });
+                        }
+
+                        await batch.commit();
+                        toast.show(`✅ ${vehicleNumber} delivered and archived.`, 'success');
+                        await this.loadData();
+                        this.renderQueue();
+                        this.renderStats();
+                    } catch (err) {
+                        toast.show('Error: ' + err.message, 'error');
+                        console.error(err);
+                    } finally {
+                        loader.hide();
+                    }
+                }
+            });
+        };
+
+        // ---- 2. Override renderQueue to add the button ----
+        const origRenderQueue = SupProto.renderQueue;
+        SupProto.renderQueue = function() {
+            // Call original
+            origRenderQueue.call(this);
+
+            // Now add buttons to all active vehicle cards
+            const cards = document.querySelectorAll('.worker-task-card');
+            cards.forEach(card => {
+                const vehicle = card.querySelector('.task-vehicle-number')?.textContent?.trim() ||
+                               card.dataset?.vehicle;
+                if (!vehicle) return;
+
+                const actions = card.querySelector('.task-actions');
+                if (!actions || actions.querySelector('.complete-all-btn')) return;
+
+                // Skip if already delivered
+                const group = this.priorityQueue?.find(v => v.vehicleNumber === vehicle);
+                if (group && group.status === 'delivered') return;
+
+                // ---- Create the green button ----
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-success btn-sm complete-all-btn';
+                btn.innerHTML = `<span class="material-icons" style="font-size:16px;">check_circle</span> Complete All & Deliver`;
+                btn.dataset.vehicle = vehicle;
+                btn.style.marginRight = '0.3rem';
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this.completeAllAndDeliver(vehicle);
+                });
+
+                // Progress label
+                const tasks = group?.tasks || [];
+                const completed = tasks.filter(t => t.status === 'completed').length;
+                const total = tasks.length;
+                const progress = total > 0 ? Math.round((completed / total) * 100) : 0;
+                const label = document.createElement('span');
+                label.style.cssText = 'font-size:0.7rem;color:var(--dark-gray);margin-left:0.3rem;';
+                label.textContent = `${progress}% done`;
+
+                actions.prepend(label);
+                actions.prepend(btn);
+            });
+        };
+
+        // ---- 3. If Supervisor is already open, force re-render ----
+        setTimeout(() => {
+            const page = window.__app?.router?.currentPage;
+            if (page && page.constructor.name === 'Supervisor') {
+                console.log('🔄 Supervisor active – re-rendering with button.');
+                page.loadData().then(() => {
+                    page.renderQueue();
+                    page.renderStats();
+                });
+            }
+        }, 300);
+
+        console.log('✅ Complete All & Deliver installed permanently.');
+    }
+})();
+</script>
 </body>
 </html>
