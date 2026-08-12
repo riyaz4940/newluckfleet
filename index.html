@@ -14667,8 +14667,8 @@
     }
 })();
 </script>
-<script>
-// VEHICLE TASK MANAGER – with Debug Panel
+    <script>
+// VEHICLE TASK MANAGER – with Debug & "Show Delivered" toggle
 (function() {
   const checkApp = setInterval(function() {
     if (window.__app && window.__app.router) {
@@ -14681,28 +14681,46 @@
           this.app=app; this.toast=new Components.Toast(); this.loader=new Components.Loader();
           this.modal=new Components.Modal(); this.confirm=new Components.ConfirmationDialog();
           this.vehicles=[]; this.allTasks=[]; this.filteredVehicles=[]; this.searchTerm=''; this.workers=[];
-          this.debugInfo = {}; // to store debug data
+          this.showDelivered = false; // toggle
         }
+
         async render(container) {
-          // Add debug panel
           container.innerHTML=`
             <h2>Vehicle Task Manager</h2>
-            <div id="vtDebug" style="background:#f8f9fa;padding:0.8rem;border-radius:var(--radius-sm);margin:0.5rem 0;font-size:0.85rem;border-left:4px solid #4fc3f7;">
+            <div id="vtDebug" style="background:#fff3cd;padding:0.8rem;border-radius:var(--radius-sm);margin:0.5rem 0;font-size:0.85rem;border-left:4px solid #ffa726;">
               <strong>🔍 Debug Info:</strong> <span id="vtDebugText">Loading...</span>
             </div>
-            <div style="margin:1rem 0;">
-              <input type="text" id="vtSearch" placeholder="🔍 Search by vehicle number, model, name..." style="width:100%;padding:0.6rem;border-radius:var(--radius-sm);border:1px solid #e2e8f0;font-size:0.95rem;" />
+            <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin:0.5rem 0;align-items:center;">
+              <input type="text" id="vtSearch" placeholder="🔍 Search by number, name, model..." style="flex:1;min-width:150px;padding:0.6rem;border-radius:var(--radius-sm);border:1px solid #e2e8f0;font-size:0.95rem;" />
+              <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;white-space:nowrap;">
+                <input type="checkbox" id="vtShowDelivered" /> Show Delivered
+              </label>
+              <button id="vtRefresh" class="btn btn-secondary btn-sm">🔄 Refresh</button>
             </div>
             <div id="vtVehicleList"></div>
           `;
+
           await this.loadData();
           this.renderList();
+
+          // Search
           document.getElementById('vtSearch').addEventListener('input', (e)=>{ this.searchTerm=e.target.value.trim().toLowerCase(); this.applyFilters(); });
+          // Toggle delivered
+          document.getElementById('vtShowDelivered').addEventListener('change', (e)=>{ this.showDelivered = e.target.checked; this.applyFilters(); });
+          // Refresh
+          document.getElementById('vtRefresh').addEventListener('click', ()=> { this.loadData(); });
         }
 
-        updateDebug(text) {
+        updateDebug(text, isError=false) {
           const el = document.getElementById('vtDebugText');
-          if (el) el.textContent = text;
+          if (el) {
+            el.textContent = text;
+            const box = document.getElementById('vtDebug');
+            if (box) {
+              box.style.borderLeftColor = isError ? '#ef5350' : '#ffa726';
+              box.style.background = isError ? '#f8d7da' : '#fff3cd';
+            }
+          }
         }
 
         async loadData() {
@@ -14714,48 +14732,53 @@
               DataService.getProduction(),
               DataService.getWorkers()
             ]);
-            // Store debug info
-            this.debugInfo = { totalInventory: inventory.length, totalProduction: production.length, totalWorkers: workers.length };
-            console.log('📦 Inventory:', inventory.length, 'vehicles');
-            console.log('📋 Production tasks:', production.length);
+            console.log('📦 Inventory:', inventory.length);
+            console.log('📋 Production:', production.length);
             console.log('👷 Workers:', workers.length);
 
-            // Filter out delivered vehicles – you can change this condition
-            this.vehicles = inventory.filter(v => v.inventoryStatus !== 'Delivered');
-            console.log('🚗 Available vehicles (not Delivered):', this.vehicles.length);
-
+            // Store raw data
+            this.rawInventory = inventory;
             this.allTasks = production;
             this.workers = workers;
-            this.filteredVehicles = [...this.vehicles];
 
-            // Update debug with counts
-            this.updateDebug(`Inventory: ${inventory.length} total, ${this.vehicles.length} available (excl. "Delivered"). Production tasks: ${production.length}.`);
+            // Apply filter (delivered or not)
+            this.applyFilters();
+
+            this.updateDebug(`✅ Inventory: ${inventory.length} total. ${this.vehicles.length} shown (${this.showDelivered ? 'including Delivered' : 'excluding Delivered'}). Production tasks: ${production.length}.`);
 
             if(this.vehicles.length===0) {
-              this.toast.show('⚠️ No vehicles found. Check inventory data.', 'warning');
-              this.updateDebug('⚠️ No vehicles found. Inventory might be empty or all are "Delivered".');
-            } else {
-              this.updateDebug(`✅ ${this.vehicles.length} vehicles loaded.`);
+              if(inventory.length===0) {
+                this.updateDebug('⚠️ Inventory is empty. Please add vehicles first.', true);
+              } else {
+                this.updateDebug('⚠️ All vehicles are "Delivered". Toggle "Show Delivered" to see them.', true);
+              }
             }
           } catch(e) {
-            console.error('❌ Error loading data:', e);
+            console.error(e);
+            this.updateDebug('❌ Error: '+e.message, true);
             this.toast.show('Failed to load: '+e.message,'error');
-            this.updateDebug('❌ Error: '+e.message);
             this.vehicles=[]; this.filteredVehicles=[];
           }
           finally { this.loader.hide(); }
         }
 
         applyFilters() {
-          if (!this.searchTerm) {
-            this.filteredVehicles = [...this.vehicles];
-          } else {
-            this.filteredVehicles = this.vehicles.filter(v =>
+          // Start with all vehicles
+          let filtered = this.rawInventory || [];
+          // Apply delivered filter
+          if (!this.showDelivered) {
+            filtered = filtered.filter(v => v.inventoryStatus !== 'Delivered');
+          }
+          // Apply search
+          if (this.searchTerm) {
+            filtered = filtered.filter(v =>
               (v.vehicleNumber||'').toLowerCase().includes(this.searchTerm) ||
               (v.vehicleName||'').toLowerCase().includes(this.searchTerm) ||
               (v.model||'').toLowerCase().includes(this.searchTerm)
             );
           }
+          this.vehicles = filtered;
+          this.filteredVehicles = [...this.vehicles];
           this.renderList();
         }
 
@@ -14764,9 +14787,8 @@
           if(this.filteredVehicles.length===0){
             c.innerHTML=`<div style="text-align:center;padding:2rem;color:var(--text-secondary);">
               <span class="material-icons" style="font-size:3rem;">directions_car</span>
-              <p>No vehicles found.</p>
-              <p style="font-size:0.85rem;">Try adding vehicles in Inventory or adjust search.</p>
-              <button onclick="window.__app.router.currentPage.loadData()" class="btn btn-primary btn-sm" style="margin-top:0.5rem;">🔄 Refresh</button>
+              <p>No vehicles match the current filters.</p>
+              <p style="font-size:0.85rem;">Try adjusting the search or enable "Show Delivered".</p>
             </div>`;
             return;
           }
@@ -14779,7 +14801,7 @@
                 <div>
                   <div class="task-vehicle-number">${v.vehicleNumber}</div>
                   <div class="task-name">${v.vehicleName||v.model||''}</div>
-                  <div style="font-size:0.8rem;color:var(--text-secondary);">Model: ${v.model||'—'} &bull; Chassis: ${v.chassisNumber||'—'}</div>
+                  <div style="font-size:0.8rem;color:var(--text-secondary);">Model: ${v.model||'—'} &bull; Chassis: ${v.chassisNumber||'—'} &bull; Status: ${v.inventoryStatus||'—'}</div>
                 </div>
                 <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
                   <span class="badge ${tasks.length>0?(done===tasks.length?'badge-completed':'badge-in_progress'):'badge-pending'}">${done}/${tasks.length} tasks done</span>
@@ -14811,13 +14833,13 @@
           });
           html+='</div>'; c.innerHTML=html;
 
-          // Bind events
+          // Events
           c.querySelectorAll('.add-vt-task').forEach(b=>b.addEventListener('click',()=>this.showAddTaskModal(b.dataset.vehicle)));
           c.querySelectorAll('.assign-vt-task').forEach(b=>b.addEventListener('click',()=>this.assignWorkers(b.dataset.taskid,b.dataset.vehicle)));
           c.querySelectorAll('.complete-vt-task').forEach(b=>b.addEventListener('click',()=>this.completeTask(b.dataset.taskid)));
         }
 
-        // ---- Add, Assign, Complete methods (same as before) ----
+        // (Methods: showAddTaskModal, assignWorkers, completeTask – unchanged from previous)
         showAddTaskModal(vehicleNumber) {
           const typeOpts=TASK_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('');
           const workerChk=this.workers.map(w=>`<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;"><input type="checkbox" name="worker_${w.id}" value="${w.id}" /> ${w.name} (${w.department||'no dept'})</label>`).join('')||'<span style="color:var(--text-secondary);">No workers.</span>';
@@ -14854,7 +14876,7 @@
         }
       }
 
-      // ---- Permissions & Navigation (unchanged) ----
+      // ---- Permissions & Navigation (same) ----
       const origPerm = auth.hasPermission.bind(auth);
       auth.hasPermission = function(page) {
         if(page==='vehicletasks'){ const role=this.getCurrentUser()?.role||'worker'; return ['owner','operations_manager','supervisor','sales'].includes(role); }
@@ -14879,10 +14901,10 @@
       };
       app.renderApp(); router.renderBottomNav();
       if(window.location.hash.slice(1)==='vehicletasks') router.navigate('vehicletasks');
-      console.log('✅ Vehicle Tasks with debug loaded');
+      console.log('✅ Vehicle Tasks with debug & show delivered loaded');
     }
   }, 100);
 })();
-</script>
+    </script>
 </body>
 </html>
