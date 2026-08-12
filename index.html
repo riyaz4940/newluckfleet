@@ -14667,5 +14667,323 @@
     }
 })();
 </script>
+    <script>
+  // ==============================================================
+  // ADD-ON: FC Prep Page (without altering Inventory)
+  // ==============================================================
+  (function() {
+    // Wait for the app to initialize
+    const checkApp = setInterval(function() {
+      if (window.__app && window.__app.router) {
+        clearInterval(checkApp);
+
+        const app = window.__app;
+        const router = app.router;
+        const auth = app.auth;
+        const toast = new Components.Toast();
+
+        // ----- 1. Define FC Prep Page Class -----
+        class FcPrep {
+          constructor(app) {
+            this.app = app;
+            this.toast = new Components.Toast();
+            this.loader = new Components.Loader();
+            this.modal = new Components.Modal();
+            this.confirm = new Components.ConfirmationDialog();
+            this.vehicles = [];
+            this.tasks = [];
+            this.filteredVehicles = [];
+            this.searchTerm = '';
+            this.workers = [];
+          }
+
+          async render(container) {
+            container.innerHTML = `
+              <h2>FC Preparation</h2>
+              <div style="margin: 1rem 0;">
+                <input type="text" id="fcSearch" placeholder="🔍 Search by vehicle number, model, name..." style="width:100%;padding:0.6rem;border-radius:var(--radius-sm);border:1px solid #e2e8f0;font-size:0.95rem;" />
+              </div>
+              <div id="fcVehicleList"></div>
+              <div id="fcPagination"></div>
+            `;
+
+            await this.loadData();
+            this.renderList();
+
+            document.getElementById('fcSearch').addEventListener('input', (e) => {
+              this.searchTerm = e.target.value.trim().toLowerCase();
+              this.applyFilters();
+            });
+          }
+
+          async loadData() {
+            this.loader.show();
+            try {
+              const [inventory, production, workers] = await Promise.all([
+                DataService.getInventory(),
+                DataService.getProduction(),
+                DataService.getWorkers()
+              ]);
+              this.vehicles = inventory.filter(v => v.inventoryStatus !== 'Delivered');
+              this.tasks = production.filter(t => t.taskName === 'FC Preparation');
+              this.workers = workers;
+              this.filteredVehicles = [...this.vehicles];
+            } catch (e) {
+              this.toast.show('Failed to load data: ' + e.message, 'error');
+            } finally {
+              this.loader.hide();
+            }
+          }
+
+          applyFilters() {
+            if (!this.searchTerm) {
+              this.filteredVehicles = [...this.vehicles];
+            } else {
+              this.filteredVehicles = this.vehicles.filter(v =>
+                (v.vehicleNumber || '').toLowerCase().includes(this.searchTerm) ||
+                (v.vehicleName || '').toLowerCase().includes(this.searchTerm) ||
+                (v.model || '').toLowerCase().includes(this.searchTerm)
+              );
+            }
+            this.renderList();
+          }
+
+          renderList() {
+            const container = document.getElementById('fcVehicleList');
+            if (this.filteredVehicles.length === 0) {
+              container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">No vehicles found.</div>';
+              return;
+            }
+
+            let html = '<div class="worker-task-list">';
+            this.filteredVehicles.forEach(v => {
+              const fcTask = this.tasks.find(t => t.vehicleNumber === v.vehicleNumber && t.status !== 'completed');
+              const status = fcTask ? fcTask.status : 'Not Started';
+              const assignedWorker = fcTask ? (fcTask.assignedWorkerId || '').split(',').filter(Boolean) : [];
+              const workerNames = assignedWorker.map(id => {
+                const w = this.workers.find(w => String(w.id) === id.trim());
+                return w ? w.name : 'Unknown';
+              }).join(', ') || 'Not assigned';
+
+              const isAssigned = fcTask && fcTask.assignedWorkerId;
+              const canAssign = !isAssigned || fcTask.status === 'pending';
+
+              html += `
+                <div class="worker-task-card" style="cursor:default;">
+                  <div style="flex:1;">
+                    <div class="task-vehicle-number">${v.vehicleNumber}</div>
+                    <div class="task-name">${v.vehicleName || v.model || ''}</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">
+                      Model: ${v.model || '—'} &bull; Chassis: ${v.chassisNumber || '—'}
+                    </div>
+                    <div style="margin-top:0.3rem;">
+                      <span class="badge ${status === 'completed' ? 'badge-completed' : status === 'in_progress' ? 'badge-in_progress' : 'badge-pending'}">${status}</span>
+                      ${isAssigned ? `<span style="font-size:0.8rem;color:var(--text-secondary);">Assigned to: ${workerNames}</span>` : ''}
+                    </div>
+                  </div>
+                  <div class="task-actions" style="flex-wrap:wrap;">
+                    ${canAssign ? `<button class="btn btn-primary btn-sm assign-fc" data-vehicle="${v.vehicleNumber}" data-id="${fcTask?.id || ''}">${isAssigned ? 'Reassign' : 'Assign FC Prep'}</button>` : ''}
+                    ${fcTask && fcTask.status === 'in_progress' ? `<button class="btn btn-success btn-sm complete-fc" data-taskid="${fcTask.id}">Mark Complete</button>` : ''}
+                  </div>
+                </div>
+              `;
+            });
+            html += '</div>';
+            container.innerHTML = html;
+
+            // Event listeners
+            container.querySelectorAll('.assign-fc').forEach(btn => {
+              btn.addEventListener('click', () => this.assignFc(btn.dataset.vehicle, btn.dataset.id));
+            });
+            container.querySelectorAll('.complete-fc').forEach(btn => {
+              btn.addEventListener('click', () => this.completeFc(btn.dataset.taskid));
+            });
+          }
+
+          async assignFc(vehicleNumber, existingTaskId) {
+            // Show worker selection modal
+            const sortedWorkers = [...this.workers].sort((a, b) => a.name.localeCompare(b.name));
+            const workerCheckboxes = sortedWorkers.map(w =>
+              `<label><input type="checkbox" name="worker_${w.id}" value="${w.id}" /> ${w.name} <span style="color:var(--text-secondary);font-size:0.8rem;">— ${w.department || 'no dept'} (${w.employeeType})</span></label>`
+            ).join('') || '<p style="color:var(--text-secondary);">No workers available.</p>';
+
+            const form = `
+              <p>Assign workers for <strong>FC Preparation</strong> on vehicle <strong>${vehicleNumber}</strong></p>
+              <div class="form-group">
+                <label>Select Worker(s)</label>
+                <div class="checkbox-group" style="max-height:220px;overflow-y:auto;display:block;">${workerCheckboxes}</div>
+              </div>
+              <div class="form-group">
+                <label>Estimated Hours</label>
+                <input type="number" id="fcEstHours" value="4" step="0.5" />
+              </div>
+            `;
+
+            this.modal.open({
+              title: 'Assign FC Prep Task',
+              body: form,
+              confirmText: 'Assign',
+              onConfirm: async () => {
+                const selectedWorkerIds = sortedWorkers.filter(w => document.querySelector(`input[name="worker_${w.id}"]:checked`)).map(w => w.id);
+                if (selectedWorkerIds.length === 0) {
+                  this.toast.show('Select at least one worker', 'warning');
+                  return;
+                }
+                const estHours = parseFloat(document.getElementById('fcEstHours').value) || 4;
+
+                this.loader.show();
+                try {
+                  let taskId = existingTaskId;
+                  if (!taskId) {
+                    // Create new FC Prep task in production
+                    const taskData = {
+                      salesOrderId: '', // not linked to a sales order
+                      vehicleNumber: vehicleNumber,
+                      customerName: '',
+                      taskName: 'FC Preparation',
+                      department: 'FC',
+                      assignedTeamId: '',
+                      assignedWorkerId: selectedWorkerIds.join(','),
+                      status: 'pending',
+                      estimatedHours: estHours,
+                      actualHours: null,
+                      startTime: null,
+                      endTime: null,
+                      remarks: '',
+                      deliveryDate: null,
+                      priorityScore: 0,
+                      dependencyFlags: '[]',
+                      forceStart: false,
+                      beforePhotoUploaded: false,
+                      afterPhotoUploaded: false,
+                      photoUploadedAt: null,
+                      createdAt: Utils.dateUtils.now(),
+                      updatedAt: Utils.dateUtils.now()
+                    };
+                    const id = Utils.genId();
+                    await db.collection('production').doc(id).set({ id, ...taskData });
+                    taskId = id;
+                  } else {
+                    // Update existing task with new workers and estimated hours
+                    await DataService.updateProduction(taskId, {
+                      assignedWorkerId: selectedWorkerIds.join(','),
+                      estimatedHours: estHours,
+                      status: 'pending'
+                    });
+                  }
+
+                  this.toast.show(`FC Prep task assigned to ${selectedWorkerIds.length} worker(s)`, 'success');
+                  this.modal.close();
+                  await this.loadData();
+                  this.applyFilters();
+                } catch (e) {
+                  this.toast.show('Failed to assign: ' + e.message, 'error');
+                } finally {
+                  this.loader.hide();
+                }
+              }
+            });
+          }
+
+          async completeFc(taskId) {
+            this.confirm.open({
+              title: 'Complete FC Prep',
+              body: 'Mark this FC Preparation task as complete?',
+              onConfirm: async () => {
+                this.loader.show();
+                try {
+                  await DataService.updateProduction(taskId, { status: 'completed', endTime: Utils.dateUtils.now() });
+                  this.toast.show('FC Prep marked complete', 'success');
+                  await this.loadData();
+                  this.applyFilters();
+                } catch (e) {
+                  this.toast.show('Failed: ' + e.message, 'error');
+                } finally {
+                  this.loader.hide();
+                }
+              }
+            });
+          }
+        }
+
+        // ----- 2. Patch Permissions & Router -----
+        const originalHasPermission = auth.hasPermission.bind(auth);
+        auth.hasPermission = function(page) {
+          if (page === 'fcprep') {
+            const role = this.getCurrentUser()?.role || 'worker';
+            return ['owner', 'operations_manager', 'supervisor'].includes(role);
+          }
+          return originalHasPermission(page);
+        };
+
+        // Add page to router
+        router.pages['fcprep'] = FcPrep;
+
+        // ----- 3. Update Navigation (Sidebar & Bottom Nav) -----
+        const pagesList = ['dashboard', 'inventory', 'sales', 'supervisor', 'worker', 'fcprep', 'leads', 'accounts', 'users'];
+        const labels = {
+          dashboard: 'Dashboard',
+          inventory: 'Inventory',
+          sales: 'Sales Orders',
+          supervisor: 'Supervisor',
+          worker: 'My Work',
+          fcprep: 'FC Prep',
+          leads: 'Leads',
+          accounts: 'Accounts',
+          users: 'Manage Users'
+        };
+        const icons = {
+          dashboard: 'dashboard',
+          inventory: 'inventory',
+          sales: 'receipt_long',
+          supervisor: 'supervisor_account',
+          worker: 'construction',
+          fcprep: 'assignment_late',
+          leads: 'people',
+          accounts: 'account_balance',
+          users: 'group'
+        };
+
+        // Override renderApp for sidebar
+        const originalRenderApp = app.renderApp.bind(app);
+        app.renderApp = function() {
+          const sidebar = document.getElementById('sidebarNav');
+          const html = pagesList.filter(p => this.auth.hasPermission(p)).map(p =>
+            `<a href="#${p}" class="nav-item" data-page="${p}"><span class="material-icons">${icons[p]}</span><span class="nav-label">${labels[p]}</span></a>`
+          ).join('');
+          sidebar.innerHTML = html;
+          // Re-attach click events (handled by router init)
+        };
+
+        // Override renderBottomNav
+        const originalRenderBottomNav = router.renderBottomNav.bind(router);
+        router.renderBottomNav = function() {
+          const bottomNav = document.getElementById('bottomNav');
+          const mobilePages = ['dashboard', 'inventory', 'sales', 'supervisor', 'worker', 'fcprep', 'leads', 'accounts'];
+          const html = mobilePages.filter(p => this.auth.hasPermission(p)).map(p =>
+            `<button class="nav-item" data-page="${p}">
+              <span class="material-icons">${icons[p]}</span>
+              <span>${labels[p]}</span>
+            </button>`
+          ).join('');
+          bottomNav.innerHTML = html;
+          // Re-bind click events (handled by router init)
+        };
+
+        // Re-render navigation
+        app.renderApp();
+        router.renderBottomNav();
+
+        // ----- 4. Reload current page if it's fcprep (to use new page) -----
+        const currentHash = window.location.hash.slice(1) || 'dashboard';
+        if (currentHash === 'fcprep') {
+          router.navigate('fcprep');
+        }
+
+        console.log('✅ FC Prep page added successfully!');
+      }
+    }, 100);
+  })();
+    </script>
 </body>
 </html>
