@@ -14667,9 +14667,9 @@
     }
 })();
 </script>
-<script>
+    <script>
   // ==============================================================
-  // VEHICLE TASK MANAGER – Assign any task to any vehicle
+  // VEHICLE TASK MANAGER – FIXED (shows vehicles)
   // ==============================================================
   (function() {
     const checkApp = setInterval(function() {
@@ -14681,7 +14681,7 @@
         const auth = app.auth;
         const toast = new Components.Toast();
 
-        // ----- Predefined task types (you can edit this list) -----
+        // ----- Task types (you can edit) -----
         const TASK_TYPES = [
           'Mechanical',
           'Vehicle Electrical',
@@ -14705,7 +14705,7 @@
           'Other'
         ];
 
-        // ----- 1. Vehicle Tasks Page -----
+        // ----- Vehicle Tasks Page (robust) -----
         class VehicleTasks {
           constructor(app) {
             this.app = app;
@@ -14746,14 +14746,29 @@
                 DataService.getProduction(),
                 DataService.getWorkers()
               ]);
-              // Show all vehicles (including delivered? I'll exclude delivered for clarity)
+
+              // DEBUG: Log the data to console
+              console.log('📦 Inventory loaded:', inventory.length, 'vehicles');
+              console.log('📋 Production tasks loaded:', production.length);
+              console.log('👷 Workers loaded:', workers.length);
+
+              // Show ALL vehicles except those explicitly 'Delivered'
+              // You can change this filter as needed
               this.vehicles = inventory.filter(v => v.inventoryStatus !== 'Delivered');
-              // All tasks (any type)
+              console.log('🚗 Vehicles after filtering (not Delivered):', this.vehicles.length);
+
               this.allTasks = production;
               this.workers = workers;
               this.filteredVehicles = [...this.vehicles];
+
+              if (this.vehicles.length === 0) {
+                this.toast.show('⚠️ No vehicles found. Check your inventory data.', 'warning');
+              }
             } catch (e) {
+              console.error('❌ Error loading data:', e);
               this.toast.show('Failed to load data: ' + e.message, 'error');
+              this.vehicles = [];
+              this.filteredVehicles = [];
             } finally {
               this.loader.hide();
             }
@@ -14774,14 +14789,21 @@
 
           renderList() {
             const container = document.getElementById('vtVehicleList');
+            if (!container) return;
+
             if (this.filteredVehicles.length === 0) {
-              container.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--text-secondary);">No vehicles found.</div>';
+              container.innerHTML = `
+                <div style="text-align:center;padding:2rem;color:var(--text-secondary);">
+                  <span class="material-icons" style="font-size:3rem;">directions_car</span>
+                  <p>No vehicles found.</p>
+                  <p style="font-size:0.85rem;">Try adjusting the search or check your inventory.</p>
+                </div>
+              `;
               return;
             }
 
             let html = '<div class="worker-task-list">';
             this.filteredVehicles.forEach(v => {
-              // Get all tasks for this vehicle
               const tasks = this.allTasks.filter(t => t.vehicleNumber === v.vehicleNumber);
               const completedCount = tasks.filter(t => t.status === 'completed').length;
               const totalTasks = tasks.length;
@@ -14793,7 +14815,7 @@
                       <div class="task-vehicle-number">${v.vehicleNumber}</div>
                       <div class="task-name">${v.vehicleName || v.model || ''}</div>
                       <div style="font-size:0.8rem;color:var(--text-secondary);">
-                        Model: ${v.model || '—'} &bull; Chassis: ${v.chassisNumber || '—'}
+                        Model: ${v.model || '—'} &bull; Chassis: ${v.chassisNumber || '—'} &bull; Status: ${v.inventoryStatus || '—'}
                       </div>
                     </div>
                     <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
@@ -14843,27 +14865,30 @@
             html += '</div>';
             container.innerHTML = html;
 
-            // ----- Bind events -----
-            // Add task
+            // Bind events
             container.querySelectorAll('.add-vt-task').forEach(btn => {
               btn.addEventListener('click', () => this.showAddTaskModal(btn.dataset.vehicle));
             });
-            // Assign workers to existing task
             container.querySelectorAll('.assign-vt-task').forEach(btn => {
               btn.addEventListener('click', () => this.assignWorkers(btn.dataset.taskid, btn.dataset.vehicle));
             });
-            // Complete task
             container.querySelectorAll('.complete-vt-task').forEach(btn => {
               btn.addEventListener('click', () => this.completeTask(btn.dataset.taskid));
             });
           }
 
-          // ----- Show modal to add a new task for a vehicle -----
+          // ----- Add Task Modal -----
           showAddTaskModal(vehicleNumber) {
-            // Build dropdown options from TASK_TYPES
             const typeOptions = TASK_TYPES.map(type =>
               `<option value="${type}">${type}</option>`
             ).join('');
+
+            const workerCheckboxes = this.workers.map(w =>
+              `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;">
+                <input type="checkbox" name="worker_${w.id}" value="${w.id}" />
+                ${w.name} (${w.department || 'no dept'})
+              </label>`
+            ).join('') || '<span style="color:var(--text-secondary);">No workers available.</span>';
 
             const form = `
               <p>Add a new task for vehicle <strong>${vehicleNumber}</strong></p>
@@ -14884,13 +14909,8 @@
               </div>
               <div class="form-group">
                 <label>Assign Workers (optional – you can assign later)</label>
-                <div id="workerChecklist" style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;">
-                  ${this.workers.map(w => `
-                    <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;">
-                      <input type="checkbox" name="worker_${w.id}" value="${w.id}" />
-                      ${w.name} (${w.department || 'no dept'})
-                    </label>
-                  `).join('') || '<span style="color:var(--text-secondary);">No workers available.</span>'}
+                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;">
+                  ${workerCheckboxes}
                 </div>
               </div>
             `;
@@ -14907,18 +14927,18 @@
 
                 // Get selected workers
                 const selectedWorkerIds = [];
-                document.querySelectorAll('#workerChecklist input[type="checkbox"]:checked').forEach(cb => {
+                document.querySelectorAll('#modalBody input[type="checkbox"]:checked').forEach(cb => {
                   selectedWorkerIds.push(cb.value);
                 });
 
                 this.loader.show();
                 try {
                   const taskData = {
-                    salesOrderId: '', // independent task
+                    salesOrderId: '',
                     vehicleNumber: vehicleNumber,
                     customerName: '',
                     taskName: taskName,
-                    department: 'Workshop', // default department; could be mapped later
+                    department: 'Workshop',
                     assignedTeamId: '',
                     assignedWorkerId: selectedWorkerIds.join(','),
                     status: 'pending',
@@ -14953,7 +14973,7 @@
             });
           }
 
-          // ----- Assign workers to an existing task -----
+          // ----- Assign Workers -----
           assignWorkers(taskId, vehicleNumber) {
             const task = this.allTasks.find(t => t.id === taskId);
             if (!task) {
@@ -14961,7 +14981,6 @@
               return;
             }
 
-            // Build worker checklist
             const currentAssigned = (task.assignedWorkerId || '').split(',').filter(Boolean);
             const workerCheckboxes = this.workers.map(w =>
               `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;">
@@ -14990,17 +15009,9 @@
               confirmText: 'Assign',
               onConfirm: async () => {
                 const selectedWorkerIds = [];
-                document.querySelectorAll('#assignForm input[type="checkbox"]:checked').forEach(cb => {
-                  // We need to scope to the modal, but since there's only one modal, we can query inside
-                  // Actually we can just re-query inside the modal body
-                  const checked = document.querySelectorAll('#modalBody input[type="checkbox"]:checked');
-                  checked.forEach(cb => selectedWorkerIds.push(cb.value));
+                document.querySelectorAll('#modalBody input[type="checkbox"]:checked').forEach(cb => {
+                  selectedWorkerIds.push(cb.value);
                 });
-                // Better: use the form inside modalBody
-                const modalBody = document.getElementById('modalBody');
-                const checkedBoxes = modalBody.querySelectorAll('input[type="checkbox"]:checked');
-                checkedBoxes.forEach(cb => selectedWorkerIds.push(cb.value));
-
                 if (selectedWorkerIds.length === 0) {
                   this.toast.show('Select at least one worker', 'warning');
                   return;
@@ -15012,7 +15023,7 @@
                   await DataService.updateProduction(taskId, {
                     assignedWorkerId: selectedWorkerIds.join(','),
                     estimatedHours: estHours,
-                    status: 'pending' // reset to pending if it was unassigned
+                    status: 'pending'
                   });
                   this.toast.show('Workers assigned', 'success');
                   this.modal.close();
@@ -15025,15 +15036,9 @@
                 }
               }
             });
-
-            // Patch: The onConfirm uses the modalBody for checkbox selection, but we need to get values from the modal.
-            // Since this runs inside onConfirm, we can directly query the modal content.
-            // I'll override the onConfirm to properly read checkboxes.
-            // Actually the current modal implementation doesn't have an ID for the form, so I'll use querySelector inside the modal body.
-            // The above code will work.
           }
 
-          // ----- Complete a task -----
+          // ----- Complete Task -----
           completeTask(taskId) {
             const task = this.allTasks.find(t => t.id === taskId);
             if (!task) {
@@ -15047,7 +15052,6 @@
               onConfirm: async () => {
                 this.loader.show();
                 try {
-                  // Update with completion time
                   await DataService.updateProduction(taskId, {
                     status: 'completed',
                     endTime: Utils.dateUtils.now(),
@@ -15066,7 +15070,7 @@
           }
         }
 
-        // ----- 2. Patch Permissions & Router -----
+        // ----- Permissions & Router -----
         const originalHasPermission = auth.hasPermission.bind(auth);
         auth.hasPermission = function(page) {
           if (page === 'vehicletasks') {
@@ -15076,10 +15080,9 @@
           return originalHasPermission(page);
         };
 
-        // Add page to router
         router.pages['vehicletasks'] = VehicleTasks;
 
-        // ----- 3. Update Navigation (Sidebar & Bottom Nav) -----
+        // ----- Navigation -----
         const pagesList = ['dashboard', 'inventory', 'sales', 'supervisor', 'worker', 'vehicletasks', 'leads', 'accounts', 'users'];
         const labels = {
           dashboard: 'Dashboard',
@@ -15104,7 +15107,6 @@
           users: 'group'
         };
 
-        // Override renderApp for sidebar
         const originalRenderApp = app.renderApp.bind(app);
         app.renderApp = function() {
           const sidebar = document.getElementById('sidebarNav');
@@ -15114,7 +15116,6 @@
           sidebar.innerHTML = html;
         };
 
-        // Override renderBottomNav
         const originalRenderBottomNav = router.renderBottomNav.bind(router);
         router.renderBottomNav = function() {
           const bottomNav = document.getElementById('bottomNav');
@@ -15128,17 +15129,16 @@
           bottomNav.innerHTML = html;
         };
 
-        // Re-render navigation
         app.renderApp();
         router.renderBottomNav();
 
-        // ----- 4. Reload current page if it's vehicletasks -----
+        // Reload if on this page
         const currentHash = window.location.hash.slice(1) || 'dashboard';
         if (currentHash === 'vehicletasks') {
           router.navigate('vehicletasks');
         }
 
-        console.log('✅ Vehicle Tasks page added successfully!');
+        console.log('✅ Vehicle Tasks page added (fixed)');
       }
     }, 100);
   })();
