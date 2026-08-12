@@ -14669,7 +14669,7 @@
 </script>
 <script>
 // ==============================================================
-// FC PREPARATION – Multiple Task Assignment (Predefined + Custom)
+// FC PREPARATION – Add tasks first, assign workers later
 // ==============================================================
 (function() {
   const checkApp = setInterval(function() {
@@ -14677,44 +14677,18 @@
       clearInterval(checkApp);
       const app = window.__app, router = app.router, auth = app.auth;
 
-      // ----- Task types (you can edit this list) -----
       const TASK_TYPES = [
-        'Mechanical',
-        'Vehicle Electrical',
-        'Painting',
-        'Tinkering',
-        'Glass Checking',
-        'Tyre Changing',
-        'Dummy Closing',
-        'Body Coach',
-        'Kitchen Layout',
-        'ACP Work',
-        'Coach Electrical',
-        'Plumbing',
-        'Canopy',
-        'Branding',
-        'Solar',
-        'UPS',
-        'Camera',
-        'QC',
-        'Delivery',
-        'Other'
+        'Mechanical','Vehicle Electrical','Painting','Tinkering','Glass Checking',
+        'Tyre Changing','Dummy Closing','Body Coach','Kitchen Layout','ACP Work',
+        'Coach Electrical','Plumbing','Canopy','Branding','Solar','UPS','Camera',
+        'QC','Delivery','Other'
       ];
 
-      // ----- FC Prep Page (Multiple Tasks) -----
       class FcPrep {
         constructor(app) {
-          this.app=app;
-          this.toast=new Components.Toast();
-          this.loader=new Components.Loader();
-          this.modal=new Components.Modal();
-          this.confirm=new Components.ConfirmationDialog();
-          this.vehicles=[];
-          this.allTasks=[];
-          this.filteredVehicles=[];
-          this.searchTerm='';
-          this.workers=[];
-          this.showDelivered=false;
+          this.app=app; this.toast=new Components.Toast(); this.loader=new Components.Loader();
+          this.modal=new Components.Modal(); this.confirm=new Components.ConfirmationDialog();
+          this.vehicles=[]; this.allTasks=[]; this.filteredVehicles=[]; this.searchTerm=''; this.workers=[]; this.showDelivered=false;
         }
 
         async render(container) {
@@ -14768,11 +14742,8 @@
             this.applyFilters();
             this.updateDebug(`✅ Inventory: ${inventory.length} total. ${this.vehicles.length} shown (${this.showDelivered ? 'including' : 'excluding'} Delivered). Tasks: ${production.length}.`);
             if(this.vehicles.length===0) {
-              if(inventory.length===0) {
-                this.updateDebug('⚠️ Inventory is empty. Add vehicles first.', true);
-              } else {
-                this.updateDebug('⚠️ All vehicles are "Delivered". Toggle "Show Delivered".', true);
-              }
+              if(inventory.length===0) this.updateDebug('⚠️ Inventory is empty. Add vehicles first.', true);
+              else this.updateDebug('⚠️ All vehicles are "Delivered". Toggle "Show Delivered".', true);
             }
           } catch(e) {
             console.error(e);
@@ -14785,9 +14756,7 @@
 
         applyFilters() {
           let filtered = this.rawInventory || [];
-          if (!this.showDelivered) {
-            filtered = filtered.filter(v => v.inventoryStatus !== 'Delivered');
-          }
+          if (!this.showDelivered) filtered = filtered.filter(v => v.inventoryStatus !== 'Delivered');
           if (this.searchTerm) {
             filtered = filtered.filter(v =>
               (v.vehicleNumber||'').toLowerCase().includes(this.searchTerm) ||
@@ -14839,9 +14808,9 @@
                         <span style="font-size:0.75rem;color:var(--text-secondary);">👤 ${names}</span>
                       </div>
                       <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
-                        ${!done2&&t.status!=='pending_approval'?`<button class="btn btn-sm btn-secondary assign-task" data-taskid="${t.id}" data-vehicle="${v.vehicleNumber}">Assign</button>`:''}
-                        ${t.status==='in_progress'&&!done2?`<button class="btn btn-sm btn-success complete-task" data-taskid="${t.id}">Complete</button>`:''}
-                        ${done2?`<span class="badge badge-completed">✅ Done</span>`:''}
+                        ${!done2 && t.status!=='pending_approval' ? `<button class="btn btn-sm btn-secondary assign-task" data-taskid="${t.id}" data-vehicle="${v.vehicleNumber}">Assign</button>` : ''}
+                        ${t.status==='in_progress' && !done2 ? `<button class="btn btn-sm btn-success complete-task" data-taskid="${t.id}">Complete</button>` : ''}
+                        ${done2 ? `<span class="badge badge-completed">✅ Done</span>` : ''}
                       </div>
                     </div>`;
                   }).join('')}
@@ -14851,15 +14820,13 @@
           });
           html+='</div>'; c.innerHTML=html;
 
-          // Events
           c.querySelectorAll('.add-multi-tasks').forEach(b=>b.addEventListener('click',()=>this.showMultiTaskModal(b.dataset.vehicle)));
           c.querySelectorAll('.assign-task').forEach(b=>b.addEventListener('click',()=>this.assignWorkers(b.dataset.taskid,b.dataset.vehicle)));
           c.querySelectorAll('.complete-task').forEach(b=>b.addEventListener('click',()=>this.completeTask(b.dataset.taskid)));
         }
 
-        // ----- MULTI TASK MODAL (add multiple tasks at once) -----
+        // ----- MULTI TASK MODAL (workers optional) -----
         showMultiTaskModal(vehicleNumber) {
-          // Build predefined task checkboxes (grid)
           const taskCheckboxes = TASK_TYPES.map(t =>
             `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;padding:0.2rem 0.4rem;border:1px solid #e2e8f0;border-radius:6px;">
               <input type="checkbox" name="task_${t}" value="${t}" />
@@ -14867,7 +14834,6 @@
             </label>`
           ).join('');
 
-          // Worker checkboxes
           const workerChk = this.workers.map(w =>
             `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;padding:0.2rem 0.4rem;">
               <input type="checkbox" name="worker_${w.id}" value="${w.id}" />
@@ -14877,7 +14843,6 @@
 
           const form = `
             <p>Add <strong>multiple tasks</strong> for vehicle <strong>${vehicleNumber}</strong></p>
-
             <div class="form-group">
               <label>📋 Predefined Tasks (check all that apply)</label>
               <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.3rem;max-height:200px;overflow-y:auto;border:1px solid #eef2f6;border-radius:var(--radius-sm);padding:0.5rem;background:var(--bg);">
@@ -14885,24 +14850,21 @@
               </div>
               <small style="color:var(--text-secondary);">Select any number of predefined tasks.</small>
             </div>
-
             <div class="form-group">
               <label>✏️ Custom Tasks (one per line)</label>
               <textarea id="customTasksList" rows="2" placeholder="Wheel alignment&#10;Brake check&#10;AC service" style="width:100%;padding:0.4rem;border:1px solid #e2e8f0;border-radius:var(--radius-sm);font-size:0.9rem;"></textarea>
               <small style="color:var(--text-secondary);">Enter each custom task on a new line.</small>
             </div>
-
             <div class="form-group">
               <label>⏱️ Estimated Hours (per task)</label>
               <input type="number" id="multiEstHours" value="4" step="0.5" min="0.5" />
             </div>
-
             <div class="form-group">
-              <label>👷 Assign Workers (same for all tasks)</label>
+              <label>👷 Assign Workers (optional – you can assign later)</label>
               <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;max-height:150px;overflow-y:auto;border:1px solid #eef2f6;border-radius:var(--radius-sm);padding:0.5rem;background:var(--bg);">
                 ${workerChk}
               </div>
-              <small style="color:var(--text-secondary);">Select one or more workers for all tasks.</small>
+              <small style="color:var(--text-secondary);">If you skip, you can assign workers later via the "Assign" button on each task.</small>
             </div>
           `;
 
@@ -14911,33 +14873,22 @@
             body: form,
             confirmText: 'Create All Tasks',
             onConfirm: async () => {
-              // Get selected predefined tasks
               const selectedPredefined = [];
               document.querySelectorAll('#modalBody input[type="checkbox"][name^="task_"]:checked').forEach(cb => {
                 selectedPredefined.push(cb.value);
               });
-
-              // Get custom tasks (split by newline, filter empty)
               const customText = document.getElementById('customTasksList').value;
-              const customTasks = customText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-
-              // Combine all tasks
+              const customTasks = customText.split('\n').map(s=>s.trim()).filter(s=>s.length>0);
               const allTaskNames = [...selectedPredefined, ...customTasks];
               if (allTaskNames.length === 0) {
                 this.toast.show('Select at least one task (predefined or custom).', 'warning');
                 return;
               }
-
-              // Get selected workers
               const selectedWorkerIds = [];
               document.querySelectorAll('#modalBody input[type="checkbox"][name^="worker_"]:checked').forEach(cb => {
                 selectedWorkerIds.push(cb.value);
               });
-              if (selectedWorkerIds.length === 0) {
-                this.toast.show('Select at least one worker.', 'warning');
-                return;
-              }
-
+              // Workers are optional – no error if none selected
               const estHours = parseFloat(document.getElementById('multiEstHours').value) || 4;
 
               this.loader.show();
@@ -14977,9 +14928,8 @@
                     console.error('Failed to create task:', taskName, e);
                   }
                 }
-
                 this.modal.close();
-                this.toast.show(`✅ ${created} tasks created for ${vehicleNumber}${errors > 0 ? ` (${errors} failed)` : ''}`, 'success');
+                this.toast.show(`✅ ${created} tasks created for ${vehicleNumber}${errors > 0 ? ` (${errors} failed)` : ''}${selectedWorkerIds.length ? ` with ${selectedWorkerIds.length} worker(s) assigned` : '. Assign workers later via the "Assign" button.'}`, 'success');
                 await this.loadData();
                 this.applyFilters();
               } catch(e) {
@@ -15074,11 +15024,9 @@
         return origPerm(page);
       };
 
-      // Register as both "fcprep" (for nav) and "vehicletasks" (backward compat)
       router.pages['fcprep'] = FcPrep;
       router.pages['vehicletasks'] = FcPrep;
 
-      // Navigation
       const pages = ['dashboard','inventory','sales','supervisor','worker','fcprep','leads','accounts','users'];
       const labels = {
         dashboard:'Dashboard',
@@ -15129,13 +15077,12 @@
       app.renderApp();
       router.renderBottomNav();
 
-      // Reload if on this page
       const hash = window.location.hash.slice(1) || 'dashboard';
       if (hash === 'fcprep' || hash === 'vehicletasks') {
         router.navigate('fcprep');
       }
 
-      console.log('✅ FC Prep – Multiple Tasks loaded');
+      console.log('✅ FC Prep – Add tasks first, assign workers later');
     }
   }, 100);
 })();
