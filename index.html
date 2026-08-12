@@ -14667,55 +14667,85 @@
     }
 })();
 </script>
-    <script>
-// VEHICLE TASK MANAGER – with Debug & "Show Delivered" toggle
+<script>
+// ==============================================================
+// FC PREPARATION – Multiple Task Assignment (Predefined + Custom)
+// ==============================================================
 (function() {
   const checkApp = setInterval(function() {
     if (window.__app && window.__app.router) {
       clearInterval(checkApp);
       const app = window.__app, router = app.router, auth = app.auth;
-      const TASK_TYPES = ['Mechanical','Vehicle Electrical','Painting','Tinkering','Glass Checking','Tyre Changing','Dummy Closing','Body Coach','Kitchen Layout','ACP Work','Coach Electrical','Plumbing','Canopy','Branding','Solar','UPS','Camera','QC','Delivery','Other'];
 
-      class VehicleTasks {
+      // ----- Task types (you can edit this list) -----
+      const TASK_TYPES = [
+        'Mechanical',
+        'Vehicle Electrical',
+        'Painting',
+        'Tinkering',
+        'Glass Checking',
+        'Tyre Changing',
+        'Dummy Closing',
+        'Body Coach',
+        'Kitchen Layout',
+        'ACP Work',
+        'Coach Electrical',
+        'Plumbing',
+        'Canopy',
+        'Branding',
+        'Solar',
+        'UPS',
+        'Camera',
+        'QC',
+        'Delivery',
+        'Other'
+      ];
+
+      // ----- FC Prep Page (Multiple Tasks) -----
+      class FcPrep {
         constructor(app) {
-          this.app=app; this.toast=new Components.Toast(); this.loader=new Components.Loader();
-          this.modal=new Components.Modal(); this.confirm=new Components.ConfirmationDialog();
-          this.vehicles=[]; this.allTasks=[]; this.filteredVehicles=[]; this.searchTerm=''; this.workers=[];
-          this.showDelivered = false; // toggle
+          this.app=app;
+          this.toast=new Components.Toast();
+          this.loader=new Components.Loader();
+          this.modal=new Components.Modal();
+          this.confirm=new Components.ConfirmationDialog();
+          this.vehicles=[];
+          this.allTasks=[];
+          this.filteredVehicles=[];
+          this.searchTerm='';
+          this.workers=[];
+          this.showDelivered=false;
         }
 
         async render(container) {
           container.innerHTML=`
-            <h2>Vehicle Task Manager</h2>
-            <div id="vtDebug" style="background:#fff3cd;padding:0.8rem;border-radius:var(--radius-sm);margin:0.5rem 0;font-size:0.85rem;border-left:4px solid #ffa726;">
-              <strong>🔍 Debug Info:</strong> <span id="vtDebugText">Loading...</span>
+            <h2>FC Preparation</h2>
+            <div id="fcDebug" style="background:#fff3cd;padding:0.8rem;border-radius:var(--radius-sm);margin:0.5rem 0;font-size:0.85rem;border-left:4px solid #ffa726;">
+              <strong>🔍 Debug:</strong> <span id="fcDebugText">Loading...</span>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin:0.5rem 0;align-items:center;">
-              <input type="text" id="vtSearch" placeholder="🔍 Search by number, name, model..." style="flex:1;min-width:150px;padding:0.6rem;border-radius:var(--radius-sm);border:1px solid #e2e8f0;font-size:0.95rem;" />
+              <input type="text" id="fcSearch" placeholder="🔍 Search by number, name, model..." style="flex:1;min-width:150px;padding:0.6rem;border-radius:var(--radius-sm);border:1px solid #e2e8f0;font-size:0.95rem;" />
               <label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;white-space:nowrap;">
-                <input type="checkbox" id="vtShowDelivered" /> Show Delivered
+                <input type="checkbox" id="fcShowDelivered" /> Show Delivered
               </label>
-              <button id="vtRefresh" class="btn btn-secondary btn-sm">🔄 Refresh</button>
+              <button id="fcRefresh" class="btn btn-secondary btn-sm">🔄 Refresh</button>
             </div>
-            <div id="vtVehicleList"></div>
+            <div id="fcVehicleList"></div>
           `;
 
           await this.loadData();
           this.renderList();
 
-          // Search
-          document.getElementById('vtSearch').addEventListener('input', (e)=>{ this.searchTerm=e.target.value.trim().toLowerCase(); this.applyFilters(); });
-          // Toggle delivered
-          document.getElementById('vtShowDelivered').addEventListener('change', (e)=>{ this.showDelivered = e.target.checked; this.applyFilters(); });
-          // Refresh
-          document.getElementById('vtRefresh').addEventListener('click', ()=> { this.loadData(); });
+          document.getElementById('fcSearch').addEventListener('input', (e)=>{ this.searchTerm=e.target.value.trim().toLowerCase(); this.applyFilters(); });
+          document.getElementById('fcShowDelivered').addEventListener('change', (e)=>{ this.showDelivered=e.target.checked; this.applyFilters(); });
+          document.getElementById('fcRefresh').addEventListener('click', ()=> { this.loadData(); });
         }
 
         updateDebug(text, isError=false) {
-          const el = document.getElementById('vtDebugText');
+          const el = document.getElementById('fcDebugText');
           if (el) {
             el.textContent = text;
-            const box = document.getElementById('vtDebug');
+            const box = document.getElementById('fcDebug');
             if (box) {
               box.style.borderLeftColor = isError ? '#ef5350' : '#ffa726';
               box.style.background = isError ? '#f8d7da' : '#fff3cd';
@@ -14732,25 +14762,16 @@
               DataService.getProduction(),
               DataService.getWorkers()
             ]);
-            console.log('📦 Inventory:', inventory.length);
-            console.log('📋 Production:', production.length);
-            console.log('👷 Workers:', workers.length);
-
-            // Store raw data
             this.rawInventory = inventory;
             this.allTasks = production;
             this.workers = workers;
-
-            // Apply filter (delivered or not)
             this.applyFilters();
-
-            this.updateDebug(`✅ Inventory: ${inventory.length} total. ${this.vehicles.length} shown (${this.showDelivered ? 'including Delivered' : 'excluding Delivered'}). Production tasks: ${production.length}.`);
-
+            this.updateDebug(`✅ Inventory: ${inventory.length} total. ${this.vehicles.length} shown (${this.showDelivered ? 'including' : 'excluding'} Delivered). Tasks: ${production.length}.`);
             if(this.vehicles.length===0) {
               if(inventory.length===0) {
-                this.updateDebug('⚠️ Inventory is empty. Please add vehicles first.', true);
+                this.updateDebug('⚠️ Inventory is empty. Add vehicles first.', true);
               } else {
-                this.updateDebug('⚠️ All vehicles are "Delivered". Toggle "Show Delivered" to see them.', true);
+                this.updateDebug('⚠️ All vehicles are "Delivered". Toggle "Show Delivered".', true);
               }
             }
           } catch(e) {
@@ -14763,13 +14784,10 @@
         }
 
         applyFilters() {
-          // Start with all vehicles
           let filtered = this.rawInventory || [];
-          // Apply delivered filter
           if (!this.showDelivered) {
             filtered = filtered.filter(v => v.inventoryStatus !== 'Delivered');
           }
-          // Apply search
           if (this.searchTerm) {
             filtered = filtered.filter(v =>
               (v.vehicleNumber||'').toLowerCase().includes(this.searchTerm) ||
@@ -14783,12 +14801,12 @@
         }
 
         renderList() {
-          const c=document.getElementById('vtVehicleList'); if(!c) return;
+          const c=document.getElementById('fcVehicleList'); if(!c) return;
           if(this.filteredVehicles.length===0){
             c.innerHTML=`<div style="text-align:center;padding:2rem;color:var(--text-secondary);">
               <span class="material-icons" style="font-size:3rem;">directions_car</span>
-              <p>No vehicles match the current filters.</p>
-              <p style="font-size:0.85rem;">Try adjusting the search or enable "Show Delivered".</p>
+              <p>No vehicles match.</p>
+              <p style="font-size:0.85rem;">Try adjusting search or enable "Show Delivered".</p>
             </div>`;
             return;
           }
@@ -14804,8 +14822,8 @@
                   <div style="font-size:0.8rem;color:var(--text-secondary);">Model: ${v.model||'—'} &bull; Chassis: ${v.chassisNumber||'—'} &bull; Status: ${v.inventoryStatus||'—'}</div>
                 </div>
                 <div style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">
-                  <span class="badge ${tasks.length>0?(done===tasks.length?'badge-completed':'badge-in_progress'):'badge-pending'}">${done}/${tasks.length} tasks done</span>
-                  <button class="btn btn-primary btn-sm add-vt-task" data-vehicle="${v.vehicleNumber}">+ Add Task</button>
+                  <span class="badge ${tasks.length>0?(done===tasks.length?'badge-completed':'badge-in_progress'):'badge-pending'}">${done}/${tasks.length} tasks</span>
+                  <button class="btn btn-primary btn-sm add-multi-tasks" data-vehicle="${v.vehicleNumber}">+ Add Tasks</button>
                 </div>
               </div>
               ${tasks.length>0 ? `
@@ -14821,90 +14839,306 @@
                         <span style="font-size:0.75rem;color:var(--text-secondary);">👤 ${names}</span>
                       </div>
                       <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
-                        ${!done2&&t.status!=='pending_approval'?`<button class="btn btn-sm btn-secondary assign-vt-task" data-taskid="${t.id}" data-vehicle="${v.vehicleNumber}">Assign</button>`:''}
-                        ${t.status==='in_progress'&&!done2?`<button class="btn btn-sm btn-success complete-vt-task" data-taskid="${t.id}">Complete</button>`:''}
+                        ${!done2&&t.status!=='pending_approval'?`<button class="btn btn-sm btn-secondary assign-task" data-taskid="${t.id}" data-vehicle="${v.vehicleNumber}">Assign</button>`:''}
+                        ${t.status==='in_progress'&&!done2?`<button class="btn btn-sm btn-success complete-task" data-taskid="${t.id}">Complete</button>`:''}
                         ${done2?`<span class="badge badge-completed">✅ Done</span>`:''}
                       </div>
                     </div>`;
                   }).join('')}
                 </div>
-              ` : `<div style="font-size:0.8rem;color:var(--text-secondary);padding:0.4rem 0;">No tasks assigned yet.</div>`}
+              ` : `<div style="font-size:0.8rem;color:var(--text-secondary);padding:0.4rem 0;">No tasks yet. Click "Add Tasks".</div>`}
             </div>`;
           });
           html+='</div>'; c.innerHTML=html;
 
           // Events
-          c.querySelectorAll('.add-vt-task').forEach(b=>b.addEventListener('click',()=>this.showAddTaskModal(b.dataset.vehicle)));
-          c.querySelectorAll('.assign-vt-task').forEach(b=>b.addEventListener('click',()=>this.assignWorkers(b.dataset.taskid,b.dataset.vehicle)));
-          c.querySelectorAll('.complete-vt-task').forEach(b=>b.addEventListener('click',()=>this.completeTask(b.dataset.taskid)));
+          c.querySelectorAll('.add-multi-tasks').forEach(b=>b.addEventListener('click',()=>this.showMultiTaskModal(b.dataset.vehicle)));
+          c.querySelectorAll('.assign-task').forEach(b=>b.addEventListener('click',()=>this.assignWorkers(b.dataset.taskid,b.dataset.vehicle)));
+          c.querySelectorAll('.complete-task').forEach(b=>b.addEventListener('click',()=>this.completeTask(b.dataset.taskid)));
         }
 
-        // (Methods: showAddTaskModal, assignWorkers, completeTask – unchanged from previous)
-        showAddTaskModal(vehicleNumber) {
-          const typeOpts=TASK_TYPES.map(t=>`<option value="${t}">${t}</option>`).join('');
-          const workerChk=this.workers.map(w=>`<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;"><input type="checkbox" name="worker_${w.id}" value="${w.id}" /> ${w.name} (${w.department||'no dept'})</label>`).join('')||'<span style="color:var(--text-secondary);">No workers.</span>';
-          this.modal.open({title:'Add New Task',body:`<p>Add task for <strong>${vehicleNumber}</strong></p><div class="form-group"><label>Task Type</label><select id="taskTypeSelect">${typeOpts}</select></div><div class="form-group"><label>OR Custom Name</label><input type="text" id="customTaskName" placeholder="e.g. Wheel Alignment" /></div><div class="form-group"><label>Est. Hours</label><input type="number" id="taskEstHours" value="4" step="0.5" min="0.5" /></div><div class="form-group"><label>Assign Workers (optional)</label><div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;">${workerChk}</div></div>`,confirmText:'Create Task',onConfirm:async()=>{
-            const taskName=document.getElementById('customTaskName').value.trim()||document.getElementById('taskTypeSelect').value;
-            const estHours=parseFloat(document.getElementById('taskEstHours').value)||4;
-            const selected=[]; document.querySelectorAll('#modalBody input[type="checkbox"]:checked').forEach(cb=>selected.push(cb.value));
-            this.loader.show();
-            try{ const id=Utils.genId(); await db.collection('production').doc(id).set({id,salesOrderId:'',vehicleNumber:vehicleNumber,customerName:'',taskName:taskName,department:'Workshop',assignedTeamId:'',assignedWorkerId:selected.join(','),status:'pending',estimatedHours:estHours,actualHours:null,startTime:null,endTime:null,remarks:'',deliveryDate:null,priorityScore:0,dependencyFlags:'[]',forceStart:false,beforePhotoUploaded:false,afterPhotoUploaded:false,photoUploadedAt:null,createdAt:Utils.dateUtils.now(),updatedAt:Utils.dateUtils.now()});
-              this.toast.show(`Task "${taskName}" created`,'success'); this.modal.close(); await this.loadData(); this.applyFilters();
-            } catch(e){ this.toast.show('Failed: '+e.message,'error'); } finally { this.loader.hide(); }
-          }});
+        // ----- MULTI TASK MODAL (add multiple tasks at once) -----
+        showMultiTaskModal(vehicleNumber) {
+          // Build predefined task checkboxes (grid)
+          const taskCheckboxes = TASK_TYPES.map(t =>
+            `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;padding:0.2rem 0.4rem;border:1px solid #e2e8f0;border-radius:6px;">
+              <input type="checkbox" name="task_${t}" value="${t}" />
+              ${t}
+            </label>`
+          ).join('');
+
+          // Worker checkboxes
+          const workerChk = this.workers.map(w =>
+            `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;padding:0.2rem 0.4rem;">
+              <input type="checkbox" name="worker_${w.id}" value="${w.id}" />
+              ${w.name} (${w.department||'no dept'})
+            </label>`
+          ).join('') || '<span style="color:var(--text-secondary);">No workers available.</span>';
+
+          const form = `
+            <p>Add <strong>multiple tasks</strong> for vehicle <strong>${vehicleNumber}</strong></p>
+
+            <div class="form-group">
+              <label>📋 Predefined Tasks (check all that apply)</label>
+              <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.3rem;max-height:200px;overflow-y:auto;border:1px solid #eef2f6;border-radius:var(--radius-sm);padding:0.5rem;background:var(--bg);">
+                ${taskCheckboxes}
+              </div>
+              <small style="color:var(--text-secondary);">Select any number of predefined tasks.</small>
+            </div>
+
+            <div class="form-group">
+              <label>✏️ Custom Tasks (one per line)</label>
+              <textarea id="customTasksList" rows="2" placeholder="Wheel alignment&#10;Brake check&#10;AC service" style="width:100%;padding:0.4rem;border:1px solid #e2e8f0;border-radius:var(--radius-sm);font-size:0.9rem;"></textarea>
+              <small style="color:var(--text-secondary);">Enter each custom task on a new line.</small>
+            </div>
+
+            <div class="form-group">
+              <label>⏱️ Estimated Hours (per task)</label>
+              <input type="number" id="multiEstHours" value="4" step="0.5" min="0.5" />
+            </div>
+
+            <div class="form-group">
+              <label>👷 Assign Workers (same for all tasks)</label>
+              <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;max-height:150px;overflow-y:auto;border:1px solid #eef2f6;border-radius:var(--radius-sm);padding:0.5rem;background:var(--bg);">
+                ${workerChk}
+              </div>
+              <small style="color:var(--text-secondary);">Select one or more workers for all tasks.</small>
+            </div>
+          `;
+
+          this.modal.open({
+            title: `Add Multiple Tasks – ${vehicleNumber}`,
+            body: form,
+            confirmText: 'Create All Tasks',
+            onConfirm: async () => {
+              // Get selected predefined tasks
+              const selectedPredefined = [];
+              document.querySelectorAll('#modalBody input[type="checkbox"][name^="task_"]:checked').forEach(cb => {
+                selectedPredefined.push(cb.value);
+              });
+
+              // Get custom tasks (split by newline, filter empty)
+              const customText = document.getElementById('customTasksList').value;
+              const customTasks = customText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+
+              // Combine all tasks
+              const allTaskNames = [...selectedPredefined, ...customTasks];
+              if (allTaskNames.length === 0) {
+                this.toast.show('Select at least one task (predefined or custom).', 'warning');
+                return;
+              }
+
+              // Get selected workers
+              const selectedWorkerIds = [];
+              document.querySelectorAll('#modalBody input[type="checkbox"][name^="worker_"]:checked').forEach(cb => {
+                selectedWorkerIds.push(cb.value);
+              });
+              if (selectedWorkerIds.length === 0) {
+                this.toast.show('Select at least one worker.', 'warning');
+                return;
+              }
+
+              const estHours = parseFloat(document.getElementById('multiEstHours').value) || 4;
+
+              this.loader.show();
+              let created = 0, errors = 0;
+              try {
+                for (const taskName of allTaskNames) {
+                  try {
+                    const id = Utils.genId();
+                    await db.collection('production').doc(id).set({
+                      id,
+                      salesOrderId: '',
+                      vehicleNumber: vehicleNumber,
+                      customerName: '',
+                      taskName: taskName,
+                      department: 'Workshop',
+                      assignedTeamId: '',
+                      assignedWorkerId: selectedWorkerIds.join(','),
+                      status: 'pending',
+                      estimatedHours: estHours,
+                      actualHours: null,
+                      startTime: null,
+                      endTime: null,
+                      remarks: '',
+                      deliveryDate: null,
+                      priorityScore: 0,
+                      dependencyFlags: '[]',
+                      forceStart: false,
+                      beforePhotoUploaded: false,
+                      afterPhotoUploaded: false,
+                      photoUploadedAt: null,
+                      createdAt: Utils.dateUtils.now(),
+                      updatedAt: Utils.dateUtils.now()
+                    });
+                    created++;
+                  } catch(e) {
+                    errors++;
+                    console.error('Failed to create task:', taskName, e);
+                  }
+                }
+
+                this.modal.close();
+                this.toast.show(`✅ ${created} tasks created for ${vehicleNumber}${errors > 0 ? ` (${errors} failed)` : ''}`, 'success');
+                await this.loadData();
+                this.applyFilters();
+              } catch(e) {
+                this.toast.show('Failed: '+e.message, 'error');
+              } finally {
+                this.loader.hide();
+              }
+            }
+          });
         }
 
+        // ----- Assign Workers (to existing task) -----
         assignWorkers(taskId, vehicleNumber) {
-          const task=this.allTasks.find(t=>t.id===taskId); if(!task){ this.toast.show('Task not found','error'); return; }
-          const current=(task.assignedWorkerId||'').split(',').filter(Boolean);
-          const workerChk=this.workers.map(w=>`<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;"><input type="checkbox" name="worker_${w.id}" value="${w.id}" ${current.includes(w.id)?'checked':''} /> ${w.name} (${w.department||'no dept'})</label>`).join('')||'<p style="color:var(--text-secondary);">No workers.</p>';
-          this.modal.open({title:'Assign Workers',body:`<p>Assign to <strong>${task.taskName}</strong> for ${vehicleNumber}</p><div class="form-group"><label>Est. Hours</label><input type="number" id="assignEstHours" value="${task.estimatedHours||4}" step="0.5" min="0.5" /></div><div class="form-group"><label>Select Worker(s)</label><div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;">${workerChk}</div></div>`,confirmText:'Assign',onConfirm:async()=>{
-            const selected=[]; document.querySelectorAll('#modalBody input[type="checkbox"]:checked').forEach(cb=>selected.push(cb.value));
-            if(!selected.length){ this.toast.show('Select at least one worker','warning'); return; }
-            const est=parseFloat(document.getElementById('assignEstHours').value)||4;
-            this.loader.show();
-            try{ await DataService.updateProduction(taskId,{assignedWorkerId:selected.join(','),estimatedHours:est,status:'pending'}); this.toast.show('Workers assigned','success'); this.modal.close(); await this.loadData(); this.applyFilters(); } catch(e){ this.toast.show('Failed: '+e.message,'error'); } finally { this.loader.hide(); }
-          }});
+          const task = this.allTasks.find(t => t.id === taskId);
+          if (!task) { this.toast.show('Task not found', 'error'); return; }
+          const current = (task.assignedWorkerId || '').split(',').filter(Boolean);
+          const workerChk = this.workers.map(w =>
+            `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.85rem;">
+              <input type="checkbox" name="worker_${w.id}" value="${w.id}" ${current.includes(w.id) ? 'checked' : ''} />
+              ${w.name} (${w.department||'no dept'})
+            </label>`
+          ).join('') || '<p style="color:var(--text-secondary);">No workers.</p>';
+
+          this.modal.open({
+            title: 'Assign Workers',
+            body: `
+              <p>Assign workers to <strong>${task.taskName}</strong> for ${vehicleNumber}</p>
+              <div class="form-group">
+                <label>Est. Hours</label>
+                <input type="number" id="assignEstHours" value="${task.estimatedHours||4}" step="0.5" min="0.5" />
+              </div>
+              <div class="form-group">
+                <label>Select Worker(s)</label>
+                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:0.3rem;">${workerChk}</div>
+              </div>
+            `,
+            confirmText: 'Assign',
+            onConfirm: async () => {
+              const selected = [];
+              document.querySelectorAll('#modalBody input[type="checkbox"][name^="worker_"]:checked').forEach(cb => {
+                selected.push(cb.value);
+              });
+              if (!selected.length) { this.toast.show('Select at least one worker', 'warning'); return; }
+              const est = parseFloat(document.getElementById('assignEstHours').value) || 4;
+              this.loader.show();
+              try {
+                await DataService.updateProduction(taskId, {
+                  assignedWorkerId: selected.join(','),
+                  estimatedHours: est,
+                  status: 'pending'
+                });
+                this.toast.show('Workers assigned', 'success');
+                this.modal.close();
+                await this.loadData();
+                this.applyFilters();
+              } catch(e) { this.toast.show('Failed: '+e.message, 'error'); } finally { this.loader.hide(); }
+            }
+          });
         }
 
+        // ----- Complete Task -----
         completeTask(taskId) {
-          const task=this.allTasks.find(t=>t.id===taskId); if(!task){ this.toast.show('Task not found','error'); return; }
-          this.confirm.open({title:'Complete Task',body:`Mark "${task.taskName}" as complete?`,onConfirm:async()=>{
-            this.loader.show();
-            try{ await DataService.updateProduction(taskId,{status:'completed',endTime:Utils.dateUtils.now(),actualHours:task.actualHours||(task.estimatedHours||4)}); this.toast.show('Task completed','success'); await this.loadData(); this.applyFilters(); } catch(e){ this.toast.show('Failed: '+e.message,'error'); } finally { this.loader.hide(); }
-          }});
+          const task = this.allTasks.find(t => t.id === taskId);
+          if (!task) { this.toast.show('Task not found', 'error'); return; }
+          this.confirm.open({
+            title: 'Complete Task',
+            body: `Mark "${task.taskName}" as complete?`,
+            onConfirm: async () => {
+              this.loader.show();
+              try {
+                await DataService.updateProduction(taskId, {
+                  status: 'completed',
+                  endTime: Utils.dateUtils.now(),
+                  actualHours: task.actualHours || (task.estimatedHours || 4)
+                });
+                this.toast.show('Task completed', 'success');
+                await this.loadData();
+                this.applyFilters();
+              } catch(e) { this.toast.show('Failed: '+e.message, 'error'); } finally { this.loader.hide(); }
+            }
+          });
         }
       }
 
-      // ---- Permissions & Navigation (same) ----
+      // ----- Permissions & Router -----
       const origPerm = auth.hasPermission.bind(auth);
       auth.hasPermission = function(page) {
-        if(page==='vehicletasks'){ const role=this.getCurrentUser()?.role||'worker'; return ['owner','operations_manager','supervisor','sales'].includes(role); }
+        if(page==='fcprep' || page==='vehicletasks') {
+          const role = this.getCurrentUser()?.role || 'worker';
+          return ['owner','operations_manager','supervisor','sales'].includes(role);
+        }
         return origPerm(page);
       };
-      router.pages['vehicletasks'] = VehicleTasks;
 
-      const pages = ['dashboard','inventory','sales','supervisor','worker','vehicletasks','leads','accounts','users'];
-      const labels = {dashboard:'Dashboard',inventory:'Inventory',sales:'Sales Orders',supervisor:'Supervisor',worker:'My Work',vehicletasks:'Vehicle Tasks',leads:'Leads',accounts:'Accounts',users:'Manage Users'};
-      const icons = {dashboard:'dashboard',inventory:'inventory',sales:'receipt_long',supervisor:'supervisor_account',worker:'construction',vehicletasks:'assignment',leads:'people',accounts:'account_balance',users:'group'};
+      // Register as both "fcprep" (for nav) and "vehicletasks" (backward compat)
+      router.pages['fcprep'] = FcPrep;
+      router.pages['vehicletasks'] = FcPrep;
+
+      // Navigation
+      const pages = ['dashboard','inventory','sales','supervisor','worker','fcprep','leads','accounts','users'];
+      const labels = {
+        dashboard:'Dashboard',
+        inventory:'Inventory',
+        sales:'Sales Orders',
+        supervisor:'Supervisor',
+        worker:'My Work',
+        fcprep:'FC Prep',
+        leads:'Leads',
+        accounts:'Accounts',
+        users:'Manage Users'
+      };
+      const icons = {
+        dashboard:'dashboard',
+        inventory:'inventory',
+        sales:'receipt_long',
+        supervisor:'supervisor_account',
+        worker:'construction',
+        fcprep:'assignment',
+        leads:'people',
+        accounts:'account_balance',
+        users:'group'
+      };
 
       const origRenderApp = app.renderApp.bind(app);
       app.renderApp = function() {
         const sidebar = document.getElementById('sidebarNav');
-        sidebar.innerHTML = pages.filter(p=>this.auth.hasPermission(p)).map(p=>`<a href="#${p}" class="nav-item" data-page="${p}"><span class="material-icons">${icons[p]}</span><span class="nav-label">${labels[p]}</span></a>`).join('');
+        sidebar.innerHTML = pages.filter(p => this.auth.hasPermission(p)).map(p =>
+          `<a href="#${p}" class="nav-item" data-page="${p}">
+            <span class="material-icons">${icons[p]}</span>
+            <span class="nav-label">${labels[p]}</span>
+          </a>`
+        ).join('');
       };
+
       const origRenderBN = router.renderBottomNav.bind(router);
       router.renderBottomNav = function() {
         const bn = document.getElementById('bottomNav');
-        const mobile = ['dashboard','inventory','sales','supervisor','worker','vehicletasks','leads','accounts'];
-        bn.innerHTML = mobile.filter(p=>this.auth.hasPermission(p)).map(p=>`<button class="nav-item" data-page="${p}"><span class="material-icons">${icons[p]}</span><span>${labels[p]}</span></button>`).join('');
+        const mobile = ['dashboard','inventory','sales','supervisor','worker','fcprep','leads','accounts'];
+        bn.innerHTML = mobile.filter(p => this.auth.hasPermission(p)).map(p =>
+          `<button class="nav-item" data-page="${p}">
+            <span class="material-icons">${icons[p]}</span>
+            <span>${labels[p]}</span>
+          </button>`
+        ).join('');
       };
-      app.renderApp(); router.renderBottomNav();
-      if(window.location.hash.slice(1)==='vehicletasks') router.navigate('vehicletasks');
-      console.log('✅ Vehicle Tasks with debug & show delivered loaded');
+
+      app.renderApp();
+      router.renderBottomNav();
+
+      // Reload if on this page
+      const hash = window.location.hash.slice(1) || 'dashboard';
+      if (hash === 'fcprep' || hash === 'vehicletasks') {
+        router.navigate('fcprep');
+      }
+
+      console.log('✅ FC Prep – Multiple Tasks loaded');
     }
   }, 100);
 })();
-    </script>
+</script>
 </body>
 </html>
