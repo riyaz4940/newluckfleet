@@ -15087,12 +15087,12 @@
   }, 100);
 })();
 </script>
-<script>
+        
+</body><script>
 // ==============================================================
-// SIMPLIFIED QUOTATION BUILDER – Manual typing only
+// QUOTATION BUILDER – with SGST (9%) & CGST (9%) auto‑calc
 // ==============================================================
 (function() {
-  // ---- Define the simplified class ----
   window.QuotationBuilder = class QuotationBuilder {
     constructor(app) {
       this.app = app;
@@ -15104,7 +15104,6 @@
       this.currentQuotation = null;
       this.lineItems = [];
       this.isEdit = false;
-      this.grandTotal = 0;
     }
 
     async render(container) {
@@ -15121,16 +15120,19 @@
             .q-table td { vertical-align: middle; }
             .q-table input { border: 1px solid #e2e8f0; border-radius: 4px; padding: 0.2rem 0.4rem; font-size: 0.85rem; width: 100%; }
             .q-table .qty-input { width: 60px; text-align: center; }
+            .q-table .rate-input { width: 100px; text-align: right; }
+            .q-table .amount-display { font-weight: 500; text-align: right; padding-right: 0.5rem; }
             .q-totals { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 2px solid #e2e8f0; }
-            .q-totals .row { display: flex; justify-content: flex-end; align-items: center; padding: 0.2rem 0; }
-            .q-totals .label { font-weight: 600; margin-right: 1rem; font-size: 1rem; }
-            .q-totals .value { font-weight: 700; font-size: 1.2rem; color: var(--primary); min-width: 150px; text-align: right; }
-            .q-totals .value input { font-size: 1.2rem; font-weight: 700; color: var(--primary); border: 2px solid var(--primary); border-radius: var(--radius-sm); padding: 0.3rem 0.6rem; width: 180px; text-align: right; }
+            .q-totals .row { display: flex; justify-content: flex-end; align-items: center; padding: 0.2rem 0; gap: 0.5rem; }
+            .q-totals .label { font-weight: 500; font-size: 0.95rem; min-width: 130px; text-align: right; }
+            .q-totals .value { font-weight: 600; font-size: 1rem; min-width: 120px; text-align: right; }
+            .q-totals .grand-total { font-size: 1.2rem; color: var(--primary); font-weight: 700; }
             .q-extra-note { font-size: 0.9rem; color: #d32f2f; text-align: center; margin-top: 0.5rem; font-weight: 500; }
             .preview-box { max-width: 800px; margin: 0 auto; padding: 1.5rem; background: white; border-radius: var(--radius); }
             .preview-box table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
             .preview-box th, .preview-box td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
             .preview-box th { background: #f0f2f5; }
+            .preview-box .text-right { text-align: right; }
             .preview-box .grand-total { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
             .preview-box .extra-note { font-size: 0.85rem; color: #d32f2f; text-align: center; margin-top: 0.5rem; font-weight: 500; }
           </style>
@@ -15198,6 +15200,7 @@
                 <input type="date" id="validUntil" />
               </div>
 
+              <!-- Items Table (with Rate) -->
               <div style="margin:1rem 0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
                   <h4 style="font-size:0.95rem;">Items</h4>
@@ -15210,22 +15213,35 @@
                         <th style="padding:0.4rem;text-align:center;width:40px;">Sl.No</th>
                         <th style="padding:0.4rem;text-align:left;">Description</th>
                         <th style="padding:0.4rem;text-align:center;width:70px;">Qty</th>
+                        <th style="padding:0.4rem;text-align:right;width:100px;">Rate (₹)</th>
+                        <th style="padding:0.4rem;text-align:right;width:110px;">Amount (₹)</th>
                         <th style="padding:0.4rem;text-align:center;width:30px;"></th>
                       </tr>
                     </thead>
                     <tbody id="itemsBody">
-                      <tr><td colspan="4" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>
+                      <tr><td colspan="6" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>
                     </tbody>
                   </table>
                 </div>
               </div>
 
+              <!-- Totals with SGST, CGST -->
               <div class="q-totals">
                 <div class="row">
-                  <span class="label">💵 Grand Total (₹):</span>
-                  <span class="value">
-                    <input type="number" id="grandTotalInput" value="0" step="0.01" min="0" style="font-size:1.2rem;font-weight:700;color:var(--primary);border:2px solid var(--primary);border-radius:var(--radius-sm);padding:0.3rem 0.6rem;width:180px;text-align:right;" />
-                  </span>
+                  <span class="label">Subtotal</span>
+                  <span class="value" id="subtotalDisplay">₹0.00</span>
+                </div>
+                <div class="row">
+                  <span class="label">SGST (9%)</span>
+                  <span class="value" id="sgstDisplay">₹0.00</span>
+                </div>
+                <div class="row">
+                  <span class="label">CGST (9%)</span>
+                  <span class="value" id="cgstDisplay">₹0.00</span>
+                </div>
+                <div class="row" style="border-top:2px solid #e2e8f0;padding-top:0.5rem;margin-top:0.3rem;">
+                  <span class="label" style="font-weight:700;font-size:1.1rem;">Grand Total</span>
+                  <span class="value grand-total" id="grandTotalDisplay">₹0.00</span>
                 </div>
               </div>
 
@@ -15244,7 +15260,7 @@
           </div>
         `;
 
-        // Load quotations only (no leads)
+        // Load quotations only
         await this.loadQuotations();
         this.renderQuotationList();
 
@@ -15255,12 +15271,10 @@
         document.getElementById('saveQuotationBtn').addEventListener('click', () => this.saveQuotation());
         document.getElementById('previewQuotationBtn').addEventListener('click', () => this.previewQuotation());
 
-        // Auto-update customer display when typing
+        // Auto-update customer display
         ['customerNameInput', 'customerPhoneInput', 'customerAddressInput'].forEach(id => {
           document.getElementById(id).addEventListener('input', () => this.updateCustomerDisplay());
         });
-
-        // Populate the display on form open
         this.updateCustomerDisplay();
 
       } catch (err) {
@@ -15356,16 +15370,15 @@
 
       if (!this.isEdit) {
         this.lineItems = [];
-        this.grandTotal = 0;
         document.getElementById('customerNameInput').value = '';
         document.getElementById('customerPhoneInput').value = '';
         document.getElementById('customerAddressInput').value = '';
         document.getElementById('quotationRef').value = '';
         document.getElementById('validUntil').value = '';
         document.getElementById('quotationNotes').value = '';
-        document.getElementById('grandTotalInput').value = '0';
         this.renderItems();
         this.updateCustomerDisplay();
+        this.calculateTotals();
       } else {
         const q = this.currentQuotation;
         if (q) {
@@ -15375,11 +15388,10 @@
           document.getElementById('quotationRef').value = q.quotationRef || '';
           document.getElementById('validUntil').value = q.validUntil || '';
           document.getElementById('quotationNotes').value = q.notes || '';
-          document.getElementById('grandTotalInput').value = q.grandTotal || 0;
-          this.grandTotal = q.grandTotal || 0;
           this.lineItems = q.items || [];
           this.renderItems();
           this.updateCustomerDisplay();
+          this.calculateTotals();
         }
       }
       form.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -15391,25 +15403,28 @@
     }
 
     // ---- Items ----
-    addRow(desc = '', qty = 1) {
-      this.lineItems.push({ description: desc, quantity: qty });
+    addRow(desc = '', qty = 1, rate = 0) {
+      this.lineItems.push({ description: desc, quantity: qty, rate: rate });
       this.renderItems();
+      this.calculateTotals();
     }
 
     removeRow(index) {
       this.lineItems.splice(index, 1);
       this.renderItems();
+      this.calculateTotals();
     }
 
     renderItems() {
       const tbody = document.getElementById('itemsBody');
       if (!tbody) return;
       if (this.lineItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>`;
         return;
       }
       let html = '';
       this.lineItems.forEach((item, i) => {
+        const amount = (item.quantity || 0) * (item.rate || 0);
         html += `
           <tr>
             <td style="padding:0.3rem;text-align:center;">${i+1}</td>
@@ -15419,6 +15434,10 @@
             <td style="padding:0.3rem;text-align:center;">
               <input type="number" class="item-qty" data-index="${i}" value="${item.quantity || 1}" min="1" step="1" style="width:60px;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;text-align:center;font-size:0.85rem;" />
             </td>
+            <td style="padding:0.3rem;text-align:right;">
+              <input type="number" class="item-rate" data-index="${i}" value="${item.rate || 0}" min="0" step="0.01" style="width:100px;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;text-align:right;font-size:0.85rem;" />
+            </td>
+            <td style="padding:0.3rem;text-align:right;font-weight:500;" class="item-amount">₹${amount.toFixed(2)}</td>
             <td style="padding:0.3rem;text-align:center;">
               <button class="btn-icon remove-item" data-index="${i}" style="color:var(--danger);"><span class="material-icons" style="font-size:18px;">close</span></button>
             </td>
@@ -15427,30 +15446,55 @@
       });
       tbody.innerHTML = html;
 
-      tbody.querySelectorAll('.item-desc, .item-qty').forEach(input => {
+      // Attach events for inline editing
+      tbody.querySelectorAll('.item-desc, .item-qty, .item-rate').forEach(input => {
         input.addEventListener('input', () => {
           const idx = parseInt(input.dataset.index);
           if (input.classList.contains('item-desc')) {
             this.lineItems[idx].description = input.value;
           } else if (input.classList.contains('item-qty')) {
             this.lineItems[idx].quantity = parseFloat(input.value) || 1;
+          } else if (input.classList.contains('item-rate')) {
+            this.lineItems[idx].rate = parseFloat(input.value) || 0;
           }
+          // Recalculate and update the amount column
+          this.renderItems();
+          this.calculateTotals();
         });
       });
 
       tbody.querySelectorAll('.remove-item').forEach(btn => {
-        btn.addEventListener('click', () => this.removeRow(parseInt(btn.dataset.index)));
+        btn.addEventListener('click', () => {
+          this.removeRow(parseInt(btn.dataset.index));
+        });
       });
     }
 
-    // ---- Save ----
+    // ---- Calculate Totals (SGST & CGST auto) ----
+    calculateTotals() {
+      let subtotal = 0;
+      this.lineItems.forEach(item => {
+        subtotal += (item.quantity || 0) * (item.rate || 0);
+      });
+      const sgst = subtotal * 0.09;
+      const cgst = subtotal * 0.09;
+      const grandTotal = subtotal + sgst + cgst;
+
+      document.getElementById('subtotalDisplay').textContent = `₹${subtotal.toFixed(2)}`;
+      document.getElementById('sgstDisplay').textContent = `₹${sgst.toFixed(2)}`;
+      document.getElementById('cgstDisplay').textContent = `₹${cgst.toFixed(2)}`;
+      document.getElementById('grandTotalDisplay').textContent = `₹${grandTotal.toFixed(2)}`;
+
+      return { subtotal, sgst, cgst, grandTotal };
+    }
+
+    // ---- Save Quotation ----
     async saveQuotation() {
       const name = document.getElementById('customerNameInput').value.trim();
       if (!name) { this.toast.show('Please enter a customer name.', 'warning'); return; }
       if (this.lineItems.length === 0) { this.toast.show('Add at least one line item.', 'warning'); return; }
 
-      const grandTotal = parseFloat(document.getElementById('grandTotalInput').value) || 0;
-      if (grandTotal <= 0) { this.toast.show('Please enter a valid Grand Total amount.', 'warning'); return; }
+      const { subtotal, sgst, cgst, grandTotal } = this.calculateTotals();
 
       const data = {
         customerName: name,
@@ -15461,7 +15505,10 @@
         validUntil: document.getElementById('validUntil').value,
         notes: document.getElementById('quotationNotes').value.trim(),
         items: this.lineItems.map(item => ({ ...item })),
-        grandTotal: grandTotal,
+        subtotal,
+        sgst,
+        cgst,
+        grandTotal,
         status: 'draft',
         updatedAt: Utils.dateUtils.now()
       };
@@ -15503,8 +15550,8 @@
     previewQuotation() {
       const name = document.getElementById('customerNameInput').value.trim();
       if (!name) { this.toast.show('Enter a customer name.', 'warning'); return; }
-      const grandTotal = parseFloat(document.getElementById('grandTotalInput').value) || 0;
-      if (grandTotal <= 0) { this.toast.show('Enter a valid Grand Total.', 'warning'); return; }
+      if (this.lineItems.length === 0) { this.toast.show('Add items first.', 'warning'); return; }
+      const { subtotal, sgst, cgst, grandTotal } = this.calculateTotals();
 
       const q = {
         customerName: name,
@@ -15515,7 +15562,10 @@
         validUntil: document.getElementById('validUntil').value,
         notes: document.getElementById('quotationNotes').value.trim(),
         items: this.lineItems.map(item => ({ ...item })),
-        grandTotal: grandTotal
+        subtotal,
+        sgst,
+        cgst,
+        grandTotal
       };
       const html = this.buildPreviewHtml(q);
       this.modal.open({
@@ -15528,13 +15578,18 @@
     }
 
     buildPreviewHtml(q) {
-      let itemsHtml = q.items.map((item, i) => `
-        <tr>
-          <td style="text-align:center;">${i+1}</td>
-          <td>${item.description || ''}</td>
-          <td style="text-align:center;">${item.quantity || 0}</td>
-        </tr>
-      `).join('');
+      let itemsHtml = q.items.map((item, i) => {
+        const amount = (item.quantity || 0) * (item.rate || 0);
+        return `
+          <tr>
+            <td style="text-align:center;">${i+1}</td>
+            <td>${item.description || ''}</td>
+            <td style="text-align:center;">${item.quantity || 0}</td>
+            <td style="text-align:right;">₹${(item.rate || 0).toFixed(2)}</td>
+            <td style="text-align:right;">₹${amount.toFixed(2)}</td>
+          </tr>
+        `;
+      }).join('');
 
       return `
         <div class="preview-box">
@@ -15564,19 +15619,32 @@
                 <th style="width:40px;text-align:center;">Sl. No</th>
                 <th style="text-align:left;">Description</th>
                 <th style="text-align:center;width:60px;">Qty</th>
+                <th style="text-align:right;width:100px;">Rate (₹)</th>
+                <th style="text-align:right;width:120px;">Amount (₹)</th>
               </tr>
             </thead>
             <tbody>
-              ${itemsHtml || '<tr><td colspan="3" style="text-align:center;">No items</td></tr>'}
+              ${itemsHtml || '<tr><td colspan="5" style="text-align:center;">No items</td></tr>'}
             </tbody>
+            <tfoot>
+              <tr>
+                <td colspan="4" style="text-align:right;font-weight:600;">Subtotal</td>
+                <td style="text-align:right;font-weight:600;">₹${(q.subtotal || 0).toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td colspan="4" style="text-align:right;">SGST (9%)</td>
+                <td style="text-align:right;">₹${(q.sgst || 0).toFixed(2)}</td>
+              </tr>
+              <tr>
+                <td colspan="4" style="text-align:right;">CGST (9%)</td>
+                <td style="text-align:right;">₹${(q.cgst || 0).toFixed(2)}</td>
+              </tr>
+              <tr style="border-top:2px solid #e2e8f0;">
+                <td colspan="4" style="text-align:right;font-weight:700;font-size:1.1rem;">Grand Total</td>
+                <td style="text-align:right;font-weight:700;font-size:1.1rem;color:var(--primary);">₹${(q.grandTotal || 0).toFixed(2)}</td>
+              </tr>
+            </tfoot>
           </table>
-
-          <div style="margin-top:1rem;display:flex;justify-content:flex-end;border-top:2px solid #e2e8f0;padding-top:0.8rem;">
-            <div style="text-align:right;">
-              <div style="font-size:0.9rem;font-weight:600;">Grand Total</div>
-              <div class="grand-total">₹${(q.grandTotal || 0).toFixed(2)}</div>
-            </div>
-          </div>
 
           <div class="extra-note">⚠️ Any new specifications will be charged extra.</div>
 
@@ -15655,7 +15723,7 @@
         router.navigate('quotations');
       }
 
-      console.log('✅ Simplified Quotation Builder loaded (manual typing only).');
+      console.log('✅ Quotation Builder with SGST/CGST auto‑calc loaded.');
     }
   }, 200);
 })();
