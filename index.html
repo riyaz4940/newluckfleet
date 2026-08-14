@@ -15087,609 +15087,633 @@
   }, 100);
 })();
 </script>
-        
-</body><script>
+     <script>
 // ==============================================================
-// QUOTATION BUILDER – with SGST (9%) & CGST (9%) auto‑calc
+// QUOTATION BUILDER – Description + Qty, manual Subtotal, GST toggle
 // ==============================================================
 (function() {
-  window.QuotationBuilder = class QuotationBuilder {
-    constructor(app) {
-      this.app = app;
-      this.toast = new Components.Toast();
-      this.loader = new Components.Loader();
-      this.modal = new Components.Modal();
-      this.confirm = new Components.ConfirmationDialog();
-      this.quotations = [];
-      this.currentQuotation = null;
-      this.lineItems = [];
-      this.isEdit = false;
-    }
+  const checkApp = setInterval(function() {
+    if (window.__app && window.__app.router && window.__app.auth) {
+      clearInterval(checkApp);
+      const app = window.__app;
+      const router = app.router;
+      const auth = app.auth;
 
-    async render(container) {
-      try {
-        container.innerHTML = `
-          <style>
-            .q-header { background: white; border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); margin-bottom: 1.5rem; text-align: center; }
-            .q-header h1 { font-size: 1.5rem; color: var(--primary); margin-bottom: 0.25rem; }
-            .q-header .gstin { font-size: 0.85rem; color: var(--text-secondary); }
-            .q-header .contact { font-size: 0.85rem; color: var(--text-secondary); }
-            .q-to { background: var(--bg); border-radius: var(--radius-sm); padding: 0.8rem 1rem; margin-bottom: 1.2rem; font-size: 0.9rem; }
-            .q-to strong { color: var(--text-primary); }
-            .q-table th { background: #f0f2f5; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
-            .q-table td { vertical-align: middle; }
-            .q-table input { border: 1px solid #e2e8f0; border-radius: 4px; padding: 0.2rem 0.4rem; font-size: 0.85rem; width: 100%; }
-            .q-table .qty-input { width: 60px; text-align: center; }
-            .q-table .rate-input { width: 100px; text-align: right; }
-            .q-table .amount-display { font-weight: 500; text-align: right; padding-right: 0.5rem; }
-            .q-totals { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 2px solid #e2e8f0; }
-            .q-totals .row { display: flex; justify-content: flex-end; align-items: center; padding: 0.2rem 0; gap: 0.5rem; }
-            .q-totals .label { font-weight: 500; font-size: 0.95rem; min-width: 130px; text-align: right; }
-            .q-totals .value { font-weight: 600; font-size: 1rem; min-width: 120px; text-align: right; }
-            .q-totals .grand-total { font-size: 1.2rem; color: var(--primary); font-weight: 700; }
-            .q-extra-note { font-size: 0.9rem; color: #d32f2f; text-align: center; margin-top: 0.5rem; font-weight: 500; }
-            .preview-box { max-width: 800px; margin: 0 auto; padding: 1.5rem; background: white; border-radius: var(--radius); }
-            .preview-box table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
-            .preview-box th, .preview-box td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
-            .preview-box th { background: #f0f2f5; }
-            .preview-box .text-right { text-align: right; }
-            .preview-box .grand-total { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
-            .preview-box .extra-note { font-size: 0.85rem; color: #d32f2f; text-align: center; margin-top: 0.5rem; font-weight: 500; }
-          </style>
-
-          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
-            <h2>📄 Quotation Builder</h2>
-            <button id="newQuotationBtn" class="btn btn-primary"><span class="material-icons">add</span> New Quotation</button>
-          </div>
-
-          <div id="quotationList" style="margin-bottom:1.5rem;">
-            <div style="background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);">
-              <p style="color:var(--text-secondary);">Loading quotations...</p>
-            </div>
-          </div>
-
-          <div id="quotationForm" style="display:none;">
-            <div class="q-header">
-              <h1>NEW LOOK COMPANY</h1>
-              <div class="gstin">GSTIN : 29BUYPK8709B121</div>
-              <div class="contact">📞 9945885000 &nbsp;|&nbsp; 📧 info@newlook.com</div>
-              <div class="contact">Food Truck Manufacturers</div>
-            </div>
-
-            <div class="q-to">
-              <strong>TO:</strong>
-              <div class="customer-detail" id="customerDisplay">
-                <span style="color:var(--text-secondary);">Enter customer details below.</span>
-              </div>
-            </div>
-
-            <div style="background:white;border-radius:var(--radius);padding:1.2rem;box-shadow:var(--shadow);">
-              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
-                <h3 id="formTitle">New Quotation</h3>
-                <button id="closeFormBtn" class="btn btn-secondary btn-sm"><span class="material-icons">close</span> Close</button>
-              </div>
-
-              <!-- Customer details – manual input -->
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Customer Name <span class="required">*</span></label>
-                  <input type="text" id="customerNameInput" placeholder="Enter customer name" />
-                </div>
-                <div class="form-group">
-                  <label>Phone</label>
-                  <input type="text" id="customerPhoneInput" placeholder="Enter phone number" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Address</label>
-                <input type="text" id="customerAddressInput" placeholder="Enter customer address" />
-              </div>
-
-              <div class="form-row">
-                <div class="form-group">
-                  <label>Quotation Reference</label>
-                  <input type="text" id="quotationRef" placeholder="e.g. Q-2026-001" />
-                </div>
-                <div class="form-group">
-                  <label>Quotation Date</label>
-                  <input type="date" id="quotationDate" value="${new Date().toISOString().split('T')[0]}" />
-                </div>
-              </div>
-              <div class="form-group">
-                <label>Valid Until</label>
-                <input type="date" id="validUntil" />
-              </div>
-
-              <!-- Items Table (with Rate) -->
-              <div style="margin:1rem 0;">
-                <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
-                  <h4 style="font-size:0.95rem;">Items</h4>
-                  <button id="addRowBtn" class="btn btn-primary btn-sm"><span class="material-icons">add</span> Add Item</button>
-                </div>
-                <div style="overflow-x:auto;">
-                  <table class="q-table" style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-                    <thead>
-                      <tr>
-                        <th style="padding:0.4rem;text-align:center;width:40px;">Sl.No</th>
-                        <th style="padding:0.4rem;text-align:left;">Description</th>
-                        <th style="padding:0.4rem;text-align:center;width:70px;">Qty</th>
-                        <th style="padding:0.4rem;text-align:right;width:100px;">Rate (₹)</th>
-                        <th style="padding:0.4rem;text-align:right;width:110px;">Amount (₹)</th>
-                        <th style="padding:0.4rem;text-align:center;width:30px;"></th>
-                      </tr>
-                    </thead>
-                    <tbody id="itemsBody">
-                      <tr><td colspan="6" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              <!-- Totals with SGST, CGST -->
-              <div class="q-totals">
-                <div class="row">
-                  <span class="label">Subtotal</span>
-                  <span class="value" id="subtotalDisplay">₹0.00</span>
-                </div>
-                <div class="row">
-                  <span class="label">SGST (9%)</span>
-                  <span class="value" id="sgstDisplay">₹0.00</span>
-                </div>
-                <div class="row">
-                  <span class="label">CGST (9%)</span>
-                  <span class="value" id="cgstDisplay">₹0.00</span>
-                </div>
-                <div class="row" style="border-top:2px solid #e2e8f0;padding-top:0.5rem;margin-top:0.3rem;">
-                  <span class="label" style="font-weight:700;font-size:1.1rem;">Grand Total</span>
-                  <span class="value grand-total" id="grandTotalDisplay">₹0.00</span>
-                </div>
-              </div>
-
-              <div class="form-group">
-                <label>Notes / Terms</label>
-                <textarea id="quotationNotes" rows="2" placeholder="e.g. Quotation valid for 15 days only. Payment terms: 50% advance, balance before delivery." style="width:100%;padding:0.4rem;border:1px solid #e2e8f0;border-radius:var(--radius-sm);"></textarea>
-              </div>
-
-              <div class="q-extra-note">⚠️ Any new specifications will be charged extra.</div>
-
-              <div style="display:flex;gap:0.5rem;justify-content:flex-end;flex-wrap:wrap;margin-top:1rem;border-top:1px solid #eef2f6;padding-top:1rem;">
-                <button id="saveQuotationBtn" class="btn btn-primary"><span class="material-icons">save</span> Save Quotation</button>
-                <button id="previewQuotationBtn" class="btn btn-secondary"><span class="material-icons">visibility</span> Preview</button>
-              </div>
-            </div>
-          </div>
-        `;
-
-        // Load quotations only
-        await this.loadQuotations();
-        this.renderQuotationList();
-
-        // Event listeners
-        document.getElementById('newQuotationBtn').addEventListener('click', () => this.showForm());
-        document.getElementById('closeFormBtn').addEventListener('click', () => this.hideForm());
-        document.getElementById('addRowBtn').addEventListener('click', () => this.addRow());
-        document.getElementById('saveQuotationBtn').addEventListener('click', () => this.saveQuotation());
-        document.getElementById('previewQuotationBtn').addEventListener('click', () => this.previewQuotation());
-
-        // Auto-update customer display
-        ['customerNameInput', 'customerPhoneInput', 'customerAddressInput'].forEach(id => {
-          document.getElementById(id).addEventListener('input', () => this.updateCustomerDisplay());
-        });
-        this.updateCustomerDisplay();
-
-      } catch (err) {
-        console.error('QuotationBuilder render error:', err);
-        container.innerHTML = `<div style="color:var(--danger);padding:1rem;">❌ Error loading page: ${err.message}</div>`;
-        throw err;
-      }
-    }
-
-    // ---- Load Quotations ----
-    async loadQuotations() {
-      try {
-        const snapshot = await db.collection('quotations').orderBy('createdAt', 'desc').get();
-        this.quotations = [];
-        snapshot.forEach(doc => this.quotations.push({ id: doc.id, ...doc.data() }));
-      } catch(e) {
-        console.error('loadQuotations error:', e);
-        this.toast.show('Failed to load quotations: '+e.message, 'error');
-      }
-    }
-
-    // ---- Render Quotation List ----
-    renderQuotationList() {
-      const container = document.getElementById('quotationList');
-      if (!container) return;
-      if (this.quotations.length === 0) {
-        container.innerHTML = `
-          <div style="background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);text-align:center;color:var(--text-secondary);">
-            <span class="material-icons" style="font-size:2.5rem;">description</span>
-            <p>No quotations yet. Click "New Quotation" to create one.</p>
-          </div>
-        `;
-        return;
-      }
-      let html = '<div style="display:flex;flex-direction:column;gap:0.8rem;">';
-      this.quotations.forEach(q => {
-        const total = q.grandTotal || 0;
-        const customer = q.customerName || 'Unknown';
-        const ref = q.quotationRef || q.id.slice(0,8);
-        const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString() : '—';
-        html += `
-          <div style="background:white;border-radius:var(--radius);padding:0.8rem 1rem;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
-            <div>
-              <strong style="color:var(--primary);">${ref}</strong>
-              <span style="font-size:0.85rem;color:var(--text-secondary);margin-left:0.5rem;">${customer}</span>
-              <span style="font-size:0.75rem;color:var(--text-secondary);margin-left:0.5rem;">${date}</span>
-            </div>
-            <div style="display:flex;align-items:center;gap:0.5rem;">
-              <span style="font-weight:600;font-size:1rem;">₹${total.toLocaleString('en-IN')}</span>
-              <button class="btn btn-secondary btn-sm view-quotation" data-id="${q.id}"><span class="material-icons" style="font-size:16px;">visibility</span></button>
-              <button class="btn btn-danger btn-sm delete-quotation" data-id="${q.id}"><span class="material-icons" style="font-size:16px;">delete</span></button>
-            </div>
-          </div>
-        `;
-      });
-      html += '</div>';
-      container.innerHTML = html;
-
-      container.querySelectorAll('.view-quotation').forEach(btn => {
-        btn.addEventListener('click', () => this.viewQuotation(btn.dataset.id));
-      });
-      container.querySelectorAll('.delete-quotation').forEach(btn => {
-        btn.addEventListener('click', () => this.deleteQuotation(btn.dataset.id));
-      });
-    }
-
-    // ---- Customer display update ----
-    updateCustomerDisplay() {
-      const name = document.getElementById('customerNameInput').value;
-      const phone = document.getElementById('customerPhoneInput').value;
-      const address = document.getElementById('customerAddressInput').value;
-      const display = document.getElementById('customerDisplay');
-      if (!display) return;
-      if (!name && !phone && !address) {
-        display.innerHTML = '<span style="color:var(--text-secondary);">Enter customer details below.</span>';
-        return;
-      }
-      display.innerHTML = `
-        <div><strong>${name || '—'}</strong></div>
-        <div style="font-size:0.85rem;color:var(--text-secondary);">${phone || ''}</div>
-        <div style="font-size:0.85rem;color:var(--text-secondary);">${address || ''}</div>
-      `;
-    }
-
-    // ---- Show/Hide Form ----
-    showForm(quotationId = null) {
-      const form = document.getElementById('quotationForm');
-      if (!form) return;
-      form.style.display = 'block';
-      document.getElementById('formTitle').textContent = quotationId ? 'Edit Quotation' : 'New Quotation';
-      this.isEdit = !!quotationId;
-      this.currentQuotation = quotationId ? this.quotations.find(q => q.id === quotationId) : null;
-
-      if (!this.isEdit) {
-        this.lineItems = [];
-        document.getElementById('customerNameInput').value = '';
-        document.getElementById('customerPhoneInput').value = '';
-        document.getElementById('customerAddressInput').value = '';
-        document.getElementById('quotationRef').value = '';
-        document.getElementById('validUntil').value = '';
-        document.getElementById('quotationNotes').value = '';
-        this.renderItems();
-        this.updateCustomerDisplay();
-        this.calculateTotals();
-      } else {
-        const q = this.currentQuotation;
-        if (q) {
-          document.getElementById('customerNameInput').value = q.customerName || '';
-          document.getElementById('customerPhoneInput').value = q.customerPhone || '';
-          document.getElementById('customerAddressInput').value = q.customerAddress || '';
-          document.getElementById('quotationRef').value = q.quotationRef || '';
-          document.getElementById('validUntil').value = q.validUntil || '';
-          document.getElementById('quotationNotes').value = q.notes || '';
-          this.lineItems = q.items || [];
-          this.renderItems();
-          this.updateCustomerDisplay();
-          this.calculateTotals();
+      // ---- 1. Patch permissions (allow Sales) ----
+      const originalHasPermission = auth.hasPermission.bind(auth);
+      auth.hasPermission = function(page) {
+        if (page === 'quotations' || page === 'quotationbuilder') {
+          const role = this.getCurrentUser()?.role || 'worker';
+          return ['owner', 'operations_manager', 'sales'].includes(role);
         }
-      }
-      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-
-    hideForm() {
-      const form = document.getElementById('quotationForm');
-      if (form) form.style.display = 'none';
-    }
-
-    // ---- Items ----
-    addRow(desc = '', qty = 1, rate = 0) {
-      this.lineItems.push({ description: desc, quantity: qty, rate: rate });
-      this.renderItems();
-      this.calculateTotals();
-    }
-
-    removeRow(index) {
-      this.lineItems.splice(index, 1);
-      this.renderItems();
-      this.calculateTotals();
-    }
-
-    renderItems() {
-      const tbody = document.getElementById('itemsBody');
-      if (!tbody) return;
-      if (this.lineItems.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>`;
-        return;
-      }
-      let html = '';
-      this.lineItems.forEach((item, i) => {
-        const amount = (item.quantity || 0) * (item.rate || 0);
-        html += `
-          <tr>
-            <td style="padding:0.3rem;text-align:center;">${i+1}</td>
-            <td style="padding:0.3rem;">
-              <input type="text" class="item-desc" data-index="${i}" value="${item.description || ''}" placeholder="Enter description" style="width:100%;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;font-size:0.85rem;" />
-            </td>
-            <td style="padding:0.3rem;text-align:center;">
-              <input type="number" class="item-qty" data-index="${i}" value="${item.quantity || 1}" min="1" step="1" style="width:60px;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;text-align:center;font-size:0.85rem;" />
-            </td>
-            <td style="padding:0.3rem;text-align:right;">
-              <input type="number" class="item-rate" data-index="${i}" value="${item.rate || 0}" min="0" step="0.01" style="width:100px;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;text-align:right;font-size:0.85rem;" />
-            </td>
-            <td style="padding:0.3rem;text-align:right;font-weight:500;" class="item-amount">₹${amount.toFixed(2)}</td>
-            <td style="padding:0.3rem;text-align:center;">
-              <button class="btn-icon remove-item" data-index="${i}" style="color:var(--danger);"><span class="material-icons" style="font-size:18px;">close</span></button>
-            </td>
-          </tr>
-        `;
-      });
-      tbody.innerHTML = html;
-
-      // Attach events for inline editing
-      tbody.querySelectorAll('.item-desc, .item-qty, .item-rate').forEach(input => {
-        input.addEventListener('input', () => {
-          const idx = parseInt(input.dataset.index);
-          if (input.classList.contains('item-desc')) {
-            this.lineItems[idx].description = input.value;
-          } else if (input.classList.contains('item-qty')) {
-            this.lineItems[idx].quantity = parseFloat(input.value) || 1;
-          } else if (input.classList.contains('item-rate')) {
-            this.lineItems[idx].rate = parseFloat(input.value) || 0;
-          }
-          // Recalculate and update the amount column
-          this.renderItems();
-          this.calculateTotals();
-        });
-      });
-
-      tbody.querySelectorAll('.remove-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-          this.removeRow(parseInt(btn.dataset.index));
-        });
-      });
-    }
-
-    // ---- Calculate Totals (SGST & CGST auto) ----
-    calculateTotals() {
-      let subtotal = 0;
-      this.lineItems.forEach(item => {
-        subtotal += (item.quantity || 0) * (item.rate || 0);
-      });
-      const sgst = subtotal * 0.09;
-      const cgst = subtotal * 0.09;
-      const grandTotal = subtotal + sgst + cgst;
-
-      document.getElementById('subtotalDisplay').textContent = `₹${subtotal.toFixed(2)}`;
-      document.getElementById('sgstDisplay').textContent = `₹${sgst.toFixed(2)}`;
-      document.getElementById('cgstDisplay').textContent = `₹${cgst.toFixed(2)}`;
-      document.getElementById('grandTotalDisplay').textContent = `₹${grandTotal.toFixed(2)}`;
-
-      return { subtotal, sgst, cgst, grandTotal };
-    }
-
-    // ---- Save Quotation ----
-    async saveQuotation() {
-      const name = document.getElementById('customerNameInput').value.trim();
-      if (!name) { this.toast.show('Please enter a customer name.', 'warning'); return; }
-      if (this.lineItems.length === 0) { this.toast.show('Add at least one line item.', 'warning'); return; }
-
-      const { subtotal, sgst, cgst, grandTotal } = this.calculateTotals();
-
-      const data = {
-        customerName: name,
-        customerPhone: document.getElementById('customerPhoneInput').value.trim(),
-        customerAddress: document.getElementById('customerAddressInput').value.trim(),
-        quotationRef: document.getElementById('quotationRef').value.trim() || `Q-${Date.now().toString().slice(-6)}`,
-        date: document.getElementById('quotationDate').value,
-        validUntil: document.getElementById('validUntil').value,
-        notes: document.getElementById('quotationNotes').value.trim(),
-        items: this.lineItems.map(item => ({ ...item })),
-        subtotal,
-        sgst,
-        cgst,
-        grandTotal,
-        status: 'draft',
-        updatedAt: Utils.dateUtils.now()
+        return originalHasPermission(page);
       };
 
-      this.loader.show();
-      try {
-        if (this.isEdit && this.currentQuotation) {
-          await db.collection('quotations').doc(this.currentQuotation.id).update(data);
-          this.toast.show('Quotation updated!', 'success');
-        } else {
-          const id = Utils.genId();
-          await db.collection('quotations').doc(id).set({ id, ...data, createdAt: Utils.dateUtils.now() });
-          this.toast.show('Quotation saved!', 'success');
+      // ---- 2. QuotationBuilder class ----
+      window.QuotationBuilder = class QuotationBuilder {
+        constructor(app) {
+          this.app = app;
+          this.toast = new Components.Toast();
+          this.loader = new Components.Loader();
+          this.modal = new Components.Modal();
+          this.confirm = new Components.ConfirmationDialog();
+          this.quotations = [];
+          this.currentQuotation = null;
+          this.lineItems = [];
+          this.isEdit = false;
+          this.withGst = true; // default: with GST
         }
-        await this.loadQuotations();
-        this.renderQuotationList();
-        this.hideForm();
-      } catch(e) {
-        this.toast.show('Failed to save: '+e.message, 'error');
-      } finally {
-        this.loader.hide();
-      }
-    }
 
-    // ---- View / Preview ----
-    viewQuotation(id) {
-      const q = this.quotations.find(q => q.id === id);
-      if (!q) return;
-      const html = this.buildPreviewHtml(q);
-      this.modal.open({
-        title: `Quotation ${q.quotationRef || ''}`,
-        body: html,
-        confirmText: 'Close',
-        showCancel: false,
-        onConfirm: () => this.modal.close()
-      });
-    }
-
-    previewQuotation() {
-      const name = document.getElementById('customerNameInput').value.trim();
-      if (!name) { this.toast.show('Enter a customer name.', 'warning'); return; }
-      if (this.lineItems.length === 0) { this.toast.show('Add items first.', 'warning'); return; }
-      const { subtotal, sgst, cgst, grandTotal } = this.calculateTotals();
-
-      const q = {
-        customerName: name,
-        customerPhone: document.getElementById('customerPhoneInput').value.trim(),
-        customerAddress: document.getElementById('customerAddressInput').value.trim(),
-        quotationRef: document.getElementById('quotationRef').value.trim() || 'Preview',
-        date: document.getElementById('quotationDate').value,
-        validUntil: document.getElementById('validUntil').value,
-        notes: document.getElementById('quotationNotes').value.trim(),
-        items: this.lineItems.map(item => ({ ...item })),
-        subtotal,
-        sgst,
-        cgst,
-        grandTotal
-      };
-      const html = this.buildPreviewHtml(q);
-      this.modal.open({
-        title: `Preview Quotation`,
-        body: html + `<div style="text-align:center;margin-top:1rem;"><button class="btn btn-secondary" onclick="window.print()"><span class="material-icons">print</span> Print</button></div>`,
-        confirmText: 'Close',
-        showCancel: false,
-        onConfirm: () => this.modal.close()
-      });
-    }
-
-    buildPreviewHtml(q) {
-      let itemsHtml = q.items.map((item, i) => {
-        const amount = (item.quantity || 0) * (item.rate || 0);
-        return `
-          <tr>
-            <td style="text-align:center;">${i+1}</td>
-            <td>${item.description || ''}</td>
-            <td style="text-align:center;">${item.quantity || 0}</td>
-            <td style="text-align:right;">₹${(item.rate || 0).toFixed(2)}</td>
-            <td style="text-align:right;">₹${amount.toFixed(2)}</td>
-          </tr>
-        `;
-      }).join('');
-
-      return `
-        <div class="preview-box">
-          <div style="text-align:center;border-bottom:2px solid #e2e8f0;padding-bottom:1rem;margin-bottom:1rem;">
-            <h2 style="font-size:1.6rem;color:var(--primary);margin-bottom:0.25rem;">NEW LOOK COMPANY</h2>
-            <div style="font-size:0.85rem;color:var(--text-secondary);">GSTIN : 29BUYPK8709B121</div>
-            <div style="font-size:0.85rem;color:var(--text-secondary);">📞 9945885000 &nbsp;|&nbsp; Food Truck Manufacturers</div>
-          </div>
-
-          <div style="margin-bottom:1rem;">
-            <strong>TO:</strong>
-            <div style="margin-top:0.2rem;font-size:0.9rem;">
-              <div><strong>${q.customerName || '—'}</strong></div>
-              <div style="color:var(--text-secondary);">${q.customerPhone || ''}</div>
-              <div style="color:var(--text-secondary);">${q.customerAddress || ''}</div>
-            </div>
-          </div>
-
-          <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;">
-            Quotation for Food Truck body fabrication works and with kitchen work fully stainless steel work,
-            along with Plumbing and Electrical work.
-          </p>
-
-          <table>
-            <thead>
-              <tr>
-                <th style="width:40px;text-align:center;">Sl. No</th>
-                <th style="text-align:left;">Description</th>
-                <th style="text-align:center;width:60px;">Qty</th>
-                <th style="text-align:right;width:100px;">Rate (₹)</th>
-                <th style="text-align:right;width:120px;">Amount (₹)</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${itemsHtml || '<tr><td colspan="5" style="text-align:center;">No items</td></tr>'}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td colspan="4" style="text-align:right;font-weight:600;">Subtotal</td>
-                <td style="text-align:right;font-weight:600;">₹${(q.subtotal || 0).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td colspan="4" style="text-align:right;">SGST (9%)</td>
-                <td style="text-align:right;">₹${(q.sgst || 0).toFixed(2)}</td>
-              </tr>
-              <tr>
-                <td colspan="4" style="text-align:right;">CGST (9%)</td>
-                <td style="text-align:right;">₹${(q.cgst || 0).toFixed(2)}</td>
-              </tr>
-              <tr style="border-top:2px solid #e2e8f0;">
-                <td colspan="4" style="text-align:right;font-weight:700;font-size:1.1rem;">Grand Total</td>
-                <td style="text-align:right;font-weight:700;font-size:1.1rem;color:var(--primary);">₹${(q.grandTotal || 0).toFixed(2)}</td>
-              </tr>
-            </tfoot>
-          </table>
-
-          <div class="extra-note">⚠️ Any new specifications will be charged extra.</div>
-
-          ${q.validUntil ? `<div style="margin-top:0.8rem;font-size:0.85rem;color:var(--text-secondary);">📅 Quotation valid until: ${new Date(q.validUntil).toLocaleDateString()}</div>` : ''}
-          ${q.notes ? `<div style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-secondary);">📝 ${q.notes}</div>` : ''}
-
-          <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #e2e8f0;text-align:center;font-size:0.8rem;color:var(--text-secondary);">
-            This is a digitally generated quotation. No signature required.
-          </div>
-        </div>
-      `;
-    }
-
-    // ---- Delete ----
-    deleteQuotation(id) {
-      this.confirm.open({
-        title: 'Delete Quotation',
-        body: 'Are you sure you want to delete this quotation?',
-        onConfirm: async () => {
-          this.loader.show();
+        async render(container) {
           try {
-            await db.collection('quotations').doc(id).delete();
-            this.toast.show('Quotation deleted.', 'warning');
+            container.innerHTML = `
+              <style>
+                .q-header { background: white; border-radius: var(--radius); padding: 1.5rem; box-shadow: var(--shadow); margin-bottom: 1.5rem; text-align: center; }
+                .q-header h1 { font-size: 1.5rem; color: var(--primary); margin-bottom: 0.25rem; }
+                .q-header .gstin { font-size: 0.85rem; color: var(--text-secondary); }
+                .q-header .contact { font-size: 0.85rem; color: var(--text-secondary); }
+                .q-to { background: var(--bg); border-radius: var(--radius-sm); padding: 0.8rem 1rem; margin-bottom: 1.2rem; font-size: 0.9rem; }
+                .q-to strong { color: var(--text-primary); }
+                .q-table th { background: #f0f2f5; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
+                .q-table td { vertical-align: middle; }
+                .q-table input { border: 1px solid #e2e8f0; border-radius: 4px; padding: 0.2rem 0.4rem; font-size: 0.85rem; width: 100%; }
+                .q-table .qty-input { width: 60px; text-align: center; }
+                .q-totals { margin-top: 0.8rem; padding-top: 0.8rem; border-top: 2px solid #e2e8f0; }
+                .q-totals .row { display: flex; justify-content: flex-end; align-items: center; padding: 0.2rem 0; gap: 0.5rem; flex-wrap: wrap; }
+                .q-totals .label { font-weight: 500; font-size: 0.95rem; min-width: 130px; text-align: right; }
+                .q-totals .value { font-weight: 600; font-size: 1rem; min-width: 140px; text-align: right; }
+                .q-totals .value input { font-weight: 600; font-size: 1rem; border: 1px solid #e2e8f0; border-radius: var(--radius-sm); padding: 0.2rem 0.5rem; width: 140px; text-align: right; }
+                .q-totals .grand-total { font-size: 1.2rem; color: var(--primary); font-weight: 700; }
+                .q-extra-note { font-size: 0.9rem; color: #d32f2f; text-align: center; margin-top: 0.5rem; font-weight: 500; }
+                .preview-box { max-width: 800px; margin: 0 auto; padding: 1.5rem; background: white; border-radius: var(--radius); }
+                .preview-box table { width: 100%; border-collapse: collapse; margin: 1rem 0; }
+                .preview-box th, .preview-box td { border: 1px solid #ddd; padding: 0.4rem 0.6rem; font-size: 0.85rem; }
+                .preview-box th { background: #f0f2f5; }
+                .preview-box .text-right { text-align: right; }
+                .preview-box .grand-total { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
+                .preview-box .extra-note { font-size: 0.85rem; color: #d32f2f; text-align: center; margin-top: 0.5rem; font-weight: 500; }
+                .toggle-switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+                .toggle-switch input { opacity: 0; width: 0; height: 0; }
+                .toggle-slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background: #ccc; transition: .3s; border-radius: 26px; }
+                .toggle-slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background: white; transition: .3s; border-radius: 50%; }
+                .toggle-switch input:checked + .toggle-slider { background: var(--primary); }
+                .toggle-switch input:checked + .toggle-slider:before { transform: translateX(24px); }
+                .gst-label { display: flex; align-items: center; gap: 0.8rem; font-weight: 500; font-size: 0.95rem; }
+              </style>
+
+              <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+                <h2>📄 Quotation Builder</h2>
+                <button id="newQuotationBtn" class="btn btn-primary"><span class="material-icons">add</span> New Quotation</button>
+              </div>
+
+              <div id="quotationList" style="margin-bottom:1.5rem;">
+                <div style="background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);">
+                  <p style="color:var(--text-secondary);">Loading quotations...</p>
+                </div>
+              </div>
+
+              <div id="quotationForm" style="display:none;">
+                <div class="q-header">
+                  <h1>NEW LOOK COMPANY</h1>
+                  <div class="gstin">GSTIN : 29BUYPK8709B121</div>
+                  <div class="contact">📞 9945885000 &nbsp;|&nbsp; 📧 info@newlook.com</div>
+                  <div class="contact">Food Truck Manufacturers</div>
+                </div>
+
+                <div class="q-to">
+                  <strong>TO:</strong>
+                  <div class="customer-detail" id="customerDisplay">
+                    <span style="color:var(--text-secondary);">Enter customer details below.</span>
+                  </div>
+                </div>
+
+                <div style="background:white;border-radius:var(--radius);padding:1.2rem;box-shadow:var(--shadow);">
+                  <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:1rem;">
+                    <h3 id="formTitle">New Quotation</h3>
+                    <button id="closeFormBtn" class="btn btn-secondary btn-sm"><span class="material-icons">close</span> Close</button>
+                  </div>
+
+                  <!-- Customer details -->
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>Customer Name <span class="required">*</span></label>
+                      <input type="text" id="customerNameInput" placeholder="Enter customer name" />
+                    </div>
+                    <div class="form-group">
+                      <label>Phone</label>
+                      <input type="text" id="customerPhoneInput" placeholder="Enter phone number" />
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Address</label>
+                    <input type="text" id="customerAddressInput" placeholder="Enter customer address" />
+                  </div>
+
+                  <div class="form-row">
+                    <div class="form-group">
+                      <label>Quotation Reference</label>
+                      <input type="text" id="quotationRef" placeholder="e.g. Q-2026-001" />
+                    </div>
+                    <div class="form-group">
+                      <label>Quotation Date</label>
+                      <input type="date" id="quotationDate" value="${new Date().toISOString().split('T')[0]}" />
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label>Valid Until</label>
+                    <input type="date" id="validUntil" />
+                  </div>
+
+                  <!-- Items Table: only Description + Qty -->
+                  <div style="margin:1rem 0;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+                      <h4 style="font-size:0.95rem;">Items</h4>
+                      <button id="addRowBtn" class="btn btn-primary btn-sm"><span class="material-icons">add</span> Add Item</button>
+                    </div>
+                    <div style="overflow-x:auto;">
+                      <table class="q-table" style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                        <thead>
+                          <tr>
+                            <th style="padding:0.4rem;text-align:center;width:40px;">Sl.No</th>
+                            <th style="padding:0.4rem;text-align:left;">Description</th>
+                            <th style="padding:0.4rem;text-align:center;width:70px;">Qty</th>
+                            <th style="padding:0.4rem;text-align:center;width:30px;"></th>
+                          </tr>
+                        </thead>
+                        <tbody id="itemsBody">
+                          <tr><td colspan="4" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  <!-- Subtotal (manual) + GST Toggle -->
+                  <div class="q-totals">
+                    <div class="row">
+                      <span class="label">Subtotal (₹)</span>
+                      <span class="value">
+                        <input type="number" id="subtotalInput" value="0" step="0.01" min="0" />
+                      </span>
+                    </div>
+                    <div class="row">
+                      <span class="label">GST</span>
+                      <span class="value" style="display:flex;align-items:center;gap:0.5rem;">
+                        <label class="toggle-switch">
+                          <input type="checkbox" id="gstToggle" checked />
+                          <span class="toggle-slider"></span>
+                        </label>
+                        <span id="gstLabel" style="font-size:0.85rem;font-weight:500;color:var(--text-secondary);">With GST (18%)</span>
+                      </span>
+                    </div>
+                    <div class="row" style="border-top:2px solid #e2e8f0;padding-top:0.5rem;margin-top:0.3rem;">
+                      <span class="label" style="font-weight:700;font-size:1.1rem;">Grand Total</span>
+                      <span class="value grand-total" id="grandTotalDisplay">₹0.00</span>
+                    </div>
+                  </div>
+
+                  <div class="form-group">
+                    <label>Notes / Terms</label>
+                    <textarea id="quotationNotes" rows="2" placeholder="e.g. Quotation valid for 15 days only. Payment terms: 50% advance, balance before delivery." style="width:100%;padding:0.4rem;border:1px solid #e2e8f0;border-radius:var(--radius-sm);"></textarea>
+                  </div>
+
+                  <div class="q-extra-note">⚠️ Any new specifications will be charged extra.</div>
+
+                  <div style="display:flex;gap:0.5rem;justify-content:flex-end;flex-wrap:wrap;margin-top:1rem;border-top:1px solid #eef2f6;padding-top:1rem;">
+                    <button id="saveQuotationBtn" class="btn btn-primary"><span class="material-icons">save</span> Save Quotation</button>
+                    <button id="previewQuotationBtn" class="btn btn-secondary"><span class="material-icons">visibility</span> Preview</button>
+                  </div>
+                </div>
+              </div>
+            `;
+
             await this.loadQuotations();
             this.renderQuotationList();
+
+            // ---- Event listeners ----
+            document.getElementById('newQuotationBtn').addEventListener('click', () => this.showForm());
+            document.getElementById('closeFormBtn').addEventListener('click', () => this.hideForm());
+            document.getElementById('addRowBtn').addEventListener('click', () => this.addRow());
+            document.getElementById('saveQuotationBtn').addEventListener('click', () => this.saveQuotation());
+            document.getElementById('previewQuotationBtn').addEventListener('click', () => this.previewQuotation());
+
+            // Subtotal input → recalculate grand total
+            document.getElementById('subtotalInput').addEventListener('input', () => this.calculateGrandTotal());
+
+            // GST toggle → recalculate grand total
+            document.getElementById('gstToggle').addEventListener('change', (e) => {
+              this.withGst = e.target.checked;
+              document.getElementById('gstLabel').textContent = this.withGst ? 'With GST (18%)' : 'Without GST';
+              this.calculateGrandTotal();
+            });
+
+            // Customer display
+            ['customerNameInput', 'customerPhoneInput', 'customerAddressInput'].forEach(id => {
+              document.getElementById(id).addEventListener('input', () => this.updateCustomerDisplay());
+            });
+            this.updateCustomerDisplay();
+
+          } catch (err) {
+            console.error('QuotationBuilder render error:', err);
+            container.innerHTML = `<div style="color:var(--danger);padding:1rem;">❌ Error loading page: ${err.message}</div>`;
+            throw err;
+          }
+        }
+
+        // ---- Load Quotations ----
+        async loadQuotations() {
+          try {
+            const snapshot = await db.collection('quotations').orderBy('createdAt', 'desc').get();
+            this.quotations = [];
+            snapshot.forEach(doc => this.quotations.push({ id: doc.id, ...doc.data() }));
           } catch(e) {
-            this.toast.show('Failed to delete: '+e.message, 'error');
+            console.error('loadQuotations error:', e);
+            this.toast.show('Failed to load quotations: '+e.message, 'error');
+          }
+        }
+
+        // ---- Render Quotation List ----
+        renderQuotationList() {
+          const container = document.getElementById('quotationList');
+          if (!container) return;
+          if (this.quotations.length === 0) {
+            container.innerHTML = `
+              <div style="background:white;border-radius:var(--radius);padding:1rem;box-shadow:var(--shadow);text-align:center;color:var(--text-secondary);">
+                <span class="material-icons" style="font-size:2.5rem;">description</span>
+                <p>No quotations yet. Click "New Quotation" to create one.</p>
+              </div>
+            `;
+            return;
+          }
+          let html = '<div style="display:flex;flex-direction:column;gap:0.8rem;">';
+          this.quotations.forEach(q => {
+            const total = q.grandTotal || 0;
+            const customer = q.customerName || 'Unknown';
+            const ref = q.quotationRef || q.id.slice(0,8);
+            const date = q.createdAt ? new Date(q.createdAt).toLocaleDateString() : '—';
+            html += `
+              <div style="background:white;border-radius:var(--radius);padding:0.8rem 1rem;box-shadow:var(--shadow);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                <div>
+                  <strong style="color:var(--primary);">${ref}</strong>
+                  <span style="font-size:0.85rem;color:var(--text-secondary);margin-left:0.5rem;">${customer}</span>
+                  <span style="font-size:0.75rem;color:var(--text-secondary);margin-left:0.5rem;">${date}</span>
+                </div>
+                <div style="display:flex;align-items:center;gap:0.5rem;">
+                  <span style="font-weight:600;font-size:1rem;">₹${total.toLocaleString('en-IN')}</span>
+                  <button class="btn btn-secondary btn-sm view-quotation" data-id="${q.id}"><span class="material-icons" style="font-size:16px;">visibility</span></button>
+                  <button class="btn btn-danger btn-sm delete-quotation" data-id="${q.id}"><span class="material-icons" style="font-size:16px;">delete</span></button>
+                </div>
+              </div>
+            `;
+          });
+          html += '</div>';
+          container.innerHTML = html;
+
+          container.querySelectorAll('.view-quotation').forEach(btn => {
+            btn.addEventListener('click', () => this.viewQuotation(btn.dataset.id));
+          });
+          container.querySelectorAll('.delete-quotation').forEach(btn => {
+            btn.addEventListener('click', () => this.deleteQuotation(btn.dataset.id));
+          });
+        }
+
+        // ---- Customer display ----
+        updateCustomerDisplay() {
+          const name = document.getElementById('customerNameInput').value;
+          const phone = document.getElementById('customerPhoneInput').value;
+          const address = document.getElementById('customerAddressInput').value;
+          const display = document.getElementById('customerDisplay');
+          if (!display) return;
+          if (!name && !phone && !address) {
+            display.innerHTML = '<span style="color:var(--text-secondary);">Enter customer details below.</span>';
+            return;
+          }
+          display.innerHTML = `
+            <div><strong>${name || '—'}</strong></div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);">${phone || ''}</div>
+            <div style="font-size:0.85rem;color:var(--text-secondary);">${address || ''}</div>
+          `;
+        }
+
+        // ---- Calculate Grand Total ----
+        calculateGrandTotal() {
+          const subtotal = parseFloat(document.getElementById('subtotalInput').value) || 0;
+          let grandTotal = subtotal;
+          let sgst = 0, cgst = 0;
+
+          if (this.withGst) {
+            sgst = subtotal * 0.09;
+            cgst = subtotal * 0.09;
+            grandTotal = subtotal + sgst + cgst;
+          }
+
+          document.getElementById('grandTotalDisplay').textContent = `₹${grandTotal.toFixed(2)}`;
+          return { subtotal, sgst, cgst, grandTotal };
+        }
+
+        // ---- Show/Hide Form ----
+        showForm(quotationId = null) {
+          const form = document.getElementById('quotationForm');
+          if (!form) return;
+          form.style.display = 'block';
+          document.getElementById('formTitle').textContent = quotationId ? 'Edit Quotation' : 'New Quotation';
+          this.isEdit = !!quotationId;
+          this.currentQuotation = quotationId ? this.quotations.find(q => q.id === quotationId) : null;
+
+          if (!this.isEdit) {
+            this.lineItems = [];
+            document.getElementById('customerNameInput').value = '';
+            document.getElementById('customerPhoneInput').value = '';
+            document.getElementById('customerAddressInput').value = '';
+            document.getElementById('quotationRef').value = '';
+            document.getElementById('validUntil').value = '';
+            document.getElementById('quotationNotes').value = '';
+            document.getElementById('subtotalInput').value = '0';
+            document.getElementById('gstToggle').checked = true;
+            this.withGst = true;
+            document.getElementById('gstLabel').textContent = 'With GST (18%)';
+            this.renderItems();
+            this.updateCustomerDisplay();
+            this.calculateGrandTotal();
+          } else {
+            const q = this.currentQuotation;
+            if (q) {
+              document.getElementById('customerNameInput').value = q.customerName || '';
+              document.getElementById('customerPhoneInput').value = q.customerPhone || '';
+              document.getElementById('customerAddressInput').value = q.customerAddress || '';
+              document.getElementById('quotationRef').value = q.quotationRef || '';
+              document.getElementById('validUntil').value = q.validUntil || '';
+              document.getElementById('quotationNotes').value = q.notes || '';
+              document.getElementById('subtotalInput').value = q.subtotal || 0;
+              this.withGst = q.withGst !== undefined ? q.withGst : true;
+              document.getElementById('gstToggle').checked = this.withGst;
+              document.getElementById('gstLabel').textContent = this.withGst ? 'With GST (18%)' : 'Without GST';
+              this.lineItems = q.items || [];
+              this.renderItems();
+              this.updateCustomerDisplay();
+              this.calculateGrandTotal();
+            }
+          }
+          form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        hideForm() {
+          const form = document.getElementById('quotationForm');
+          if (form) form.style.display = 'none';
+        }
+
+        // ---- Items (Description + Qty only) ----
+        addRow(desc = '', qty = 1) {
+          this.lineItems.push({ description: desc, quantity: qty });
+          this.renderItems();
+        }
+
+        removeRow(index) {
+          this.lineItems.splice(index, 1);
+          this.renderItems();
+        }
+
+        renderItems() {
+          const tbody = document.getElementById('itemsBody');
+          if (!tbody) return;
+          if (this.lineItems.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;padding:1rem;color:var(--text-secondary);">No items added.</td></tr>`;
+            return;
+          }
+          let html = '';
+          this.lineItems.forEach((item, i) => {
+            html += `
+              <tr>
+                <td style="padding:0.3rem;text-align:center;">${i+1}</td>
+                <td style="padding:0.3rem;">
+                  <input type="text" class="item-desc" data-index="${i}" value="${item.description || ''}" placeholder="Enter description" style="width:100%;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;font-size:0.85rem;" />
+                </td>
+                <td style="padding:0.3rem;text-align:center;">
+                  <input type="number" class="item-qty" data-index="${i}" value="${item.quantity || 1}" min="1" step="1" style="width:60px;border:1px solid #e2e8f0;border-radius:4px;padding:0.2rem 0.4rem;text-align:center;font-size:0.85rem;" />
+                </td>
+                <td style="padding:0.3rem;text-align:center;">
+                  <button class="btn-icon remove-item" data-index="${i}" style="color:var(--danger);"><span class="material-icons" style="font-size:18px;">close</span></button>
+                </td>
+              </tr>
+            `;
+          });
+          tbody.innerHTML = html;
+
+          tbody.querySelectorAll('.item-desc, .item-qty').forEach(input => {
+            input.addEventListener('input', () => {
+              const idx = parseInt(input.dataset.index);
+              if (input.classList.contains('item-desc')) {
+                this.lineItems[idx].description = input.value;
+              } else if (input.classList.contains('item-qty')) {
+                this.lineItems[idx].quantity = parseFloat(input.value) || 1;
+              }
+            });
+          });
+
+          tbody.querySelectorAll('.remove-item').forEach(btn => {
+            btn.addEventListener('click', () => {
+              this.removeRow(parseInt(btn.dataset.index));
+            });
+          });
+        }
+
+        // ---- Save ----
+        async saveQuotation() {
+          const name = document.getElementById('customerNameInput').value.trim();
+          if (!name) { this.toast.show('Please enter a customer name.', 'warning'); return; }
+          if (this.lineItems.length === 0) { this.toast.show('Add at least one line item.', 'warning'); return; }
+
+          const subtotal = parseFloat(document.getElementById('subtotalInput').value) || 0;
+          if (subtotal <= 0) { this.toast.show('Please enter a valid Subtotal amount.', 'warning'); return; }
+
+          const { sgst, cgst, grandTotal } = this.calculateGrandTotal();
+
+          const data = {
+            customerName: name,
+            customerPhone: document.getElementById('customerPhoneInput').value.trim(),
+            customerAddress: document.getElementById('customerAddressInput').value.trim(),
+            quotationRef: document.getElementById('quotationRef').value.trim() || `Q-${Date.now().toString().slice(-6)}`,
+            date: document.getElementById('quotationDate').value,
+            validUntil: document.getElementById('validUntil').value,
+            notes: document.getElementById('quotationNotes').value.trim(),
+            items: this.lineItems.map(item => ({ ...item })),
+            subtotal: subtotal,
+            sgst: this.withGst ? sgst : 0,
+            cgst: this.withGst ? cgst : 0,
+            grandTotal: grandTotal,
+            withGst: this.withGst,
+            status: 'draft',
+            updatedAt: Utils.dateUtils.now()
+          };
+
+          this.loader.show();
+          try {
+            if (this.isEdit && this.currentQuotation) {
+              await db.collection('quotations').doc(this.currentQuotation.id).update(data);
+              this.toast.show('Quotation updated!', 'success');
+            } else {
+              const id = Utils.genId();
+              await db.collection('quotations').doc(id).set({ id, ...data, createdAt: Utils.dateUtils.now() });
+              this.toast.show('Quotation saved!', 'success');
+            }
+            await this.loadQuotations();
+            this.renderQuotationList();
+            this.hideForm();
+          } catch(e) {
+            this.toast.show('Failed to save: '+e.message, 'error');
           } finally {
             this.loader.hide();
           }
         }
-      });
-    }
-  };
 
-  // ---- Force‑add to navigation ----
-  const checkApp = setInterval(function() {
-    if (window.__app && window.__app.router) {
-      clearInterval(checkApp);
-      const app = window.__app;
-      const router = app.router;
+        // ---- View / Preview ----
+        viewQuotation(id) {
+          const q = this.quotations.find(q => q.id === id);
+          if (!q) return;
+          const html = this.buildPreviewHtml(q);
+          this.modal.open({
+            title: `Quotation ${q.quotationRef || ''}`,
+            body: html,
+            confirmText: 'Close',
+            showCancel: false,
+            onConfirm: () => this.modal.close()
+          });
+        }
 
+        previewQuotation() {
+          const name = document.getElementById('customerNameInput').value.trim();
+          if (!name) { this.toast.show('Enter a customer name.', 'warning'); return; }
+          if (this.lineItems.length === 0) { this.toast.show('Add items first.', 'warning'); return; }
+
+          const subtotal = parseFloat(document.getElementById('subtotalInput').value) || 0;
+          if (subtotal <= 0) { this.toast.show('Enter a valid Subtotal.', 'warning'); return; }
+
+          const { sgst, cgst, grandTotal } = this.calculateGrandTotal();
+
+          const q = {
+            customerName: name,
+            customerPhone: document.getElementById('customerPhoneInput').value.trim(),
+            customerAddress: document.getElementById('customerAddressInput').value.trim(),
+            quotationRef: document.getElementById('quotationRef').value.trim() || 'Preview',
+            date: document.getElementById('quotationDate').value,
+            validUntil: document.getElementById('validUntil').value,
+            notes: document.getElementById('quotationNotes').value.trim(),
+            items: this.lineItems.map(item => ({ ...item })),
+            subtotal: subtotal,
+            sgst: this.withGst ? sgst : 0,
+            cgst: this.withGst ? cgst : 0,
+            grandTotal: grandTotal,
+            withGst: this.withGst
+          };
+          const html = this.buildPreviewHtml(q);
+          this.modal.open({
+            title: `Preview Quotation`,
+            body: html + `<div style="text-align:center;margin-top:1rem;"><button class="btn btn-secondary" onclick="window.print()"><span class="material-icons">print</span> Print</button></div>`,
+            confirmText: 'Close',
+            showCancel: false,
+            onConfirm: () => this.modal.close()
+          });
+        }
+
+        buildPreviewHtml(q) {
+          let itemsHtml = q.items.map((item, i) => `
+            <tr>
+              <td style="text-align:center;">${i+1}</td>
+              <td>${item.description || ''}</td>
+              <td style="text-align:center;">${item.quantity || 0}</td>
+            </tr>
+          `).join('');
+
+          const hasGst = q.withGst !== undefined ? q.withGst : true;
+
+          return `
+            <div class="preview-box">
+              <div style="text-align:center;border-bottom:2px solid #e2e8f0;padding-bottom:1rem;margin-bottom:1rem;">
+                <h2 style="font-size:1.6rem;color:var(--primary);margin-bottom:0.25rem;">NEW LOOK COMPANY</h2>
+                <div style="font-size:0.85rem;color:var(--text-secondary);">GSTIN : 29BUYPK8709B121</div>
+                <div style="font-size:0.85rem;color:var(--text-secondary);">📞 9945885000 &nbsp;|&nbsp; Food Truck Manufacturers</div>
+              </div>
+
+              <div style="margin-bottom:1rem;">
+                <strong>TO:</strong>
+                <div style="margin-top:0.2rem;font-size:0.9rem;">
+                  <div><strong>${q.customerName || '—'}</strong></div>
+                  <div style="color:var(--text-secondary);">${q.customerPhone || ''}</div>
+                  <div style="color:var(--text-secondary);">${q.customerAddress || ''}</div>
+                </div>
+              </div>
+
+              <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;">
+                Quotation for Food Truck body fabrication works and with kitchen work fully stainless steel work,
+                along with Plumbing and Electrical work.
+              </p>
+
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width:40px;text-align:center;">Sl. No</th>
+                    <th style="text-align:left;">Description</th>
+                    <th style="text-align:center;width:60px;">Qty</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsHtml || '<tr><td colspan="3" style="text-align:center;">No items</td></tr>'}
+                </tbody>
+              </table>
+
+              <div style="margin-top:1rem;display:flex;justify-content:flex-end;border-top:2px solid #e2e8f0;padding-top:0.8rem;">
+                <div style="text-align:right;">
+                  <div style="font-size:0.9rem;font-weight:500;">Subtotal</div>
+                  <div style="font-size:1rem;font-weight:600;">₹${(q.subtotal || 0).toFixed(2)}</div>
+                  ${hasGst ? `
+                    <div style="font-size:0.85rem;font-weight:400;color:var(--text-secondary);margin-top:0.2rem;">SGST (9%): ₹${(q.sgst || 0).toFixed(2)}</div>
+                    <div style="font-size:0.85rem;font-weight:400;color:var(--text-secondary);">CGST (9%): ₹${(q.cgst || 0).toFixed(2)}</div>
+                  ` : ''}
+                  <div style="font-size:1.2rem;font-weight:700;color:var(--primary);margin-top:0.3rem;border-top:1px solid #e2e8f0;padding-top:0.3rem;">
+                    Grand Total: ₹${(q.grandTotal || 0).toFixed(2)}
+                  </div>
+                  ${!hasGst ? `<div style="font-size:0.75rem;color:var(--text-secondary);margin-top:0.2rem;">* GST not applicable</div>` : ''}
+                </div>
+              </div>
+
+              <div class="extra-note">⚠️ Any new specifications will be charged extra.</div>
+
+              ${q.validUntil ? `<div style="margin-top:0.8rem;font-size:0.85rem;color:var(--text-secondary);">📅 Quotation valid until: ${new Date(q.validUntil).toLocaleDateString()}</div>` : ''}
+              ${q.notes ? `<div style="margin-top:0.5rem;font-size:0.85rem;color:var(--text-secondary);">📝 ${q.notes}</div>` : ''}
+
+              <div style="margin-top:1.5rem;padding-top:1rem;border-top:1px solid #e2e8f0;text-align:center;font-size:0.8rem;color:var(--text-secondary);">
+                This is a digitally generated quotation. No signature required.
+              </div>
+            </div>
+          `;
+        }
+
+        // ---- Delete ----
+        deleteQuotation(id) {
+          this.confirm.open({
+            title: 'Delete Quotation',
+            body: 'Are you sure you want to delete this quotation?',
+            onConfirm: async () => {
+              this.loader.show();
+              try {
+                await db.collection('quotations').doc(id).delete();
+                this.toast.show('Quotation deleted.', 'warning');
+                await this.loadQuotations();
+                this.renderQuotationList();
+              } catch(e) {
+                this.toast.show('Failed to delete: '+e.message, 'error');
+              } finally {
+                this.loader.hide();
+              }
+            }
+          });
+        }
+      };
+
+      // ---- 3. Register page with router ----
       router.pages['quotations'] = window.QuotationBuilder;
       router.pages['quotationbuilder'] = window.QuotationBuilder;
 
+      // ---- 4. Force‑add navigation links ----
       const sidebar = document.getElementById('sidebarNav');
       if (sidebar && !sidebar.querySelector('.nav-item[data-page="quotations"]')) {
         const link = document.createElement('a');
@@ -15719,14 +15743,15 @@
         });
       }
 
+      // ---- 5. Navigate if hash is #quotations ----
       if (window.location.hash === '#quotations') {
         router.navigate('quotations');
       }
 
-      console.log('✅ Quotation Builder with SGST/CGST auto‑calc loaded.');
+      console.log('✅ Quotation Builder loaded – Description + Qty, manual Subtotal, GST toggle.');
     }
   }, 200);
 })();
-</script>
+</script>    
 </body>
 </html>
