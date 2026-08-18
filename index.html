@@ -15752,6 +15752,112 @@
     }
   }, 200);
 })();
-</script>    
+</script>
+    <script>
+(function() {
+    // Wait for app and Worker page to be ready
+    const waitForWorker = setInterval(function() {
+        if (window.__app && window.__app.router && typeof Pages !== 'undefined' && Pages.Worker) {
+            clearInterval(waitForWorker);
+            console.log('🔍 Adding vehicle search to Worker page...');
+
+            // Store original render method
+            const origRender = Pages.Worker.prototype.render;
+
+            // Override render to add search bar before tasks
+            Pages.Worker.prototype.render = async function(container) {
+                // Call original render first (it will load data and render tabs)
+                await origRender.call(this, container);
+
+                // Now add a search bar at the top of the worker content
+                const workerContent = document.getElementById('workerTaskContent');
+                if (!workerContent) return;
+
+                // Check if search already exists
+                if (workerContent.querySelector('.worker-search-bar')) return;
+
+                const searchWrapper = document.createElement('div');
+                searchWrapper.className = 'worker-search-bar';
+                searchWrapper.style.cssText = `
+                    display: flex;
+                    gap: 0.5rem;
+                    margin-bottom: 0.8rem;
+                    flex-wrap: wrap;
+                    align-items: center;
+                    background: white;
+                    padding: 0.5rem 0.8rem;
+                    border-radius: var(--radius);
+                    box-shadow: var(--shadow);
+                `;
+                searchWrapper.innerHTML = `
+                    <div style="flex:1;min-width:180px;position:relative;">
+                        <span class="material-icons" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--dark-gray);font-size:20px;">search</span>
+                        <input type="text" id="workerVehicleSearch" placeholder="🔍 Search by vehicle number..." style="width:100%;padding:0.4rem 0.6rem 0.4rem 2rem;border:1px solid var(--gray);border-radius:var(--radius);font-size:0.95rem;" />
+                    </div>
+                    <button id="workerSearchClear" class="btn btn-secondary btn-sm">Clear</button>
+                    <span id="workerSearchCount" style="font-size:0.8rem;color:var(--dark-gray);"></span>
+                `;
+
+                // Insert before the task list container (which is inside workerTaskContent)
+                const taskList = workerContent.querySelector('.worker-task-list');
+                if (taskList) {
+                    workerContent.insertBefore(searchWrapper, taskList);
+                } else {
+                    workerContent.prepend(searchWrapper);
+                }
+
+                // ---- Bind search filter ----
+                const searchInput = document.getElementById('workerVehicleSearch');
+                const clearBtn = document.getElementById('workerSearchClear');
+                const countSpan = document.getElementById('workerSearchCount');
+
+                function filterTasks() {
+                    const term = searchInput.value.trim().toLowerCase();
+                    const cards = workerContent.querySelectorAll('.worker-task-card');
+                    let visible = 0;
+                    cards.forEach(card => {
+                        const vehicleNumber = (card.querySelector('.task-vehicle-number')?.textContent || '').toLowerCase();
+                        const match = vehicleNumber.includes(term);
+                        card.style.display = match ? '' : 'none';
+                        if (match) visible++;
+                    });
+                    countSpan.textContent = `${visible} / ${cards.length} tasks`;
+                }
+
+                searchInput.addEventListener('input', filterTasks);
+                clearBtn.addEventListener('click', () => {
+                    searchInput.value = '';
+                    filterTasks();
+                });
+
+                // Initial filter after a short delay to let cards render
+                setTimeout(filterTasks, 100);
+
+                // Re-filter when tab changes
+                const tabs = workerContent.closest('.page-content')?.querySelectorAll('.tab-btn');
+                if (tabs) {
+                    tabs.forEach(tab => {
+                        tab.addEventListener('click', () => {
+                            setTimeout(filterTasks, 200);
+                        });
+                    });
+                }
+            };
+
+            // If Worker page is already open, re-render it with search
+            const currentPage = window.__app?.router?.currentPage;
+            if (currentPage && currentPage.constructor.name === 'Worker') {
+                console.log('🔄 Worker active – re-rendering with search.');
+                const container = document.getElementById('pageContent');
+                if (container) {
+                    currentPage.render(container);
+                }
+            }
+
+            console.log('✅ Worker vehicle search added.');
+        }
+    }, 200);
+})();
+    </script>
 </body>
 </html>
