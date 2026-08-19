@@ -16243,6 +16243,676 @@
                 snapshot.docChanges().forEach((change) => {
                     if (change.type === 'added') {
                         const order = change.doc.data();
-    </script>     
+    </script>
+    <script>
+(function() {
+    // Wait for app to be ready
+    const waitForApp = setInterval(function() {
+        if (window.__app && window.__app.router && window.__app.auth && typeof DataService !== 'undefined') {
+            clearInterval(waitForApp);
+            console.log('👥 Setting up Sales Dashboard with notifications...');
+
+            const app = window.__app;
+            const router = app.router;
+            const auth = app.auth;
+            const toast = new Components.Toast();
+            const loader = new Components.Loader();
+            const modal = new Components.Modal();
+
+            // ---- Check if user is supervisor/ops/owner ----
+            function isSupervisor() {
+                const user = auth.getCurrentUser();
+                return user && ['supervisor', 'operations_manager', 'owner'].includes(user.role);
+            }
+
+            if (!isSupervisor()) {
+                console.log('ℹ️ Not a supervisor – skipping Sales Dashboard.');
+                return;
+            }
+
+            // ==============================================================
+            // PART 1: SALES DASHBOARD PAGE
+            // ==============================================================
+            class SalesDashboard {
+                constructor(app) {
+                    this.app = app;
+                    this.toast = new Components.Toast();
+                    this.loader = new Components.Loader();
+                    this.modal = new Components.Modal();
+                    this.salesData = [];
+                    this.filteredData = [];
+                    this.selectedSalesperson = null;
+                    this.deliveryFilter = 'all';
+                    this.dateFrom = null;
+                    this.dateTo = null;
+                    this.salespeople = ['Ahmed', 'Rasheed', 'Kumar'];
+                }
+
+                async render(container) {
+                    container.innerHTML = `
+                        <div style="margin-bottom:1rem;">
+                            <h2 style="display:flex;align-items:center;gap:0.5rem;">
+                                <span class="material-icons" style="font-size:28px;">people</span>
+                                Sales Dashboard
+                            </h2>
+                            <p style="color:var(--dark-gray);font-size:0.9rem;">Monitor orders by salesperson and delivery status.</p>
+                        </div>
+
+                        <!-- Salesperson Cards -->
+                        <div id="salespersonCards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0.8rem;margin-bottom:1.2rem;"></div>
+
+                        <!-- Filters -->
+                        <div style="background:white;border-radius:var(--radius);padding:0.8rem;box-shadow:var(--shadow);margin-bottom:1rem;display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+                            <div class="filter-group">
+                                <label>Delivery Status:</label>
+                                <select id="deliveryFilterSelect" style="padding:0.3rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);">
+                                    <option value="all">📋 All Orders</option>
+                                    <option value="pending">⏳ Pending (Future)</option>
+                                    <option value="delivered">✅ Delivered</option>
+                                    <option value="overdue">🔴 Overdue</option>
+                                </select>
+                            </div>
+                            <div class="filter-group">
+                                <label>From:</label>
+                                <input type="date" id="dateFrom" style="padding:0.3rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);" />
+                            </div>
+                            <div class="filter-group">
+                                <label>To:</label>
+                                <input type="date" id="dateTo" style="padding:0.3rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);" />
+                            </div>
+                            <button id="applyFiltersBtn" class="btn btn-primary btn-sm">Apply</button>
+                            <button id="resetFiltersBtn" class="btn btn-secondary btn-sm">Reset</button>
+                            <span id="orderCountBadge" style="margin-left:auto;font-size:0.85rem;color:var(--dark-gray);"></span>
+                        </div>
+
+                        <!-- Orders Table -->
+                        <div id="ordersTableContainer" style="background:white;border-radius:var(--radius);box-shadow:var(--shadow);overflow:auto;max-height:60vh;">
+                            <div style="padding:1rem;text-align:center;color:var(--dark-gray);">Loading orders...</div>
+                        </div>
+
+                        <!-- Summary Footer -->
+                        <div id="summaryFooter" style="margin-top:0.8rem;display:flex;flex-wrap:wrap;gap:0.5rem;justify-content:space-between;font-size:0.85rem;color:var(--dark-gray);"></div>
+                    `;
+
+                    await this.loadData();
+
+                    // Bind events
+                    document.getElementById('deliveryFilterSelect').addEventListener('change', (e) => {
+                        this.deliveryFilter = e.target.value;
+                        this.applyFilters();
+                    });
+                    document.getElementById('dateFrom').addEventListener('change', (e) => {
+                        this.dateFrom = e.target.value;
+                        this.applyFilters();
+                    });
+                    document.getElementById('dateTo').addEventListener('change', (e) => {
+                        this.dateTo = e.target.value;
+                        this.applyFilters();
+                    });
+                    document.getElementById('applyFiltersBtn').addEventListener('click', () => this.applyFilters());
+                    document.getElementById('resetFiltersBtn').addEventListener('click', () => {
+                        document.getElementById('deliveryFilterSelect').value = 'all';
+                        document.getElementById('dateFrom').value = '';
+                        document.getElementById('dateTo').value = '';
+                        this.deliveryFilter = 'all';
+                        this.dateFrom = null;
+                        this.dateTo = null;
+                        this.applyFilters();
+                    });
+
+                    this.renderSalespersonCards();
+                    this.applyFilters();
+                }
+
+                async loadData() {
+                    this.loader.show();
+                    try {
+                        const sales = await DataService.getSales();
+                        this.salesData = sales;
+                        this.filteredData = [...sales];
+                    } catch (e) {
+                        this.toast.show('Failed to load sales data: ' + e.message, 'error');
+                        this.salesData = [];
+                        this.filteredData = [];
+                    } finally {
+                        this.loader.hide();
+                    }
+                }
+
+                renderSalespersonCards() {
+                    const container = document.getElementById('salespersonCards');
+                    if (!container) return;
+
+                    const counts = {};
+                    this.salespeople.forEach(name => counts[name] = 0);
+                    
+                    this.salesData.forEach(order => {
+                        const sp = order.salesperson || 'Unassigned';
+                        if (counts[sp] !== undefined) counts[sp]++;
+                        else counts[sp] = 1;
+                    });
+
+                    const totalOrders = this.salesData.length;
+
+                    let html = '';
+                    this.salespeople.forEach(name => {
+                        const count = counts[name] || 0;
+                        const isSelected = this.selectedSalesperson === name;
+                        const bgColor = isSelected ? 'var(--primary-blue)' : 'white';
+                        const textColor = isSelected ? 'white' : 'var(--primary-dark)';
+                        const shadow = isSelected ? '0 4px 16px rgba(26,58,92,0.3)' : 'var(--shadow)';
+                        
+                        html += `
+                            <div class="salesperson-card" data-salesperson="${name}" style="
+                                background:${bgColor};
+                                color:${textColor};
+                                border-radius:var(--radius);
+                                padding:1rem 0.8rem;
+                                box-shadow:${shadow};
+                                text-align:center;
+                                cursor:pointer;
+                                transition:all 0.25s ease;
+                                border:2px solid ${isSelected ? 'var(--accent)' : 'transparent'};
+                            ">
+                                <div style="font-size:1.5rem;font-weight:700;">${count}</div>
+                                <div style="font-size:0.9rem;font-weight:500;">${name}</div>
+                                <div style="font-size:0.7rem;opacity:0.7;">orders</div>
+                            </div>
+                        `;
+                    });
+
+                    html += `
+                        <div style="
+                            background:#f8f9fa;
+                            border-radius:var(--radius);
+                            padding:1rem 0.8rem;
+                            text-align:center;
+                            border:2px dashed var(--gray);
+                        ">
+                            <div style="font-size:1.5rem;font-weight:700;color:var(--primary-dark);">${totalOrders}</div>
+                            <div style="font-size:0.9rem;color:var(--dark-gray);">Total Orders</div>
+                        </div>
+                    `;
+
+                    container.innerHTML = html;
+
+                    container.querySelectorAll('.salesperson-card').forEach(card => {
+                        card.addEventListener('click', () => {
+                            const name = card.dataset.salesperson;
+                            if (this.selectedSalesperson === name) {
+                                this.selectedSalesperson = null;
+                            } else {
+                                this.selectedSalesperson = name;
+                            }
+                            this.applyFilters();
+                            this.renderSalespersonCards();
+                        });
+                    });
+                }
+
+                applyFilters() {
+                    let filtered = [...this.salesData];
+
+                    if (this.selectedSalesperson) {
+                        filtered = filtered.filter(o => o.salesperson === this.selectedSalesperson);
+                    }
+
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    if (this.deliveryFilter === 'pending') {
+                        filtered = filtered.filter(o => {
+                            if (!o.deliveryDate) return false;
+                            const d = new Date(o.deliveryDate);
+                            d.setHours(0, 0, 0, 0);
+                            return d >= today && o.status !== 'delivered';
+                        });
+                    } else if (this.deliveryFilter === 'delivered') {
+                        filtered = filtered.filter(o => o.status === 'delivered');
+                    } else if (this.deliveryFilter === 'overdue') {
+                        filtered = filtered.filter(o => {
+                            if (!o.deliveryDate || o.status === 'delivered') return false;
+                            const d = new Date(o.deliveryDate);
+                            d.setHours(0, 0, 0, 0);
+                            return d < today;
+                        });
+                    }
+
+                    if (this.dateFrom) {
+                        const from = new Date(this.dateFrom);
+                        from.setHours(0, 0, 0, 0);
+                        filtered = filtered.filter(o => {
+                            if (!o.createdAt) return false;
+                            const created = new Date(o.createdAt);
+                            return created >= from;
+                        });
+                    }
+                    if (this.dateTo) {
+                        const to = new Date(this.dateTo);
+                        to.setHours(23, 59, 59, 999);
+                        filtered = filtered.filter(o => {
+                            if (!o.createdAt) return false;
+                            const created = new Date(o.createdAt);
+                            return created <= to;
+                        });
+                    }
+
+                    filtered.sort((a, b) => {
+                        const dateA = a.deliveryDate ? new Date(a.deliveryDate) : new Date(8640000000000000);
+                        const dateB = b.deliveryDate ? new Date(b.deliveryDate) : new Date(8640000000000000);
+                        return dateA - dateB;
+                    });
+
+                    this.filteredData = filtered;
+                    this.renderOrdersTable();
+                    this.updateSummary();
+                }
+
+                renderOrdersTable() {
+                    const container = document.getElementById('ordersTableContainer');
+                    if (!container) return;
+
+                    if (this.filteredData.length === 0) {
+                        container.innerHTML = `
+                            <div style="padding:2rem;text-align:center;color:var(--dark-gray);">
+                                <span class="material-icons" style="font-size:3rem;">inbox</span>
+                                <p>No orders found matching the current filters.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    let html = `
+                        <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                            <thead>
+                                <tr style="background:var(--light-gray);border-bottom:2px solid var(--gray);">
+                                    <th style="padding:0.5rem 0.6rem;text-align:left;">Vehicle</th>
+                                    <th style="padding:0.5rem 0.6rem;text-align:left;">Customer</th>
+                                    <th style="padding:0.5rem 0.6rem;text-align:left;">Salesperson</th>
+                                    <th style="padding:0.5rem 0.6rem;text-align:left;">Delivery Date</th>
+                                    <th style="padding:0.5rem 0.6rem;text-align:left;">Status</th>
+                                    <th style="padding:0.5rem 0.6rem;text-align:left;">Created</th>
+                                    <th style="padding:0.5rem 0.6rem;text-align:center;">Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+
+                    this.filteredData.forEach(order => {
+                        const vehicle = order.vehicleNumber || order.productName || 'Non-Vehicle';
+                        const customer = order.customerName || '—';
+                        const salesperson = order.salesperson || '—';
+                        const deliveryDate = order.deliveryDate ? new Date(order.deliveryDate) : null;
+                        const createdDate = order.createdAt ? new Date(order.createdAt) : null;
+
+                        let statusBadge = '';
+                        if (order.status === 'delivered') {
+                            statusBadge = `<span class="badge badge-completed">✅ Delivered</span>`;
+                        } else if (deliveryDate && deliveryDate < today) {
+                            statusBadge = `<span class="badge badge-danger">🔴 Overdue</span>`;
+                        } else if (deliveryDate && deliveryDate >= today) {
+                            const days = Math.ceil((deliveryDate - today) / (1000 * 60 * 60 * 24));
+                            if (days <= 3) {
+                                statusBadge = `<span class="badge badge-warning">🟠 ${days} days left</span>`;
+                            } else {
+                                statusBadge = `<span class="badge badge-success">🟢 ${days} days left</span>`;
+                            }
+                        } else {
+                            statusBadge = `<span class="badge badge-${order.status || 'draft'}">${order.status || 'draft'}</span>`;
+                        }
+
+                        const deliveryStr = deliveryDate ? deliveryDate.toLocaleDateString('en-IN') : '—';
+                        const createdStr = createdDate ? createdDate.toLocaleDateString('en-IN') : '—';
+
+                        html += `
+                            <tr style="border-bottom:1px solid #eef2f6;cursor:pointer;" class="order-row" data-orderid="${order.id}">
+                                <td style="padding:0.4rem 0.6rem;font-weight:500;color:var(--primary-blue);">${vehicle}</td>
+                                <td style="padding:0.4rem 0.6rem;">${customer}</td>
+                                <td style="padding:0.4rem 0.6rem;font-weight:500;color:var(--primary-dark);">${salesperson}</td>
+                                <td style="padding:0.4rem 0.6rem;">${deliveryStr}</td>
+                                <td style="padding:0.4rem 0.6rem;">${statusBadge}</td>
+                                <td style="padding:0.4rem 0.6rem;font-size:0.75rem;color:var(--dark-gray);">${createdStr}</td>
+                                <td style="padding:0.4rem 0.6rem;text-align:center;">
+                                    <button class="btn btn-sm btn-secondary view-order-btn" data-orderid="${order.id}" style="padding:0.15rem 0.5rem;font-size:0.7rem;">
+                                        <span class="material-icons" style="font-size:14px;">visibility</span>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+
+                    html += `
+                            </tbody>
+                        </table>
+                    `;
+
+                    container.innerHTML = html;
+
+                    container.querySelectorAll('.order-row').forEach(row => {
+                        row.addEventListener('click', (e) => {
+                            if (e.target.closest('button')) return;
+                            const orderId = row.dataset.orderid;
+                            this.viewOrderDetails(orderId);
+                        });
+                    });
+
+                    container.querySelectorAll('.view-order-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            this.viewOrderDetails(btn.dataset.orderid);
+                        });
+                    });
+                }
+
+                viewOrderDetails(orderId) {
+                    const order = this.salesData.find(o => o.id === orderId);
+                    if (!order) {
+                        this.toast.show('Order not found', 'error');
+                        return;
+                    }
+
+                    let requirements = {};
+                    try { requirements = JSON.parse(order.requirements || '{}'); } catch(e) { requirements = {}; }
+
+                    const vehicle = order.vehicleNumber || order.productName || 'Non-Vehicle';
+                    const isOverdue = order.deliveryDate && new Date(order.deliveryDate) < new Date() && order.status !== 'delivered';
+                    const statusColor = isOverdue ? 'var(--danger)' : order.status === 'delivered' ? 'var(--success)' : 'var(--accent)';
+
+                    const html = `
+                        <div style="padding:0.5rem 0;">
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;font-size:0.95rem;">
+                                <div><strong>Token:</strong></div>
+                                <div>${order.token || '—'}</div>
+                                <div><strong>Vehicle:</strong></div>
+                                <div>${vehicle}</div>
+                                <div><strong>Customer:</strong></div>
+                                <div>${order.customerName || '—'}</div>
+                                <div><strong>Salesperson:</strong></div>
+                                <div style="font-weight:600;color:var(--primary-blue);">${order.salesperson || '—'}</div>
+                                <div><strong>Delivery Date:</strong></div>
+                                <div style="color:${statusColor};font-weight:600;">${order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-IN') : '—'}</div>
+                                <div><strong>Status:</strong></div>
+                                <div><span class="badge badge-${order.status}">${order.status}</span></div>
+                                <div><strong>Progress:</strong></div>
+                                <div>${order.progress || 0}%</div>
+                                <div><strong>Created:</strong></div>
+                                <div>${order.createdAt ? new Date(order.createdAt).toLocaleString() : '—'}</div>
+                            </div>
+                            ${requirements.remarks ? `<div style="margin-top:0.5rem;padding:0.5rem;background:#f8f9fa;border-radius:var(--radius);font-size:0.85rem;"><strong>Remarks:</strong> ${requirements.remarks}</div>` : ''}
+                        </div>
+                    `;
+
+                    this.modal.open({
+                        title: `📋 Order ${order.token || ''}`,
+                        body: html,
+                        confirmText: 'Close',
+                        showCancel: false,
+                        onConfirm: () => this.modal.close()
+                    });
+                }
+
+                updateSummary() {
+                    const container = document.getElementById('summaryFooter');
+                    if (!container) return;
+
+                    const total = this.filteredData.length;
+                    const delivered = this.filteredData.filter(o => o.status === 'delivered').length;
+                    const overdue = this.filteredData.filter(o => {
+                        if (!o.deliveryDate || o.status === 'delivered') return false;
+                        return new Date(o.deliveryDate) < new Date();
+                    }).length;
+                    const pending = total - delivered;
+
+                    const countBadge = document.getElementById('orderCountBadge');
+                    if (countBadge) {
+                        countBadge.textContent = `📊 ${total} orders (${delivered} delivered, ${pending} active, ${overdue} overdue)`;
+                    }
+
+                    container.innerHTML = `
+                        <div>
+                            <strong>Total:</strong> ${total} orders
+                        </div>
+                        <div style="display:flex;gap:1rem;flex-wrap:wrap;">
+                            <span><span style="color:var(--success);">✅</span> Delivered: ${delivered}</span>
+                            <span><span style="color:var(--accent);">🟡</span> Active: ${pending}</span>
+                            <span><span style="color:var(--danger);">🔴</span> Overdue: ${overdue}</span>
+                        </div>
+                        <div style="font-size:0.75rem;color:var(--dark-gray);">
+                            ${this.selectedSalesperson ? `👤 Filtered by: ${this.selectedSalesperson}` : 'Showing all salespeople'}
+                            ${this.deliveryFilter !== 'all' ? ` • Status: ${this.deliveryFilter}` : ''}
+                        </div>
+                    `;
+                }
+            }
+
+            // ==============================================================
+            // PART 2: NEW ORDER NOTIFICATIONS WITH SALESPERSON NAME
+            // ==============================================================
+            const notifiedOrders = new Set();
+
+            function showNewOrderPopup(order) {
+                const orderId = order.id;
+                if (notifiedOrders.has(orderId)) return;
+                notifiedOrders.add(orderId);
+
+                const vehicle = order.vehicleNumber || order.productName || 'Non-Vehicle';
+                const customer = order.customerName || 'Unknown Customer';
+                const salesperson = order.salesperson || 'Unknown';
+                const token = order.token || 'New Order';
+                const deliveryDate = order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-IN') : '—';
+                const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString() : '—';
+
+                // Play sound
+                try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    oscillator.frequency.value = 800;
+                    oscillator.type = 'sine';
+                    gainNode.gain.value = 0.15;
+                    oscillator.start();
+                    oscillator.stop(audioCtx.currentTime + 0.15);
+                    setTimeout(() => {
+                        const osc2 = audioCtx.createOscillator();
+                        const gain2 = audioCtx.createGain();
+                        osc2.connect(gain2);
+                        gain2.connect(audioCtx.destination);
+                        osc2.frequency.value = 1000;
+                        osc2.type = 'sine';
+                        gain2.gain.value = 0.12;
+                        osc2.start();
+                        osc2.stop(audioCtx.currentTime + 0.15);
+                    }, 180);
+                } catch(e) { /* silent fallback */ }
+
+                toast.show(`🆕 New order created by ${salesperson}`, 'info', 4000);
+
+                const popupHtml = `
+                    <div style="padding:0.5rem 0;">
+                        <div style="background:#f8f9fa;border-radius:var(--radius);padding:0.8rem 1rem;border-left:4px solid #4a90d9;margin-bottom:0.5rem;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.3rem;">
+                                <div style="font-size:1.1rem;font-weight:600;color:var(--primary-dark);">${token}</div>
+                                <div style="background:#e8f0fe;padding:0.2rem 0.8rem;border-radius:20px;font-weight:600;color:var(--primary-blue);font-size:0.95rem;">
+                                    👤 ${salesperson}
+                                </div>
+                            </div>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1rem;font-size:0.95rem;margin-top:0.3rem;">
+                                <div><span style="color:var(--dark-gray);">Customer:</span> <strong>${customer}</strong></div>
+                                <div><span style="color:var(--dark-gray);">Vehicle:</span> <strong>${vehicle}</strong></div>
+                                <div><span style="color:var(--dark-gray);">Delivery:</span> <strong>${deliveryDate}</strong></div>
+                                <div><span style="color:var(--dark-gray);">Created:</span> <strong>${createdAt}</strong></div>
+                            </div>
+                            <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--dark-gray);border-top:1px solid #eef2f6;padding-top:0.3rem;">
+                                💡 Order created by <strong style="color:var(--primary-blue);">${salesperson}</strong>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                modal.open({
+                    title: '🆕 New Sales Order Created!',
+                    body: popupHtml,
+                    confirmText: '✅ OK',
+                    showCancel: false,
+                    onConfirm: () => {
+                        modal.close();
+                        toast.show('✅ Acknowledged', 'success', 1500);
+                    }
+                });
+
+                const badge = document.getElementById('notifBadge');
+                if (badge) {
+                    const currentCount = parseInt(badge.textContent) || 0;
+                    badge.textContent = currentCount + 1;
+                    badge.style.display = 'flex';
+                    badge.style.background = '#d9534f';
+                    badge.style.animation = 'pulse 0.5s ease 2';
+                }
+            }
+
+            // ---- Listen for NEW ORDERS ----
+            let lastNotifiedOrderId = null;
+            const salesRef = db.collection('sales').orderBy('createdAt', 'desc').limit(5);
+
+            salesRef.onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                        const order = change.doc.data();
+                        order.id = change.doc.id;
+                        if (order.status === 'delivered') return;
+                        if (order.id === lastNotifiedOrderId) return;
+                        lastNotifiedOrderId = order.id;
+
+                        const createdAt = order.createdAt ? new Date(order.createdAt) : new Date();
+                        const now = new Date();
+                        if ((now - createdAt) > 120000) return;
+
+                        console.log(`🔔 New order created by ${order.salesperson || 'Unknown'}:`, order.token || order.id);
+                        showNewOrderPopup(order);
+                    }
+                });
+            }, (error) => {
+                console.warn('Firestore listener error:', error);
+            });
+
+            // ---- Patch DataService.addSales ----
+            const origAddSales = DataService.addSales;
+            if (origAddSales) {
+                DataService.addSales = async function(data) {
+                    const result = await origAddSales.call(this, data);
+                    if (result && result.id) {
+                        try {
+                            const doc = await db.collection('sales').doc(result.id).get();
+                            if (doc.exists) {
+                                const order = { id: doc.id, ...doc.data() };
+                                setTimeout(() => {
+                                    showNewOrderPopup(order);
+                                }, 500);
+                            }
+                        } catch (e) { /* ignore */ }
+                    }
+                    return result;
+                };
+                console.log('✅ DataService.addSales patched.');
+            }
+
+            document.addEventListener('orderCreated', (e) => {
+                const order = e.detail;
+                if (order && order.id) {
+                    setTimeout(() => {
+                        showNewOrderPopup(order);
+                    }, 300);
+                }
+            });
+
+            // ---- Register page with router ----
+            router.pages['salesdashboard'] = SalesDashboard;
+            router.pages['sales-dashboard'] = SalesDashboard;
+
+            // ---- Remove Quotations from navigation ----
+            const sidebar = document.getElementById('sidebarNav');
+            if (sidebar) {
+                const qLink = sidebar.querySelector('[data-page="quotations"]');
+                if (qLink) qLink.remove();
+                const qLink2 = sidebar.querySelector('[data-page="quotationbuilder"]');
+                if (qLink2) qLink2.remove();
+
+                if (!sidebar.querySelector('[data-page="salesdashboard"]')) {
+                    const link = document.createElement('a');
+                    link.className = 'nav-item';
+                    link.setAttribute('data-page', 'salesdashboard');
+                    link.href = '#salesdashboard';
+                    link.innerHTML = `<span class="material-icons">dashboard</span><span class="nav-label">Sales Dashboard</span>`;
+                    const supervisorLink = sidebar.querySelector('[data-page="supervisor"]');
+                    if (supervisorLink) {
+                        sidebar.insertBefore(link, supervisorLink.nextSibling);
+                    } else {
+                        sidebar.appendChild(link);
+                    }
+                    link.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        router.navigate('salesdashboard');
+                        document.getElementById('sidebar').classList.remove('open');
+                        document.getElementById('sidebarBackdrop').classList.remove('visible');
+                    });
+                }
+            }
+
+            const bottomNav = document.getElementById('bottomNav');
+            if (bottomNav) {
+                const qBtn = bottomNav.querySelector('[data-page="quotations"]');
+                if (qBtn) qBtn.remove();
+                const qBtn2 = bottomNav.querySelector('[data-page="quotationbuilder"]');
+                if (qBtn2) qBtn2.remove();
+
+                if (!bottomNav.querySelector('[data-page="salesdashboard"]')) {
+                    const btn = document.createElement('button');
+                    btn.className = 'nav-btn';
+                    btn.setAttribute('data-page', 'salesdashboard');
+                    btn.innerHTML = `<span class="material-icons">dashboard</span><span class="nav-label">Sales</span>`;
+                    const supervisorBtn = bottomNav.querySelector('[data-page="supervisor"]');
+                    if (supervisorBtn) {
+                        bottomNav.insertBefore(btn, supervisorBtn.nextSibling);
+                    } else {
+                        bottomNav.appendChild(btn);
+                    }
+                    btn.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        router.navigate('salesdashboard');
+                    });
+                }
+            }
+
+            // ---- Redirect if on Quotations ----
+            const currentHash = window.location.hash.slice(1) || 'dashboard';
+            if (currentHash === 'quotations' || currentHash === 'quotationbuilder') {
+                window.location.hash = '#salesdashboard';
+            }
+
+            if (window.location.hash === '#salesdashboard' || window.location.hash === '#sales-dashboard') {
+                setTimeout(() => {
+                    router.navigate('salesdashboard');
+                }, 200);
+            }
+
+            console.log('✅ Sales Dashboard with notifications ready.');
+            console.log('📌 Features:');
+            console.log('  ✅ Salesperson cards (Ahmed, Rasheed, Kumar)');
+            console.log('  ✅ Filter by salesperson name');
+            console.log('  ✅ Filter by delivery status (All/Pending/Delivered/Overdue)');
+            console.log('  ✅ Filter by date range');
+            console.log('  ✅ View vehicle number and delivery date');
+            console.log('  ✅ Click row to view full order details');
+            console.log('  ✅ New order popup shows salesperson name');
+            console.log('  ✅ Click OK to dismiss popup');
+        }
+    }, 300);
+})();
+</script>
 </body>
 </html>
