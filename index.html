@@ -16250,7 +16250,7 @@
     const waitForApp = setInterval(function() {
         if (window.__app && window.__app.router && window.__app.auth && typeof DataService !== 'undefined') {
             clearInterval(waitForApp);
-            console.log('👥 Setting up Sales Dashboard with notifications...');
+            console.log('👥 Setting up Sales Dashboard with proper permissions...');
 
             const app = window.__app;
             const router = app.router;
@@ -16271,8 +16271,10 @@
             }
 
             // ==============================================================
-            // PART 1: SALES DASHBOARD PAGE
+            // FIX: Add SalesDashboard to Pages so router recognizes it
             // ==============================================================
+            
+            // ---- SALES DASHBOARD PAGE CLASS ----
             class SalesDashboard {
                 constructor(app) {
                     this.app = app;
@@ -16689,152 +16691,34 @@
             }
 
             // ==============================================================
-            // PART 2: NEW ORDER NOTIFICATIONS WITH SALESPERSON NAME
+            // FIX: Register page with proper permissions
             // ==============================================================
-            const notifiedOrders = new Set();
+            
+            // ---- Add to Pages object ----
+            Pages.SalesDashboard = SalesDashboard;
 
-            function showNewOrderPopup(order) {
-                const orderId = order.id;
-                if (notifiedOrders.has(orderId)) return;
-                notifiedOrders.add(orderId);
+            // ---- Add to router with permission check ----
+            if (router) {
+                // Register the page
+                router.pages['salesdashboard'] = SalesDashboard;
+                router.pages['sales-dashboard'] = SalesDashboard;
 
-                const vehicle = order.vehicleNumber || order.productName || 'Non-Vehicle';
-                const customer = order.customerName || 'Unknown Customer';
-                const salesperson = order.salesperson || 'Unknown';
-                const token = order.token || 'New Order';
-                const deliveryDate = order.deliveryDate ? new Date(order.deliveryDate).toLocaleDateString('en-IN') : '—';
-                const createdAt = order.createdAt ? new Date(order.createdAt).toLocaleString() : '—';
-
-                // Play sound
-                try {
-                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-                    const oscillator = audioCtx.createOscillator();
-                    const gainNode = audioCtx.createGain();
-                    oscillator.connect(gainNode);
-                    gainNode.connect(audioCtx.destination);
-                    oscillator.frequency.value = 800;
-                    oscillator.type = 'sine';
-                    gainNode.gain.value = 0.15;
-                    oscillator.start();
-                    oscillator.stop(audioCtx.currentTime + 0.15);
-                    setTimeout(() => {
-                        const osc2 = audioCtx.createOscillator();
-                        const gain2 = audioCtx.createGain();
-                        osc2.connect(gain2);
-                        gain2.connect(audioCtx.destination);
-                        osc2.frequency.value = 1000;
-                        osc2.type = 'sine';
-                        gain2.gain.value = 0.12;
-                        osc2.start();
-                        osc2.stop(audioCtx.currentTime + 0.15);
-                    }, 180);
-                } catch(e) { /* silent fallback */ }
-
-                toast.show(`🆕 New order created by ${salesperson}`, 'info', 4000);
-
-                const popupHtml = `
-                    <div style="padding:0.5rem 0;">
-                        <div style="background:#f8f9fa;border-radius:var(--radius);padding:0.8rem 1rem;border-left:4px solid #4a90d9;margin-bottom:0.5rem;">
-                            <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.3rem;margin-bottom:0.3rem;">
-                                <div style="font-size:1.1rem;font-weight:600;color:var(--primary-dark);">${token}</div>
-                                <div style="background:#e8f0fe;padding:0.2rem 0.8rem;border-radius:20px;font-weight:600;color:var(--primary-blue);font-size:0.95rem;">
-                                    👤 ${salesperson}
-                                </div>
-                            </div>
-                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.3rem 1rem;font-size:0.95rem;margin-top:0.3rem;">
-                                <div><span style="color:var(--dark-gray);">Customer:</span> <strong>${customer}</strong></div>
-                                <div><span style="color:var(--dark-gray);">Vehicle:</span> <strong>${vehicle}</strong></div>
-                                <div><span style="color:var(--dark-gray);">Delivery:</span> <strong>${deliveryDate}</strong></div>
-                                <div><span style="color:var(--dark-gray);">Created:</span> <strong>${createdAt}</strong></div>
-                            </div>
-                            <div style="margin-top:0.5rem;font-size:0.8rem;color:var(--dark-gray);border-top:1px solid #eef2f6;padding-top:0.3rem;">
-                                💡 Order created by <strong style="color:var(--primary-blue);">${salesperson}</strong>
-                            </div>
-                        </div>
-                    </div>
-                `;
-
-                modal.open({
-                    title: '🆕 New Sales Order Created!',
-                    body: popupHtml,
-                    confirmText: '✅ OK',
-                    showCancel: false,
-                    onConfirm: () => {
-                        modal.close();
-                        toast.show('✅ Acknowledged', 'success', 1500);
+                // FIX: Override hasPermission to include salesdashboard
+                const origHasPermission = auth.hasPermission.bind(auth);
+                auth.hasPermission = function(page) {
+                    if (page === 'salesdashboard' || page === 'sales-dashboard') {
+                        return isSupervisor();
                     }
-                });
-
-                const badge = document.getElementById('notifBadge');
-                if (badge) {
-                    const currentCount = parseInt(badge.textContent) || 0;
-                    badge.textContent = currentCount + 1;
-                    badge.style.display = 'flex';
-                    badge.style.background = '#d9534f';
-                    badge.style.animation = 'pulse 0.5s ease 2';
-                }
-            }
-
-            // ---- Listen for NEW ORDERS ----
-            let lastNotifiedOrderId = null;
-            const salesRef = db.collection('sales').orderBy('createdAt', 'desc').limit(5);
-
-            salesRef.onSnapshot((snapshot) => {
-                snapshot.docChanges().forEach((change) => {
-                    if (change.type === 'added') {
-                        const order = change.doc.data();
-                        order.id = change.doc.id;
-                        if (order.status === 'delivered') return;
-                        if (order.id === lastNotifiedOrderId) return;
-                        lastNotifiedOrderId = order.id;
-
-                        const createdAt = order.createdAt ? new Date(order.createdAt) : new Date();
-                        const now = new Date();
-                        if ((now - createdAt) > 120000) return;
-
-                        console.log(`🔔 New order created by ${order.salesperson || 'Unknown'}:`, order.token || order.id);
-                        showNewOrderPopup(order);
-                    }
-                });
-            }, (error) => {
-                console.warn('Firestore listener error:', error);
-            });
-
-            // ---- Patch DataService.addSales ----
-            const origAddSales = DataService.addSales;
-            if (origAddSales) {
-                DataService.addSales = async function(data) {
-                    const result = await origAddSales.call(this, data);
-                    if (result && result.id) {
-                        try {
-                            const doc = await db.collection('sales').doc(result.id).get();
-                            if (doc.exists) {
-                                const order = { id: doc.id, ...doc.data() };
-                                setTimeout(() => {
-                                    showNewOrderPopup(order);
-                                }, 500);
-                            }
-                        } catch (e) { /* ignore */ }
-                    }
-                    return result;
+                    return origHasPermission(page);
                 };
-                console.log('✅ DataService.addSales patched.');
+                console.log('✅ Permission added for Sales Dashboard.');
             }
 
-            document.addEventListener('orderCreated', (e) => {
-                const order = e.detail;
-                if (order && order.id) {
-                    setTimeout(() => {
-                        showNewOrderPopup(order);
-                    }, 300);
-                }
-            });
+            // ==============================================================
+            // FIX: Navigation - Remove Quotations, Add Sales Dashboard
+            // ==============================================================
 
-            // ---- Register page with router ----
-            router.pages['salesdashboard'] = SalesDashboard;
-            router.pages['sales-dashboard'] = SalesDashboard;
-
-            // ---- Remove Quotations from navigation ----
+            // ---- Remove Quotations from sidebar ----
             const sidebar = document.getElementById('sidebarNav');
             if (sidebar) {
                 const qLink = sidebar.querySelector('[data-page="quotations"]');
@@ -16842,27 +16726,35 @@
                 const qLink2 = sidebar.querySelector('[data-page="quotationbuilder"]');
                 if (qLink2) qLink2.remove();
 
+                // Add Sales Dashboard if not exists
                 if (!sidebar.querySelector('[data-page="salesdashboard"]')) {
                     const link = document.createElement('a');
                     link.className = 'nav-item';
                     link.setAttribute('data-page', 'salesdashboard');
                     link.href = '#salesdashboard';
                     link.innerHTML = `<span class="material-icons">dashboard</span><span class="nav-label">Sales Dashboard</span>`;
+                    
+                    // Insert after Supervisor
                     const supervisorLink = sidebar.querySelector('[data-page="supervisor"]');
-                    if (supervisorLink) {
+                    if (supervisorLink && supervisorLink.nextSibling) {
+                        sidebar.insertBefore(link, supervisorLink.nextSibling);
+                    } else if (supervisorLink) {
                         sidebar.insertBefore(link, supervisorLink.nextSibling);
                     } else {
                         sidebar.appendChild(link);
                     }
+
                     link.addEventListener('click', function(e) {
                         e.preventDefault();
                         router.navigate('salesdashboard');
                         document.getElementById('sidebar').classList.remove('open');
                         document.getElementById('sidebarBackdrop').classList.remove('visible');
                     });
+                    console.log('✅ Sales Dashboard added to sidebar.');
                 }
             }
 
+            // ---- Remove Quotations from bottom nav ----
             const bottomNav = document.getElementById('bottomNav');
             if (bottomNav) {
                 const qBtn = bottomNav.querySelector('[data-page="quotations"]');
@@ -16875,16 +16767,21 @@
                     btn.className = 'nav-btn';
                     btn.setAttribute('data-page', 'salesdashboard');
                     btn.innerHTML = `<span class="material-icons">dashboard</span><span class="nav-label">Sales</span>`;
+                    
                     const supervisorBtn = bottomNav.querySelector('[data-page="supervisor"]');
-                    if (supervisorBtn) {
+                    if (supervisorBtn && supervisorBtn.nextSibling) {
+                        bottomNav.insertBefore(btn, supervisorBtn.nextSibling);
+                    } else if (supervisorBtn) {
                         bottomNav.insertBefore(btn, supervisorBtn.nextSibling);
                     } else {
                         bottomNav.appendChild(btn);
                     }
+
                     btn.addEventListener('click', function(e) {
                         e.preventDefault();
                         router.navigate('salesdashboard');
                     });
+                    console.log('✅ Sales Dashboard added to bottom nav.');
                 }
             }
 
@@ -16894,17 +16791,18 @@
                 window.location.hash = '#salesdashboard';
             }
 
+            // ---- If already on Sales Dashboard, navigate to it ----
             if (window.location.hash === '#salesdashboard' || window.location.hash === '#sales-dashboard') {
                 setTimeout(() => {
                     router.navigate('salesdashboard');
-                }, 200);
+                }, 300);
             }
 
-            console.log('✅ Sales Dashboard with notifications ready.');
+            console.log('✅ Sales Dashboard ready with proper permissions!');
             console.log('📌 Features:');
             console.log('  ✅ Salesperson cards (Ahmed, Rasheed, Kumar)');
             console.log('  ✅ Filter by salesperson name');
-            console.log('  ✅ Filter by delivery status (All/Pending/Delivered/Overdue)');
+            console.log('  ✅ Filter by delivery status');
             console.log('  ✅ Filter by date range');
             console.log('  ✅ View vehicle number and delivery date');
             console.log('  ✅ Click row to view full order details');
