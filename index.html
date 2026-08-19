@@ -15859,5 +15859,390 @@
     }, 200);
 })();
     </script>
+    <script>
+(function() {
+    // Wait for app to be ready
+    const waitForApp = setInterval(function() {
+        if (window.__app && window.__app.router && window.__app.auth && typeof DataService !== 'undefined') {
+            clearInterval(waitForApp);
+            console.log('🔔 Setting up enhanced notification system...');
+
+            const app = window.__app;
+            const router = app.router;
+            const auth = app.auth;
+            const toast = new Components.Toast();
+            const modal = new Components.Modal();
+
+            // ---- 1. Check if user is supervisor/ops/owner ----
+            function isSupervisor() {
+                const user = auth.getCurrentUser();
+                return user && ['supervisor', 'operations_manager', 'owner'].includes(user.role);
+            }
+
+            if (!isSupervisor()) {
+                console.log('ℹ️ Not a supervisor – skipping notifications.');
+                return;
+            }
+
+            // ---- 2. Notification Store ----
+            const notifications = [];
+            let unreadCount = 0;
+            const badge = document.getElementById('notifBadge');
+            let isNotificationPanelOpen = false;
+
+            // ---- 3. Sound helper ----
+            function playNotificationSound() {
+                try {
+                    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                    const oscillator = audioCtx.createOscillator();
+                    const gainNode = audioCtx.createGain();
+                    oscillator.connect(gainNode);
+                    gainNode.connect(audioCtx.destination);
+                    oscillator.frequency.value = 800;
+                    oscillator.type = 'sine';
+                    gainNode.gain.value = 0.15;
+                    oscillator.start();
+                    oscillator.stop(audioCtx.currentTime + 0.15);
+                    setTimeout(() => {
+                        const osc2 = audioCtx.createOscillator();
+                        const gain2 = audioCtx.createGain();
+                        osc2.connect(gain2);
+                        gain2.connect(audioCtx.destination);
+                        osc2.frequency.value = 1000;
+                        osc2.type = 'sine';
+                        gain2.gain.value = 0.12;
+                        osc2.start();
+                        osc2.stop(audioCtx.currentTime + 0.15);
+                    }, 180);
+                } catch(e) { /* silent fallback */ }
+            }
+
+            // ---- 4. Add notification ----
+            function addNotification(type, title, message, data = {}, link = null) {
+                const id = Date.now() + '_' + Math.random().toString(36).substr(2, 6);
+                const notification = {
+                    id,
+                    type, // 'order' or 'approval'
+                    title,
+                    message,
+                    data,
+                    link,
+                    timestamp: new Date(),
+                    read: false
+                };
+                notifications.unshift(notification);
+                unreadCount++;
+                updateBadge();
+                playNotificationSound();
+
+                // Show toast for immediate visibility
+                const icon = type === 'order' ? '🆕' : '✅';
+                toast.show(`${icon} ${title}`, type === 'order' ? 'info' : 'warning', 5000);
+
+                // Show modal popup for important notifications
+                showNotificationPopup(notification);
+
+                // Store in localStorage for persistence
+                try {
+                    const stored = JSON.parse(localStorage.getItem('supervisor_notifications') || '[]');
+                    stored.unshift({ ...notification, timestamp: notification.timestamp.toISOString() });
+                    if (stored.length > 50) stored.length = 50; // keep last 50
+                    localStorage.setItem('supervisor_notifications', JSON.stringify(stored));
+                } catch(e) { /* ignore */ }
+
+                return notification;
+            }
+
+            // ---- 5. Show notification popup ----
+            function showNotificationPopup(notification) {
+                const icon = notification.type === 'order' ? '🆕 New Order' : '✅ Pending Approval';
+                const color = notification.type === 'order' ? '#4a90d9' : '#f0ad4e';
+
+                let actionButtons = '';
+                if (notification.type === 'order') {
+                    actionButtons = `
+                        <button id="notifGoToOrder" class="btn btn-primary btn-sm">
+                            <span class="material-icons" style="font-size:16px;">visibility</span> View Order
+                        </button>
+                        <button id="notifGoToSupervisor" class="btn btn-secondary btn-sm">
+                            <span class="material-icons" style="font-size:16px;">supervisor_account</span> Go to Supervisor
+                        </button>
+                    `;
+                } else {
+                    actionButtons = `
+                        <button id="notifGoToApproval" class="btn btn-warning btn-sm">
+                            <span class="material-icons" style="font-size:16px;">verified</span> Review Now
+                        </button>
+                        <button id="notifGoToSupervisor" class="btn btn-secondary btn-sm">
+                            <span class="material-icons" style="font-size:16px;">supervisor_account</span> Go to Supervisor
+                        </button>
+                    `;
+                }
+
+                modal.open({
+                    title: `${icon}`,
+                    body: `
+                        <div style="padding:0.5rem 0;">
+                            <div style="background:#f8f9fa;border-left:4px solid ${color};padding:0.8rem;border-radius:var(--radius);">
+                                <div style="font-size:1.05rem;font-weight:600;margin-bottom:0.3rem;">${notification.title}</div>
+                                <div style="font-size:0.95rem;color:var(--dark-gray);">${notification.message}</div>
+                                ${notification.data.vehicle ? `<div style="font-size:0.85rem;color:var(--primary-blue);margin-top:0.3rem;">🚗 ${notification.data.vehicle}</div>` : ''}
+                                ${notification.data.customer ? `<div style="font-size:0.85rem;color:var(--primary-blue);">👤 ${notification.data.customer}</div>` : ''}
+                                ${notification.data.task ? `<div style="font-size:0.85rem;color:var(--primary-blue);">📋 ${notification.data.task}</div>` : ''}
+                                <div style="font-size:0.7rem;color:var(--dark-gray);margin-top:0.3rem;">${notification.timestamp.toLocaleString()}</div>
+                            </div>
+                            <hr style="margin:0.8rem 0;" />
+                            <div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+                                ${actionButtons}
+                            </div>
+                        </div>
+                    `,
+                    confirmText: 'Dismiss',
+                    showCancel: false,
+                    onConfirm: () => {
+                        markAsRead(notification.id);
+                        modal.close();
+                    }
+                });
+
+                // Bind modal buttons
+                document.getElementById('notifGoToOrder')?.addEventListener('click', () => {
+                    modal.close();
+                    markAsRead(notification.id);
+                    router.navigate('sales');
+                    setTimeout(() => {
+                        const salesPage = router.currentPage;
+                        if (salesPage && typeof salesPage.showOrderDetails === 'function') {
+                            salesPage.showOrderDetails(notification.data.orderId);
+                        }
+                    }, 400);
+                });
+
+                document.getElementById('notifGoToApproval')?.addEventListener('click', () => {
+                    modal.close();
+                    markAsRead(notification.id);
+                    router.navigate('supervisor');
+                    // Open QC approval for the specific task
+                    setTimeout(() => {
+                        const supPage = router.currentPage;
+                        if (supPage && typeof supPage.showQCApprove === 'function' && notification.data.vehicle) {
+                            supPage.showQCApprove(notification.data.vehicle);
+                        }
+                    }, 500);
+                });
+
+                document.getElementById('notifGoToSupervisor')?.addEventListener('click', () => {
+                    modal.close();
+                    markAsRead(notification.id);
+                    router.navigate('supervisor');
+                });
+            }
+
+            // ---- 6. Update badge ----
+            function updateBadge() {
+                if (badge) {
+                    badge.textContent = unreadCount;
+                    badge.style.display = unreadCount > 0 ? 'flex' : 'none';
+                    if (unreadCount > 0) {
+                        badge.style.background = '#d9534f';
+                        badge.style.animation = 'pulse 0.5s ease 2';
+                    }
+                }
+            }
+
+            // ---- 7. Mark as read ----
+            function markAsRead(id) {
+                const notif = notifications.find(n => n.id === id);
+                if (notif && !notif.read) {
+                    notif.read = true;
+                    unreadCount = Math.max(0, unreadCount - 1);
+                    updateBadge();
+                }
+            }
+
+            function markAllAsRead() {
+                notifications.forEach(n => n.read = true);
+                unreadCount = 0;
+                updateBadge();
+            }
+
+            // ---- 8. Load stored notifications ----
+            function loadStoredNotifications() {
+                try {
+                    const stored = JSON.parse(localStorage.getItem('supervisor_notifications') || '[]');
+                    stored.forEach(n => {
+                        notifications.push({
+                            ...n,
+                            timestamp: new Date(n.timestamp),
+                            read: true // stored ones are considered read
+                        });
+                    });
+                } catch(e) { /* ignore */ }
+            }
+            loadStoredNotifications();
+
+            // ---- 9. Build Notification Panel (popup drawer) ----
+            function showNotificationPanel() {
+                if (isNotificationPanelOpen) {
+                    closeNotificationPanel();
+                    return;
+                }
+
+                const panel = document.createElement('div');
+                panel.id = 'notificationPanel';
+                panel.style.cssText = `
+                    position: fixed;
+                    top: 60px;
+                    right: 10px;
+                    width: 380px;
+                    max-height: 70vh;
+                    background: white;
+                    border-radius: var(--radius);
+                    box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+                    z-index: 3000;
+                    overflow: hidden;
+                    display: flex;
+                    flex-direction: column;
+                    border: 1px solid var(--gray);
+                    animation: slideInRight 0.25s ease;
+                    max-width: 95vw;
+                `;
+                panel.innerHTML = `
+                    <div style="padding:0.8rem 1rem;background:var(--primary-dark);color:white;display:flex;justify-content:space-between;align-items:center;flex-shrink:0;">
+                        <div style="display:flex;align-items:center;gap:0.5rem;">
+                            <span class="material-icons">notifications</span>
+                            <span style="font-weight:600;">Notifications</span>
+                            <span class="badge" style="background:#ff6b6b;color:white;font-size:0.7rem;padding:0.1rem 0.5rem;border-radius:12px;">${unreadCount} new</span>
+                        </div>
+                        <div style="display:flex;gap:0.3rem;">
+                            <button id="panelMarkAllRead" style="background:rgba(255,255,255,0.15);color:white;border:none;padding:0.2rem 0.5rem;border-radius:4px;font-size:0.7rem;cursor:pointer;">Mark all read</button>
+                            <button id="panelClose" style="background:transparent;color:white;border:none;font-size:1.2rem;cursor:pointer;">✕</button>
+                        </div>
+                    </div>
+                    <div id="notificationList" style="overflow-y:auto;flex:1;padding:0.5rem;">
+                        ${notifications.length === 0 ? '<div style="text-align:center;padding:2rem;color:var(--dark-gray);">No notifications yet.</div>' : ''}
+                        ${notifications.map(n => `
+                            <div class="notification-item" data-id="${n.id}" style="padding:0.5rem 0.6rem;margin-bottom:0.3rem;border-radius:var(--radius);background:${n.read ? '#f8f9fa' : '#fff3cd'};border-left:4px solid ${n.type === 'order' ? '#4a90d9' : '#f0ad4e'};cursor:pointer;transition:0.2s;">
+                                <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;">
+                                    <div style="flex:1;">
+                                        <div style="font-weight:600;font-size:0.9rem;">${n.title}</div>
+                                        <div style="font-size:0.8rem;color:var(--dark-gray);">${n.message}</div>
+                                        ${n.data.vehicle ? `<div style="font-size:0.75rem;color:var(--primary-blue);">🚗 ${n.data.vehicle}</div>` : ''}
+                                        <div style="font-size:0.65rem;color:var(--dark-gray);margin-top:0.1rem;">${new Date(n.timestamp).toLocaleString()}</div>
+                                    </div>
+                                    ${!n.read ? `<span class="badge" style="background:#d9534f;color:white;font-size:0.55rem;padding:0.05rem 0.4rem;border-radius:10px;flex-shrink:0;">NEW</span>` : ''}
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+
+                document.body.appendChild(panel);
+                isNotificationPanelOpen = true;
+
+                // Click outside to close
+                setTimeout(() => {
+                    document.addEventListener('click', closePanelOnOutsideClick);
+                }, 100);
+
+                // Panel events
+                document.getElementById('panelClose').addEventListener('click', closeNotificationPanel);
+                document.getElementById('panelMarkAllRead').addEventListener('click', () => {
+                    markAllAsRead();
+                    renderNotificationList();
+                });
+
+                // Click on notification item
+                document.querySelectorAll('.notification-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const id = el.dataset.id;
+                        const notif = notifications.find(n => n.id === id);
+                        if (notif) {
+                            markAsRead(id);
+                            renderNotificationList();
+                            closeNotificationPanel();
+                            if (notif.link) {
+                                router.navigate(notif.link);
+                            } else if (notif.type === 'order') {
+                                router.navigate('sales');
+                            } else if (notif.type === 'approval') {
+                                router.navigate('supervisor');
+                            }
+                        }
+                    });
+                });
+            }
+
+            function closePanelOnOutsideClick(e) {
+                const panel = document.getElementById('notificationPanel');
+                if (panel && !panel.contains(e.target) && e.target.id !== 'notifBtn') {
+                    closeNotificationPanel();
+                }
+            }
+
+            function closeNotificationPanel() {
+                const panel = document.getElementById('notificationPanel');
+                if (panel) panel.remove();
+                isNotificationPanelOpen = false;
+                document.removeEventListener('click', closePanelOnOutsideClick);
+            }
+
+            function renderNotificationList() {
+                const list = document.getElementById('notificationList');
+                if (!list) return;
+                if (notifications.length === 0) {
+                    list.innerHTML = '<div style="text-align:center;padding:2rem;color:var(--dark-gray);">No notifications yet.</div>';
+                    return;
+                }
+                list.innerHTML = notifications.map(n => `
+                    <div class="notification-item" data-id="${n.id}" style="padding:0.5rem 0.6rem;margin-bottom:0.3rem;border-radius:var(--radius);background:${n.read ? '#f8f9fa' : '#fff3cd'};border-left:4px solid ${n.type === 'order' ? '#4a90d9' : '#f0ad4e'};cursor:pointer;transition:0.2s;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.5rem;">
+                            <div style="flex:1;">
+                                <div style="font-weight:600;font-size:0.9rem;">${n.title}</div>
+                                <div style="font-size:0.8rem;color:var(--dark-gray);">${n.message}</div>
+                                ${n.data.vehicle ? `<div style="font-size:0.75rem;color:var(--primary-blue);">🚗 ${n.data.vehicle}</div>` : ''}
+                                <div style="font-size:0.65rem;color:var(--dark-gray);margin-top:0.1rem;">${new Date(n.timestamp).toLocaleString()}</div>
+                            </div>
+                            ${!n.read ? `<span class="badge" style="background:#d9534f;color:white;font-size:0.55rem;padding:0.05rem 0.4rem;border-radius:10px;flex-shrink:0;">NEW</span>` : ''}
+                        </div>
+                    </div>
+                `).join('');
+
+                // Re-bind click events
+                list.querySelectorAll('.notification-item').forEach(el => {
+                    el.addEventListener('click', () => {
+                        const id = el.dataset.id;
+                        const notif = notifications.find(n => n.id === id);
+                        if (notif) {
+                            markAsRead(id);
+                            renderNotificationList();
+                            updateBadge();
+                            closeNotificationPanel();
+                            if (notif.link) router.navigate(notif.link);
+                            else if (notif.type === 'order') router.navigate('sales');
+                            else if (notif.type === 'approval') router.navigate('supervisor');
+                        }
+                    });
+                });
+            }
+
+            // ---- 10. Click bell to open panel ----
+            const notifBtn = document.getElementById('notifBtn');
+            if (notifBtn) {
+                notifBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    showNotificationPanel();
+                });
+            }
+
+            // ---- 11. Listen for NEW ORDERS ----
+            let lastNotifiedOrderId = null;
+            const salesRef = db.collection('sales').orderBy('createdAt', 'desc').limit(5);
+
+            salesRef.onSnapshot((snapshot) => {
+                snapshot.docChanges().forEach((change) => {
+                    if (change.type === 'added') {
+                        const order = change.doc.data();
+    </script>     
 </body>
 </html>
