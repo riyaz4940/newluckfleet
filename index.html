@@ -16818,14 +16818,13 @@
     const waitForApp = setInterval(function() {
         if (window.__app && window.__app.router && window.__app.auth && typeof DataService !== 'undefined') {
             clearInterval(waitForApp);
-            console.log('🔧 FIX: Complete All & Deliver button (with fallback)...');
+            console.log('🔧 FIX: Complete All & Deliver button...');
 
             const app = window.__app;
             const router = app.router;
             const auth = app.auth;
             const toast = new Components.Toast();
             const loader = new Components.Loader();
-            const confirmDialog = new Components.ConfirmationDialog();
 
             // ---- Check if user is supervisor/ops/owner ----
             function isSupervisor() {
@@ -16842,18 +16841,19 @@
             const checkSupervisor = setInterval(function() {
                 if (typeof Pages !== 'undefined' && Pages.Supervisor) {
                     clearInterval(checkSupervisor);
-                    console.log('✅ Supervisor found – applying Complete All fix with fallback...');
+                    console.log('✅ Supervisor found – applying Complete All fix...');
 
                     const SupProto = Pages.Supervisor.prototype;
 
                     // ==============================================================
-                    // 1. IMPROVED COMPLETE ALL & DELIVER METHOD (with fallback)
+                    // 1. COMPLETE ALL & DELIVER METHOD (with fallback)
                     // ==============================================================
                     SupProto.completeAllAndDeliver = async function(vehicleNumber) {
                         console.log(`🚀 Complete All & Deliver triggered for: ${vehicleNumber}`);
                         
-                        // Show confirmation
-                        confirmDialog.open({
+                        // Show confirmation using a simple modal
+                        const modal = new Components.Modal();
+                        modal.open({
                             title: '🚀 Complete All & Deliver',
                             body: `
                                 <div style="padding:0.5rem 0;">
@@ -16867,7 +16867,10 @@
                                     <p style="color:var(--danger);font-weight:600;">⚠️ This action cannot be undone!</p>
                                 </div>
                             `,
+                            confirmText: '✅ Yes, Complete All',
+                            cancelText: 'Cancel',
                             onConfirm: async () => {
+                                modal.close();
                                 loader.show();
                                 try {
                                     const now = new Date().toISOString();
@@ -16889,7 +16892,7 @@
 
                                     // ---- STEP 2: Update all tasks to completed ----
                                     vehicleTasks.forEach(task => {
-                                        console.log(`  ✅ Completing task: ${task.taskName} (${task.id})`);
+                                        console.log(`  ✅ Completing task: ${task.taskName}`);
                                         batch.update(db.collection('production').doc(task.id), {
                                             status: 'completed',
                                             endTime: now,
@@ -16931,7 +16934,6 @@
                                         });
                                     } else {
                                         console.warn(`⚠️ No active order found for ${vehicleNumber} - skipping order update`);
-                                        // Continue anyway - we still complete tasks and archive vehicle
                                         toast.show(`ℹ️ No order found, but tasks completed and vehicle archived.`, 'info', 3000);
                                     }
 
@@ -16995,12 +16997,16 @@
                                 } finally {
                                     loader.hide();
                                 }
+                            },
+                            onCancel: () => {
+                                modal.close();
+                                toast.show('Cancelled', 'info', 1500);
                             }
                         });
                     };
 
                     // ==============================================================
-                    // 2. OVERRIDE renderQueue WITH DEBUGGING
+                    // 2. OVERRIDE renderQueue TO ADD BUTTONS
                     // ==============================================================
                     const origRenderQueue = SupProto.renderQueue;
                     
@@ -17084,6 +17090,11 @@
                                 return;
                             }
 
+                            // Only show button if there are tasks
+                            if (total === 0) {
+                                return;
+                            }
+
                             // Create Complete All button
                             const btn = document.createElement('button');
                             btn.className = 'btn btn-success btn-sm complete-all-btn';
@@ -17109,11 +17120,11 @@
                     };
 
                     // ==============================================================
-                    // 3. FORCE RE-RENDER
+                    // 3. FORCE RE-RENDER IF SUPERVISOR IS OPEN
                     // ==============================================================
                     const currentPage = window.__app?.router?.currentPage;
                     if (currentPage && currentPage.constructor.name === 'Supervisor') {
-                        console.log('🔄 Supervisor active – re-rendering with working buttons.');
+                        console.log('🔄 Supervisor active – re-rendering...');
                         setTimeout(async () => {
                             await currentPage.loadData();
                             currentPage.renderQueue();
@@ -17122,15 +17133,14 @@
                         }, 500);
                     }
 
-                    console.log('✅ Complete All & Deliver fix applied with fallback!');
-                    console.log('📌 The button now works even without a sales order.');
-                    console.log('📌 Check the console for detailed logs.');
+                    console.log('✅ Complete All & Deliver fix applied!');
+                    console.log('📌 Click the green "Complete All & Deliver" button on any vehicle card.');
 
                 }
             }, 300);
         }
     }, 300);
 })();
-                                </script>
+</script>
 </body>
 </html>
