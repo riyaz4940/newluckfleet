@@ -16811,14 +16811,14 @@
         }
     }, 300);
 })();
-</script>
+    </script>
     <script>
 (function() {
     // Wait for app to be ready
     const waitForApp = setInterval(function() {
         if (window.__app && window.__app.router && window.__app.auth && typeof DataService !== 'undefined') {
             clearInterval(waitForApp);
-            console.log('🔧 FIX: Complete All & Deliver button...');
+            console.log('🔧 FIX: Complete All & Deliver button (with fallback)...');
 
             const app = window.__app;
             const router = app.router;
@@ -16842,12 +16842,12 @@
             const checkSupervisor = setInterval(function() {
                 if (typeof Pages !== 'undefined' && Pages.Supervisor) {
                     clearInterval(checkSupervisor);
-                    console.log('✅ Supervisor found – applying Complete All fix...');
+                    console.log('✅ Supervisor found – applying Complete All fix with fallback...');
 
                     const SupProto = Pages.Supervisor.prototype;
 
                     // ==============================================================
-                    // 1. DEFINE THE COMPLETE ALL & DELIVER METHOD
+                    // 1. IMPROVED COMPLETE ALL & DELIVER METHOD (with fallback)
                     // ==============================================================
                     SupProto.completeAllAndDeliver = async function(vehicleNumber) {
                         console.log(`🚀 Complete All & Deliver triggered for: ${vehicleNumber}`);
@@ -16870,24 +16870,16 @@
                             onConfirm: async () => {
                                 loader.show();
                                 try {
-                                    // 1. Find the active sales order
-                                    const sales = await DataService.getSales();
-                                    const order = sales.find(s => 
-                                        s.vehicleNumber === vehicleNumber && 
-                                        s.status !== 'delivered'
-                                    );
-                                    
-                                    if (!order) {
-                                        toast.show('No active order found for this vehicle.', 'warning');
-                                        loader.hide();
-                                        return;
-                                    }
+                                    const now = new Date().toISOString();
+                                    const batch = db.batch();
 
-                                    // 2. Get all production tasks for this vehicle
+                                    // ---- STEP 1: Get ALL tasks for this vehicle ----
                                     const production = await DataService.getProduction();
                                     const vehicleTasks = production.filter(t => 
                                         t.vehicleNumber === vehicleNumber
                                     );
+
+                                    console.log(`📊 Found ${vehicleTasks.length} tasks for ${vehicleNumber}`);
 
                                     if (vehicleTasks.length === 0) {
                                         toast.show('No tasks found for this vehicle.', 'warning');
@@ -16895,11 +16887,9 @@
                                         return;
                                     }
 
-                                    // 3. Update all tasks to completed
-                                    const batch = db.batch();
-                                    const now = new Date().toISOString();
-
+                                    // ---- STEP 2: Update all tasks to completed ----
                                     vehicleTasks.forEach(task => {
+                                        console.log(`  ✅ Completing task: ${task.taskName} (${task.id})`);
                                         batch.update(db.collection('production').doc(task.id), {
                                             status: 'completed',
                                             endTime: now,
@@ -16908,69 +16898,90 @@
                                         });
                                     });
 
-                                    // 4. Update inventory to Delivered
+                                    // ---- STEP 3: Update inventory to Delivered ----
                                     const inventory = await DataService.getInventory();
                                     const vehicle = inventory.find(v => 
                                         v.vehicleNumber === vehicleNumber
                                     );
                                     
                                     if (vehicle) {
+                                        console.log(`  ✅ Archiving vehicle: ${vehicleNumber}`);
                                         batch.update(db.collection('inventory').doc(vehicle.id), {
                                             inventoryStatus: 'Delivered',
                                             updatedAt: now
                                         });
+                                    } else {
+                                        console.warn(`⚠️ Vehicle ${vehicleNumber} not found in inventory`);
                                     }
 
-                                    // 5. Update sales order to delivered
-                                    batch.update(db.collection('sales').doc(order.id), {
-                                        status: 'delivered',
-                                        progress: 100,
-                                        deliveredAt: now,
-                                        updatedAt: now
-                                    });
+                                    // ---- STEP 4: Find and update sales order (with fallback) ----
+                                    const sales = await DataService.getSales();
+                                    const order = sales.find(s => 
+                                        s.vehicleNumber === vehicleNumber && 
+                                        s.status !== 'delivered'
+                                    );
+                                    
+                                    if (order) {
+                                        console.log(`  ✅ Updating order: ${order.token || order.id}`);
+                                        batch.update(db.collection('sales').doc(order.id), {
+                                            status: 'delivered',
+                                            progress: 100,
+                                            deliveredAt: now,
+                                            updatedAt: now
+                                        });
+                                    } else {
+                                        console.warn(`⚠️ No active order found for ${vehicleNumber} - skipping order update`);
+                                        // Continue anyway - we still complete tasks and archive vehicle
+                                        toast.show(`ℹ️ No order found, but tasks completed and vehicle archived.`, 'info', 3000);
+                                    }
 
-                                    // 6. Add to vehicle history
+                                    // ---- STEP 5: Add to vehicle history ----
+                                    console.log(`  ✅ Adding to vehicle history`);
                                     const historyRef = db.collection('vehicleHistory').doc();
                                     batch.set(historyRef, {
                                         vehicleNumber: vehicleNumber,
                                         action: 'Delivered (Complete All)',
-                                        notes: 'All tasks completed and vehicle archived.',
+                                        notes: order ? `Order ${order.token} completed. All tasks done.` : 'All tasks completed manually.',
                                         timestamp: now,
                                         createdAt: now
                                     });
 
-                                    // 7. Update or create delivery record
+                                    // ---- STEP 6: Update or create delivery record ----
                                     const deliveries = await DataService.getDelivery();
                                     let delivery = deliveries.find(d => 
                                         d.vehicleNumber === vehicleNumber
                                     );
                                     
                                     if (delivery) {
+                                        console.log(`  ✅ Updating delivery record`);
                                         batch.update(db.collection('delivery').doc(delivery.id), {
                                             status: 'Delivered',
                                             actualDate: now,
                                             updatedAt: now
                                         });
                                     } else {
+                                        console.log(`  ✅ Creating delivery record`);
                                         const deliveryRef = db.collection('delivery').doc();
                                         batch.set(deliveryRef, {
                                             vehicleNumber: vehicleNumber,
                                             status: 'Delivered',
-                                            estimatedDate: order.deliveryDate || now,
+                                            estimatedDate: order?.deliveryDate || now,
                                             actualDate: now,
                                             keysHandoverPhotoUrl: '',
-                                            remarks: 'Completed all tasks and archived.',
+                                            remarks: order ? `Order ${order.token} completed.` : 'Manual delivery.',
                                             createdAt: now,
                                             updatedAt: now
                                         });
                                     }
 
-                                    // 8. Commit all changes
+                                    // ---- STEP 7: Commit ALL changes ----
+                                    console.log(`  ✅ Committing batch...`);
                                     await batch.commit();
 
+                                    console.log(`✅ ${vehicleNumber} delivered and archived!`);
                                     toast.show(`✅ ${vehicleNumber} delivered and archived!`, 'success', 5000);
                                     
-                                    // 9. Refresh supervisor data
+                                    // ---- STEP 8: Refresh supervisor data ----
                                     await this.loadData();
                                     this.renderQueue();
                                     this.renderStats();
@@ -16979,7 +16990,7 @@
                                     }
 
                                 } catch (err) {
-                                    console.error('Complete All error:', err);
+                                    console.error('❌ Complete All error:', err);
                                     toast.show('Error: ' + err.message, 'error');
                                 } finally {
                                     loader.hide();
@@ -16989,7 +17000,7 @@
                     };
 
                     // ==============================================================
-                    // 2. OVERRIDE renderQueue TO ADD WORKING BUTTONS
+                    // 2. OVERRIDE renderQueue WITH DEBUGGING
                     // ==============================================================
                     const origRenderQueue = SupProto.renderQueue;
                     
@@ -16997,21 +17008,19 @@
                         // Call original render
                         origRenderQueue.call(this);
 
-                        // Now add Complete All buttons to all active vehicle cards
+                        // Get all cards
                         const cards = document.querySelectorAll('.worker-task-card');
                         console.log(`🔍 Found ${cards.length} task cards`);
                         
                         cards.forEach(card => {
-                            // Find vehicle number - try multiple ways
+                            // Find vehicle number
                             let vehicle = null;
                             
-                            // Try from task-vehicle-number
                             const vehicleEl = card.querySelector('.task-vehicle-number');
                             if (vehicleEl) {
                                 vehicle = vehicleEl.textContent.trim();
                             }
                             
-                            // If not found, try from data attribute
                             if (!vehicle) {
                                 const info = card.querySelector('.task-info');
                                 if (info && info.dataset.vehicle) {
@@ -17019,28 +17028,21 @@
                                 }
                             }
                             
-                            // If still not found, try from the card itself
                             if (!vehicle) {
                                 vehicle = card.dataset.vehicle;
                             }
                             
-                            // Skip if no vehicle found
                             if (!vehicle) {
-                                console.warn('⚠️ Could not find vehicle for card:', card);
+                                console.warn('⚠️ Could not find vehicle for card');
                                 return;
                             }
                             
                             console.log(`🚗 Found vehicle: ${vehicle}`);
                             
-                            // Skip if already has the button
                             const actions = card.querySelector('.task-actions');
-                            if (!actions) {
-                                console.warn(`⚠️ No task-actions found for ${vehicle}`);
-                                return;
-                            }
+                            if (!actions) return;
                             
                             if (actions.querySelector('.complete-all-btn')) {
-                                console.log(`ℹ️ ${vehicle} already has Complete All button`);
                                 return;
                             }
 
@@ -17061,20 +17063,13 @@
                             
                             console.log(`📊 ${vehicle}: ${completed}/${total} tasks done (${progress}%)`);
                             
-                            // If all tasks are completed, show "Deliver Now" instead
+                            // If all tasks are completed, show "Deliver Now"
                             if (total > 0 && completed === total) {
                                 const deliverBtn = document.createElement('button');
                                 deliverBtn.className = 'btn btn-success btn-sm deliver-btn';
                                 deliverBtn.innerHTML = `<span class="material-icons" style="font-size:16px;">local_shipping</span> Deliver Now`;
                                 deliverBtn.dataset.vehicle = vehicle;
-                                deliverBtn.style.marginRight = '0.3rem';
-                                deliverBtn.style.background = '#28a745';
-                                deliverBtn.style.color = 'white';
-                                deliverBtn.style.border = 'none';
-                                deliverBtn.style.borderRadius = '4px';
-                                deliverBtn.style.padding = '0.3rem 0.8rem';
-                                deliverBtn.style.fontSize = '0.8rem';
-                                deliverBtn.style.cursor = 'pointer';
+                                deliverBtn.style.cssText = 'margin-right:0.3rem;background:#28a745;color:white;border:none;border-radius:4px;padding:0.3rem 0.8rem;font-size:0.8rem;cursor:pointer;display:inline-flex;align-items:center;gap:0.3rem;';
                                 deliverBtn.addEventListener('click', (e) => {
                                     e.stopPropagation();
                                     console.log(`🔘 Deliver Now clicked for ${vehicle}`);
@@ -17082,7 +17077,6 @@
                                 });
                                 actions.prepend(deliverBtn);
                                 
-                                // Show "All done" label
                                 const doneLabel = document.createElement('span');
                                 doneLabel.style.cssText = 'font-size:0.7rem;color:var(--success);margin-left:0.3rem;font-weight:600;';
                                 doneLabel.textContent = '✅ All tasks done!';
@@ -17090,23 +17084,12 @@
                                 return;
                             }
 
-                            // ---- Create the Complete All button ----
+                            // Create Complete All button
                             const btn = document.createElement('button');
                             btn.className = 'btn btn-success btn-sm complete-all-btn';
                             btn.innerHTML = `<span class="material-icons" style="font-size:16px;">check_circle</span> Complete All & Deliver`;
                             btn.dataset.vehicle = vehicle;
-                            btn.style.marginRight = '0.3rem';
-                            btn.style.background = '#28a745';
-                            btn.style.color = 'white';
-                            btn.style.border = 'none';
-                            btn.style.borderRadius = '4px';
-                            btn.style.padding = '0.3rem 0.8rem';
-                            btn.style.fontSize = '0.8rem';
-                            btn.style.fontWeight = '500';
-                            btn.style.cursor = 'pointer';
-                            btn.style.display = 'inline-flex';
-                            btn.style.alignItems = 'center';
-                            btn.style.gap = '0.3rem';
+                            btn.style.cssText = 'margin-right:0.3rem;background:#28a745;color:white;border:none;border-radius:4px;padding:0.3rem 0.8rem;font-size:0.8rem;font-weight:500;cursor:pointer;display:inline-flex;align-items:center;gap:0.3rem;';
                             
                             btn.addEventListener('click', (e) => {
                                 e.stopPropagation();
@@ -17114,7 +17097,6 @@
                                 this.completeAllAndDeliver(vehicle);
                             });
 
-                            // Add progress label
                             const label = document.createElement('span');
                             label.style.cssText = 'font-size:0.7rem;color:var(--dark-gray);margin-left:0.3rem;';
                             label.textContent = `${progress}% done`;
@@ -17127,7 +17109,7 @@
                     };
 
                     // ==============================================================
-                    // 3. FORCE RE-RENDER IF SUPERVISOR IS ALREADY OPEN
+                    // 3. FORCE RE-RENDER
                     // ==============================================================
                     const currentPage = window.__app?.router?.currentPage;
                     if (currentPage && currentPage.constructor.name === 'Supervisor') {
@@ -17140,20 +17122,15 @@
                         }, 500);
                     }
 
-                    console.log('✅ Complete All & Deliver fix applied!');
-                    console.log('📌 Click the green "Complete All & Deliver" button on any vehicle card.');
-                    console.log('📌 It will:');
-                    console.log('  ✅ Complete all tasks');
-                    console.log('  ✅ Mark order as delivered');
-                    console.log('  ✅ Archive the vehicle');
-                    console.log('  ✅ Create delivery record');
-                    console.log('  ✅ Add to vehicle history');
+                    console.log('✅ Complete All & Deliver fix applied with fallback!');
+                    console.log('📌 The button now works even without a sales order.');
+                    console.log('📌 Check the console for detailed logs.');
 
                 }
             }, 300);
         }
     }, 300);
 })();
-    </script>
+                                </script>
 </body>
 </html>
