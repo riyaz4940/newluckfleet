@@ -17142,341 +17142,415 @@
     }, 300);
 })();
 </script>
-    <script>
+<script>
 (function() {
     // Wait for Supervisor to be ready
     const wait = setInterval(() => {
         if (window.__app && window.__app.router && typeof Pages !== 'undefined' && Pages.Supervisor) {
             clearInterval(wait);
-            console.log('🔧 FIX: Delivery flow - properly remove from queue...');
+            console.log('🚀 DELIVER BUTTON WITH WORKER NAME & PROGRESS - Complete Fix...');
 
             const SupProto = Pages.Supervisor.prototype;
 
-            // ---- 1. Override showDelivery to handle removal ----
-            const origShowDelivery = SupProto.showDelivery;
-            
-            SupProto.showDelivery = async function(vehicleNumber) {
-                console.log(`📦 Delivery initiated for: ${vehicleNumber}`);
-                
-                const vehicle = this.priorityQueue.find(v => v.vehicleNumber === vehicleNumber || 
-                    (v.orderType === 'non-vehicle' && v.productName === vehicleNumber));
-                
-                if (!vehicle) { 
-                    this.toast.show('Item not found', 'warning'); 
-                    return; 
+            // ---- Helper functions ----
+            function getDisplayName(item) {
+                if (!item) return '';
+                if (item.orderType === 'non-vehicle') {
+                    return item.productName || item.productType || item.vehicleNumber || 'Non-Vehicle';
                 }
-                
-                // Get or create delivery record
-                let deliveries = await DataService.getDelivery();
-                let delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
-                
-                if (!delivery) {
-                    await DataService.addDelivery({
-                        productionId: null,
-                        vehicleNumber: vehicleNumber,
-                        status: 'Ready',
-                        estimatedDate: vehicle.deliveryDate,
-                        actualDate: '',
-                        keysHandoverPhotoUrl: '',
-                        remarks: ''
-                    });
-                    deliveries = await DataService.getDelivery();
-                    delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
-                }
-                
-                if (!delivery) { 
-                    this.toast.show('Delivery record not found', 'error'); 
-                    return; 
-                }
-
-                // Build delivery form with photo upload
-                const form = `
-                    <div style="padding:0.5rem 0;">
-                        <p><strong>🚗 ${vehicleNumber}</strong> — ready for delivery</p>
-                        <p>Estimated Delivery: ${Utils.dateUtils.format(delivery.estimatedDate)}</p>
-                        <p>Status: ${delivery.status}</p>
-                        
-                        <div class="form-group">
-                            <label>📸 Keys Handover Photo</label>
-                            <div class="photo-upload-box" id="deliveryPhotoBox" style="cursor:pointer;padding:1rem;border:2px dashed var(--gray);border-radius:var(--radius);text-align:center;">
-                                ${delivery.keysHandoverPhotoUrl ? '✅ Photo uploaded' : '📤 Tap to upload photo'}
-                                <input type="file" accept="image/*" id="deliveryPhotoInput" style="display:none;" />
-                            </div>
-                            ${delivery.keysHandoverPhotoUrl ? `<img src="${delivery.keysHandoverPhotoUrl}" style="max-width:100%;max-height:150px;margin-top:0.5rem;border-radius:var(--radius);" />` : ''}
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>📝 Remarks</label>
-                            <textarea id="deliveryRemarks" rows="2" style="width:100%;padding:0.4rem;border:1px solid var(--gray);border-radius:var(--radius);">${delivery.remarks || ''}</textarea>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label>Action</label>
-                            <select id="deliveryAction" style="width:100%;padding:0.4rem;border:1px solid var(--gray);border-radius:var(--radius);">
-                                <option value="Delivered">✅ Mark as Delivered</option>
-                                <option value="Completed">📦 Mark as Completed</option>
-                            </select>
-                        </div>
-                    </div>
-                `;
-
-                const modal = new Components.Modal();
-                modal.open({
-                    title: `📦 Delivery - ${vehicleNumber}`,
-                    body: form,
-                    confirmText: '✅ Confirm Delivery',
-                    cancelText: 'Cancel',
-                    onConfirm: async () => {
-                        const action = document.getElementById('deliveryAction').value;
-                        const remarks = document.getElementById('deliveryRemarks').value;
-                        const photoInput = document.getElementById('deliveryPhotoInput');
-                        let photoUrl = delivery.keysHandoverPhotoUrl;
-                        
-                        // Upload photo if selected
-                        if (photoInput.files.length > 0) {
-                            try {
-                                const file = photoInput.files[0];
-                                const { base64, mimeType } = await Utils.fileToBase64(file);
-                                const result = await PhotoService.uploadPhotoFile({
-                                    vehicleNumber: vehicleNumber,
-                                    photoType: 'KeysHandover',
-                                    base64Data: base64,
-                                    mimeType: mimeType,
-                                    productionId: delivery.productionId || '',
-                                    taskName: 'Delivery',
-                                    uploadedBy: this.app.auth.getCurrentUser()?.id || ''
-                                });
-                                photoUrl = result.url;
-                                console.log('✅ Photo uploaded:', photoUrl);
-                            } catch (err) {
-                                this.toast.show('Failed to upload photo: ' + err.message, 'error');
-                                return;
-                            }
-                        }
-
-                        const loader = new Components.Loader();
-                        loader.show();
-                        
-                        try {
-                            // ---- STEP 1: Complete the delivery ----
-                            await DataService.completeDelivery(delivery.id, action, remarks, photoUrl);
-                            
-                            // ---- STEP 2: Update inventory to Delivered ----
-                            const inventory = await DataService.getInventory();
-                            const vehicleItem = inventory.find(v => v.vehicleNumber === vehicleNumber);
-                            if (vehicleItem) {
-                                await DataService.updateInventory(vehicleItem.id, {
-                                    inventoryStatus: 'Delivered',
-                                    updatedAt: new Date().toISOString()
-                                });
-                                console.log(`✅ Inventory updated: ${vehicleNumber} → Delivered`);
-                            }
-                            
-                            // ---- STEP 3: Update sales order ----
-                            const sales = await DataService.getSales();
-                            const order = sales.find(s => s.vehicleNumber === vehicleNumber && s.status !== 'delivered');
-                            if (order) {
-                                await DataService.updateSales(order.id, {
-                                    status: 'delivered',
-                                    progress: 100,
-                                    deliveredAt: new Date().toISOString()
-                                });
-                                console.log(`✅ Order updated: ${order.token} → delivered`);
-                            }
-                            
-                            // ---- STEP 4: Complete all remaining tasks ----
-                            const production = await DataService.getProduction();
-                            const tasks = production.filter(t => t.vehicleNumber === vehicleNumber && t.status !== 'completed');
-                            const batch = db.batch();
-                            const now = new Date().toISOString();
-                            tasks.forEach(task => {
-                                batch.update(db.collection('production').doc(task.id), {
-                                    status: 'completed',
-                                    endTime: now,
-                                    updatedAt: now
-                                });
-                                console.log(`✅ Task completed: ${task.taskName}`);
-                            });
-                            await batch.commit();
-                            
-                            // ---- STEP 5: Refresh Supervisor data ----
-                            await this.loadData();
-                            this.renderQueue();
-                            this.renderStats();
-                            
-                            // ---- STEP 6: Remove card from DOM ----
-                            document.querySelectorAll('.worker-task-card').forEach(card => {
-                                const el = card.querySelector('.task-vehicle-number');
-                                if (el && el.textContent.trim() === vehicleNumber) {
-                                    card.remove();
-                                    console.log(`🗑️ Card removed for ${vehicleNumber}`);
-                                }
-                            });
-                            
-                            // ---- STEP 7: Show success ----
-                            this.toast.show(`✅ ${vehicleNumber} delivered and archived!`, 'success', 5000);
-                            modal.close();
-                            
-                            // ---- STEP 8: Fallback reload ----
-                            setTimeout(() => {
-                                const stillVisible = document.querySelector(`.worker-task-card .task-vehicle-number:contains("${vehicleNumber}")`);
-                                if (stillVisible) {
-                                    console.log('🔄 Still visible - reloading page...');
-                                    location.reload();
-                                }
-                            }, 2000);
-                            
-                        } catch (err) {
-                            console.error('❌ Delivery error:', err);
-                            this.toast.show('Error: ' + err.message, 'error');
-                        } finally {
-                            loader.hide();
-                        }
-                    }
-                });
-
-                // ---- Bind photo upload ----
-                setTimeout(() => {
-                    const box = document.getElementById('deliveryPhotoBox');
-                    const input = document.getElementById('deliveryPhotoInput');
-                    if (box && input) {
-                        box.addEventListener('click', () => input.click());
-                        input.addEventListener('change', (e) => {
-                            if (e.target.files.length > 0) {
-                                box.innerHTML = '✅ Photo selected<br><small style="color:var(--dark-gray);">Click to change</small>';
-                                box.style.borderColor = 'var(--success)';
-                                box.style.background = '#e8f5e9';
-                                // Show preview
-                                const reader = new FileReader();
-                                reader.onload = (ev) => {
-                                    const preview = document.createElement('img');
-                                    preview.src = ev.target.result;
-                                    preview.style.cssText = 'max-width:100%;max-height:150px;margin-top:0.5rem;border-radius:var(--radius);';
-                                    box.parentNode.appendChild(preview);
-                                };
-                                reader.readAsDataURL(e.target.files[0]);
-                            }
-                        });
-                    }
-                }, 100);
-            };
-
-            // ---- 2. Override renderQueue to ensure delivery button works ----
-            const origRenderQueue = SupProto.renderQueue;
-            SupProto.renderQueue = function() {
-                origRenderQueue.call(this);
-                
-                // Ensure delivery buttons trigger the updated showDelivery
-                document.querySelectorAll('.delivery').forEach(btn => {
-                    btn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        const vehicle = btn.dataset.vehicle;
-                        if (vehicle) {
-                            this.showDelivery(vehicle);
-                        }
-                    });
-                });
-            };
-
-            // ---- 3. Also patch the "Complete All" button to handle delivery ----
-            const origCompleteAll = SupProto.completeAllAndDeliver;
-            if (origCompleteAll) {
-                SupProto.completeAllAndDeliver = async function(vehicleNumber) {
-                    console.log(`🚀 Complete All & Deliver called for: ${vehicleNumber}`);
-                    if (!confirm(`⚠️ Complete ALL tasks for "${vehicleNumber}"?\n\n✅ All tasks → Completed\n📦 Order → Delivered\n🏷️ Vehicle → Archived\n\n⚠️ Cannot be undone!`)) return;
-
-                    const toast = new Components.Toast();
-                    const loader = new Components.Loader();
-                    loader.show();
-
-                    try {
-                        const now = new Date().toISOString();
-                        const batch = db.batch();
-
-                        // Complete all tasks
-                        const production = await DataService.getProduction();
-                        const tasks = production.filter(t => t.vehicleNumber === vehicleNumber);
-                        if (tasks.length === 0) { toast.show('No tasks.', 'warning'); loader.hide(); return; }
-                        tasks.forEach(t => {
-                            batch.update(db.collection('production').doc(t.id), {
-                                status: 'completed', endTime: now, updatedAt: now, actualHours: t.actualHours || 4
-                            });
-                        });
-
-                        // Archive vehicle
-                        const inventory = await DataService.getInventory();
-                        const vehicle = inventory.find(v => v.vehicleNumber === vehicleNumber);
-                        if (vehicle) {
-                            batch.update(db.collection('inventory').doc(vehicle.id), {
-                                inventoryStatus: 'Delivered', updatedAt: now
-                            });
-                        }
-
-                        // Update order
-                        const sales = await DataService.getSales();
-                        const order = sales.find(s => s.vehicleNumber === vehicleNumber && s.status !== 'delivered');
-                        if (order) {
-                            batch.update(db.collection('sales').doc(order.id), {
-                                status: 'delivered', progress: 100, deliveredAt: now, updatedAt: now
-                            });
-                        }
-
-                        // History
-                        const historyRef = db.collection('vehicleHistory').doc();
-                        batch.set(historyRef, {
-                            vehicleNumber, action: 'Delivered (Complete All)',
-                            notes: order ? `Order ${order.token} completed.` : 'Manual.',
-                            timestamp: now, createdAt: now
-                        });
-
-                        // Delivery record
-                        const deliveries = await DataService.getDelivery();
-                        let delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
-                        if (delivery) {
-                            batch.update(db.collection('delivery').doc(delivery.id), {
-                                status: 'Delivered', actualDate: now, updatedAt: now
-                            });
-                        } else {
-                            const dRef = db.collection('delivery').doc();
-                            batch.set(dRef, {
-                                vehicleNumber, status: 'Delivered',
-                                estimatedDate: order?.deliveryDate || now, actualDate: now,
-                                keysHandoverPhotoUrl: '', remarks: order ? `Order ${order.token} completed.` : 'Manual.',
-                                createdAt: now, updatedAt: now
-                            });
-                        }
-
-                        await batch.commit();
-                        toast.show(`✅ ${vehicleNumber} delivered!`, 'success', 5000);
-
-                        await this.loadData();
-                        this.renderQueue();
-                        this.renderStats();
-
-                        document.querySelectorAll('.worker-task-card').forEach(c => {
-                            const el = c.querySelector('.task-vehicle-number');
-                            if (el && el.textContent.trim() === vehicleNumber) c.remove();
-                        });
-
-                        setTimeout(() => {
-                            const stillVisible = document.querySelector(`.worker-task-card .task-vehicle-number:contains("${vehicleNumber}")`);
-                            if (stillVisible) location.reload();
-                        }, 2000);
-
-                    } catch (err) {
-                        console.error(err);
-                        toast.show('Error: ' + err.message, 'error');
-                    } finally {
-                        loader.hide();
-                    }
-                };
-                console.log('✅ CompleteAllAndDeliver updated with delivery removal.');
+                return item.vehicleNumber || item.productName || 'Unknown';
             }
 
-            console.log('✅ Delivery flow fixed - vehicles will be removed from queue.');
-        }
-    }, 200);
-})();
-    </script>
+            function getIdentifier(item) {
+                if (!item) return '';
+                if (item.orderType === 'non-vehicle') {
+                    return item.productName || item.productType || item.vehicleNumber || '';
+                }
+                return item.vehicleNumber || item.productName || '';
+            }
+
+            function getWorkerNames(tasks) {
+                const workerIds = new Set();
+                tasks.forEach(t => {
+                    if (t.assignedWorkerId) {
+                        t.assignedWorkerId.split(',').filter(Boolean).forEach(id => {
+                            workerIds.add(id.trim());
+                        });
+                    }
+                });
+                return Array.from(workerIds);
+            }
+
+            async function getWorkerNamesString(tasks) {
+                const ids = getWorkerNames(tasks);
+                if (ids.length === 0) return 'Unassigned';
+                const workers = await DataService.getWorkers();
+                const names = ids.map(id => {
+                    const w = workers.find(w => String(w.id) === id);
+                    return w ? w.name : 'Unknown';
+                });
+                return names.join(', ');
+            }
+
+            // ==============================================================
+            // 1. DELIVER FUNCTION - Completes ALL tasks and delivers
+            // ==============================================================
+            SupProto.deliverWithWorker = async function(identifier) {
+                console.log(`📦 Deliver with worker called for: ${identifier}`);
+                
+                const item = this.priorityQueue.find(v => getIdentifier(v) === identifier);
+                if (!item) {
+                    this.toast.show(`Item "${identifier}" not found`, 'warning');
+                    return;
+                }
+
+                const displayName = getDisplayName(item);
+                const isNonVehicle = item.orderType === 'non-vehicle';
+                const tasks = item.tasks || [];
+                
+                // Get worker names
+                const workerIds = getWorkerNames(tasks);
+                let workerNames = 'Unassigned';
+                if (workerIds.length > 0) {
+                    const workers = await DataService.getWorkers();
+                    const names = workerIds.map(id => {
+                        const w = workers.find(w => String(w.id) === id);
+                        return w ? w.name : 'Unknown';
+                    });
+                    workerNames = names.join(', ');
+                }
+
+                // Count tasks
+                const totalTasks = tasks.length;
+                const completedTasks = tasks.filter(t => t.status === 'completed').length;
+                const pendingTasks = totalTasks - completedTasks;
+
+                // Show confirmation with progress and worker info
+                const progress = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+                
+                if (!confirm(
+                    `🚚 DELIVER ITEM\n\n` +
+                    `Item: ${displayName}\n` +
+                    `Type: ${isNonVehicle ? '📦 Non-Vehicle' : '🚗 Vehicle'}\n` +
+                    `👷 Workers: ${workerNames}\n` +
+                    `📊 Progress: ${progress}% (${completedTasks}/${totalTasks} tasks)\n` +
+                    `${pendingTasks > 0 ? `⏳ ${pendingTasks} task(s) will be completed automatically` : '✅ All tasks already complete'}\n\n` +
+                    `✅ Mark as DELIVERED?\n` +
+                    `⚠️ This will complete all pending tasks and archive the item.`
+                )) {
+                    console.log('❌ Delivery cancelled');
+                    return;
+                }
+
+                const toast = new Components.Toast();
+                const loader = new Components.Loader();
+                loader.show();
+
+                try {
+                    const now = new Date().toISOString();
+                    const batch = db.batch();
+
+                    // ---- STEP 1: Complete ALL tasks ----
+                    const production = await DataService.getProduction();
+                    const allTasks = production.filter(t => {
+                        const taskId = t.vehicleNumber || t.productName || '';
+                        return (taskId === identifier || taskId === displayName);
+                    });
+                    
+                    console.log(`📊 Found ${allTasks.length} tasks for ${displayName}`);
+                    
+                    allTasks.forEach(task => {
+                        console.log(`  ✅ Completing: ${task.taskName} (by ${workerNames})`);
+                        batch.update(db.collection('production').doc(task.id), {
+                            status: 'completed',
+                            endTime: now,
+                            updatedAt: now,
+                            actualHours: task.actualHours || 4,
+                            completedBy: workerNames,
+                            completedAt: now
+                        });
+                    });
+
+                    // ---- STEP 2: For vehicles, update inventory ----
+                    if (!isNonVehicle) {
+                        const inventory = await DataService.getInventory();
+                        const vehicle = inventory.find(v => v.vehicleNumber === identifier);
+                        if (vehicle) {
+                            console.log(`  ✅ Archiving vehicle: ${identifier}`);
+                            batch.update(db.collection('inventory').doc(vehicle.id), {
+                                inventoryStatus: 'Delivered',
+                                deliveredBy: workerNames,
+                                deliveredAt: now,
+                                updatedAt: now
+                            });
+                        }
+                    }
+
+                    // ---- STEP 3: Update sales order ----
+                    const sales = await DataService.getSales();
+                    const order = sales.find(s => {
+                        if (isNonVehicle) {
+                            const productName = s.productName || s.productType || '';
+                            return (productName === identifier || productName === displayName) && s.status !== 'delivered';
+                        }
+                        return s.vehicleNumber === identifier && s.status !== 'delivered';
+                    });
+                    
+                    if (order) {
+                        console.log(`  ✅ Updating order: ${order.token}`);
+                        batch.update(db.collection('sales').doc(order.id), {
+                            status: 'delivered',
+                            progress: 100,
+                            deliveredBy: workerNames,
+                            deliveredAt: now,
+                            updatedAt: now
+                        });
+                    }
+
+                    // ---- STEP 4: Add to history ----
+                    const historyRef = db.collection('vehicleHistory').doc();
+                    batch.set(historyRef, {
+                        vehicleNumber: displayName,
+                        action: 'Delivered',
+                        workerNames: workerNames,
+                        taskCount: allTasks.length,
+                        progress: 100,
+                        notes: `Delivered by ${workerNames}. ${allTasks.length} tasks completed.`,
+                        timestamp: now,
+                        createdAt: now
+                    });
+
+                    // ---- STEP 5: Delivery record ----
+                    const deliveries = await DataService.getDelivery();
+                    let delivery = deliveries.find(d => d.vehicleNumber === displayName);
+                    if (delivery) {
+                        batch.update(db.collection('delivery').doc(delivery.id), {
+                            status: 'Delivered',
+                            deliveredBy: workerNames,
+                            actualDate: now,
+                            updatedAt: now
+                        });
+                    } else {
+                        const dRef = db.collection('delivery').doc();
+                        batch.set(dRef, {
+                            vehicleNumber: displayName,
+                            status: 'Delivered',
+                            deliveredBy: workerNames,
+                            estimatedDate: order?.deliveryDate || now,
+                            actualDate: now,
+                            keysHandoverPhotoUrl: '',
+                            remarks: `Delivered by ${workerNames}.`,
+                            createdAt: now,
+                            updatedAt: now
+                        });
+                    }
+
+                    // ---- STEP 6: Commit ----
+                    console.log('  ✅ Committing batch...');
+                    await batch.commit();
+
+                    console.log(`✅ ${displayName} DELIVERED by ${workerNames}!`);
+                    toast.show(`✅ ${displayName} delivered by ${workerNames}!`, 'success', 5000);
+
+                    // ---- STEP 7: Refresh ----
+                    await this.loadData();
+                    this.renderQueue();
+                    this.renderStats();
+
+                    // ---- STEP 8: Remove card ----
+                    document.querySelectorAll('.worker-task-card').forEach(c => {
+                        const el = c.querySelector('.task-vehicle-number');
+                        if (el && el.textContent.trim() === displayName) {
+                            console.log(`  🗑️ Removing card for ${displayName}`);
+                            c.remove();
+                        }
+                    });
+
+                    // ---- STEP 9: Fallback reload ----
+                    setTimeout(() => {
+                        const stillVisible = document.querySelector(`.worker-task-card .task-vehicle-number`);
+                        if (stillVisible && stillVisible.textContent.trim() === displayName) {
+                            console.log('🔄 Still visible - reloading...');
+                            location.reload();
+                        }
+                    }, 2000);
+
+                } catch (err) {
+                    console.error('❌ Delivery error:', err);
+                    toast.show('Error: ' + err.message, 'error');
+                } finally {
+                    loader.hide();
+                }
+            };
+
+            // ==============================================================
+            // 2. RENDER QUEUE - Add Deliver button with progress & worker name
+            // ==============================================================
+            const origRenderQueue = SupProto.renderQueue;
+            
+            SupProto.renderQueue = function() {
+                origRenderQueue.call(this);
+
+                const cards = document.querySelectorAll('.worker-task-card');
+                console.log(`🔍 Adding deliver buttons to ${cards.length} cards`);
+
+                cards.forEach(async (card) => {
+                    let identifier = card.querySelector('.task-vehicle-number')?.textContent?.trim() || 
+                                     card.dataset?.vehicle;
+                    if (!identifier) return;
+
+                    const actions = card.querySelector('.task-actions');
+                    if (!actions) return;
+
+                    // Skip if button already exists
+                    if (actions.querySelector('.deliver-worker-btn')) return;
+
+                    // Get progress from priorityQueue
+                    const group = this.priorityQueue?.find(v => getIdentifier(v) === identifier);
+                    if (!group) return;
+                    
+                    const tasks = group.tasks || [];
+                    const total = tasks.length;
+                    if (total === 0) return;
+                    
+                    const completed = tasks.filter(t => t.status === 'completed').length;
+                    const progress = Math.round((completed / total) * 100);
+
+                    // Get worker names
+                    const workerIds = getWorkerNames(tasks);
+                    let workerDisplay = '👷 Unassigned';
+                    let workerNames = 'Unassigned';
+                    if (workerIds.length > 0) {
+                        const workers = await DataService.getWorkers();
+                        const names = workerIds.map(id => {
+                            const w = workers.find(w => String(w.id) === id);
+                            return w ? w.name : 'Unknown';
+                        });
+                        workerNames = names.join(', ');
+                        workerDisplay = `👷 ${workerNames}`;
+                    }
+
+                    // ---- REMOVE OLD BUTTONS ----
+                    actions.querySelectorAll('.complete-all-btn, .deliver-btn, .custom-deliver-btn, .deliver-worker-btn, .complete-all').forEach(el => el.remove());
+                    actions.querySelectorAll('.btn-success, .btn-primary').forEach(el => {
+                        if (el.textContent.includes('Complete') || el.textContent.includes('Deliver')) {
+                            el.remove();
+                        }
+                    });
+
+                    // ---- CREATE PROGRESS BAR ----
+                    const progressContainer = document.createElement('div');
+                    progressContainer.style.cssText = 'width:100%;margin-bottom:0.3rem;display:flex;align-items:center;gap:0.5rem;';
+                    
+                    const progressBar = document.createElement('div');
+                    progressBar.style.cssText = 'flex:1;height:6px;background:#e9ecef;border-radius:3px;overflow:hidden;';
+                    
+                    const progressFill = document.createElement('div');
+                    progressFill.style.cssText = `height:100%;width:${progress}%;background:${progress === 100 ? '#28a745' : progress > 50 ? '#ffc107' : '#dc3545'};transition:width 0.5s;border-radius:3px;`;
+                    progressBar.appendChild(progressFill);
+                    
+                    const progressLabel = document.createElement('span');
+                    progressLabel.style.cssText = 'font-size:0.7rem;font-weight:600;color:var(--dark-gray);min-width:35px;text-align:right;';
+                    progressLabel.textContent = `${progress}%`;
+                    
+                    progressContainer.appendChild(progressBar);
+                    progressContainer.appendChild(progressLabel);
+
+                    // ---- CREATE DELIVER BUTTON WITH WORKER NAME ----
+                    const deliverBtn = document.createElement('button');
+                    deliverBtn.className = 'btn btn-success btn-sm deliver-worker-btn';
+                    deliverBtn.innerHTML = `🚚 Deliver (${workerDisplay})`;
+                    deliverBtn.dataset.vehicle = identifier;
+                    deliverBtn.style.cssText = `
+                        margin-right: 0.3rem;
+                        background: ${progress === 100 ? '#28a745' : '#ffc107'};
+                        color: ${progress === 100 ? 'white' : '#333'};
+                        border: none;
+                        border-radius: 4px;
+                        padding: 0.3rem 0.8rem;
+                        font-size: 0.8rem;
+                        cursor: pointer;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.3rem;
+                        font-weight: 500;
+                    `;
+                    
+                    deliverBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        console.log(`🔘 Deliver clicked for ${identifier}`);
+                        this.deliverWithWorker(identifier);
+                    });
+
+                    // ---- CREATE WORKER BADGE ----
+                    const badge = document.createElement('span');
+                    badge.style.cssText = `
+                        font-size: 0.7rem;
+                        color: var(--primary-blue);
+                        background: #e8f0fe;
+                        padding: 0.1rem 0.5rem;
+                        border-radius: 12px;
+                        margin-right: 0.3rem;
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 0.2rem;
+                    `;
+                    badge.textContent = workerDisplay;
+
+                    // ---- Clear actions and rebuild ----
+                    // Keep any existing buttons we want to keep
+                    const existingButtons = actions.querySelectorAll('.btn');
+                    const keepButtons = [];
+                    existingButtons.forEach(btn => {
+                        // Keep view-timeline, qc-approve, etc.
+                        if (btn.textContent.includes('Timeline') || 
+                            btn.textContent.includes('QC') || 
+                            btn.textContent.includes('View')) {
+                            keepButtons.push(btn);
+                        }
+                    });
+
+                    // Clear everything
+                    actions.innerHTML = '';
+                    
+                    // Add progress bar first
+                    actions.appendChild(progressContainer);
+
+                    // Add deliver button and badge
+                    const btnWrapper = document.createElement('div');
+                    btnWrapper.style.cssText = 'display:flex;align-items:center;gap:0.3rem;flex-wrap:wrap;width:100%;';
+                    btnWrapper.appendChild(badge);
+                    btnWrapper.appendChild(deliverBtn);
+                    actions.appendChild(btnWrapper);
+
+                    // Add back other buttons
+                    keepButtons.forEach(btn => {
+                        actions.appendChild(btn);
+                    });
+
+                    console.log(`✅ Added deliver button for ${identifier} (${progress}%, ${workerDisplay})`);
+                });
+            };
+
+            // ==============================================================
+            // 3. FORCE RE-RENDER IF SUPERVISOR IS OPEN
+            // ==============================================================
+            const page = window.__app?.router?.currentPage;
+            if (page && page.constructor.name === 'Supervisor') {
+                console.log('🔄 Supervisor active – re-rendering...');
+                setTimeout(async () => {
+                    await page.loadData();
+                    page.renderQueue();
+                    page.renderStats();
+                    console.log('✅ Supervisor re-rendered with deliver buttons.');
+                }, 500);
+            }
+
+            console.log('✅ Deliver button with Worker Name & Progress installed!');
+            console.log('📌 Each item shows:');
+            console.log('  📊 Progress bar with percentage');
+            console.log('  👷 Assigned worker name(s)');
+       console.log('  🚚 Deliver button - one click
+</script>
 </body>
 </html>
