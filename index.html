@@ -17142,5 +17142,341 @@
     }, 300);
 })();
 </script>
+    <script>
+(function() {
+    // Wait for Supervisor to be ready
+    const wait = setInterval(() => {
+        if (window.__app && window.__app.router && typeof Pages !== 'undefined' && Pages.Supervisor) {
+            clearInterval(wait);
+            console.log('🔧 FIX: Delivery flow - properly remove from queue...');
+
+            const SupProto = Pages.Supervisor.prototype;
+
+            // ---- 1. Override showDelivery to handle removal ----
+            const origShowDelivery = SupProto.showDelivery;
+            
+            SupProto.showDelivery = async function(vehicleNumber) {
+                console.log(`📦 Delivery initiated for: ${vehicleNumber}`);
+                
+                const vehicle = this.priorityQueue.find(v => v.vehicleNumber === vehicleNumber || 
+                    (v.orderType === 'non-vehicle' && v.productName === vehicleNumber));
+                
+                if (!vehicle) { 
+                    this.toast.show('Item not found', 'warning'); 
+                    return; 
+                }
+                
+                // Get or create delivery record
+                let deliveries = await DataService.getDelivery();
+                let delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
+                
+                if (!delivery) {
+                    await DataService.addDelivery({
+                        productionId: null,
+                        vehicleNumber: vehicleNumber,
+                        status: 'Ready',
+                        estimatedDate: vehicle.deliveryDate,
+                        actualDate: '',
+                        keysHandoverPhotoUrl: '',
+                        remarks: ''
+                    });
+                    deliveries = await DataService.getDelivery();
+                    delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
+                }
+                
+                if (!delivery) { 
+                    this.toast.show('Delivery record not found', 'error'); 
+                    return; 
+                }
+
+                // Build delivery form with photo upload
+                const form = `
+                    <div style="padding:0.5rem 0;">
+                        <p><strong>🚗 ${vehicleNumber}</strong> — ready for delivery</p>
+                        <p>Estimated Delivery: ${Utils.dateUtils.format(delivery.estimatedDate)}</p>
+                        <p>Status: ${delivery.status}</p>
+                        
+                        <div class="form-group">
+                            <label>📸 Keys Handover Photo</label>
+                            <div class="photo-upload-box" id="deliveryPhotoBox" style="cursor:pointer;padding:1rem;border:2px dashed var(--gray);border-radius:var(--radius);text-align:center;">
+                                ${delivery.keysHandoverPhotoUrl ? '✅ Photo uploaded' : '📤 Tap to upload photo'}
+                                <input type="file" accept="image/*" id="deliveryPhotoInput" style="display:none;" />
+                            </div>
+                            ${delivery.keysHandoverPhotoUrl ? `<img src="${delivery.keysHandoverPhotoUrl}" style="max-width:100%;max-height:150px;margin-top:0.5rem;border-radius:var(--radius);" />` : ''}
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>📝 Remarks</label>
+                            <textarea id="deliveryRemarks" rows="2" style="width:100%;padding:0.4rem;border:1px solid var(--gray);border-radius:var(--radius);">${delivery.remarks || ''}</textarea>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Action</label>
+                            <select id="deliveryAction" style="width:100%;padding:0.4rem;border:1px solid var(--gray);border-radius:var(--radius);">
+                                <option value="Delivered">✅ Mark as Delivered</option>
+                                <option value="Completed">📦 Mark as Completed</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+
+                const modal = new Components.Modal();
+                modal.open({
+                    title: `📦 Delivery - ${vehicleNumber}`,
+                    body: form,
+                    confirmText: '✅ Confirm Delivery',
+                    cancelText: 'Cancel',
+                    onConfirm: async () => {
+                        const action = document.getElementById('deliveryAction').value;
+                        const remarks = document.getElementById('deliveryRemarks').value;
+                        const photoInput = document.getElementById('deliveryPhotoInput');
+                        let photoUrl = delivery.keysHandoverPhotoUrl;
+                        
+                        // Upload photo if selected
+                        if (photoInput.files.length > 0) {
+                            try {
+                                const file = photoInput.files[0];
+                                const { base64, mimeType } = await Utils.fileToBase64(file);
+                                const result = await PhotoService.uploadPhotoFile({
+                                    vehicleNumber: vehicleNumber,
+                                    photoType: 'KeysHandover',
+                                    base64Data: base64,
+                                    mimeType: mimeType,
+                                    productionId: delivery.productionId || '',
+                                    taskName: 'Delivery',
+                                    uploadedBy: this.app.auth.getCurrentUser()?.id || ''
+                                });
+                                photoUrl = result.url;
+                                console.log('✅ Photo uploaded:', photoUrl);
+                            } catch (err) {
+                                this.toast.show('Failed to upload photo: ' + err.message, 'error');
+                                return;
+                            }
+                        }
+
+                        const loader = new Components.Loader();
+                        loader.show();
+                        
+                        try {
+                            // ---- STEP 1: Complete the delivery ----
+                            await DataService.completeDelivery(delivery.id, action, remarks, photoUrl);
+                            
+                            // ---- STEP 2: Update inventory to Delivered ----
+                            const inventory = await DataService.getInventory();
+                            const vehicleItem = inventory.find(v => v.vehicleNumber === vehicleNumber);
+                            if (vehicleItem) {
+                                await DataService.updateInventory(vehicleItem.id, {
+                                    inventoryStatus: 'Delivered',
+                                    updatedAt: new Date().toISOString()
+                                });
+                                console.log(`✅ Inventory updated: ${vehicleNumber} → Delivered`);
+                            }
+                            
+                            // ---- STEP 3: Update sales order ----
+                            const sales = await DataService.getSales();
+                            const order = sales.find(s => s.vehicleNumber === vehicleNumber && s.status !== 'delivered');
+                            if (order) {
+                                await DataService.updateSales(order.id, {
+                                    status: 'delivered',
+                                    progress: 100,
+                                    deliveredAt: new Date().toISOString()
+                                });
+                                console.log(`✅ Order updated: ${order.token} → delivered`);
+                            }
+                            
+                            // ---- STEP 4: Complete all remaining tasks ----
+                            const production = await DataService.getProduction();
+                            const tasks = production.filter(t => t.vehicleNumber === vehicleNumber && t.status !== 'completed');
+                            const batch = db.batch();
+                            const now = new Date().toISOString();
+                            tasks.forEach(task => {
+                                batch.update(db.collection('production').doc(task.id), {
+                                    status: 'completed',
+                                    endTime: now,
+                                    updatedAt: now
+                                });
+                                console.log(`✅ Task completed: ${task.taskName}`);
+                            });
+                            await batch.commit();
+                            
+                            // ---- STEP 5: Refresh Supervisor data ----
+                            await this.loadData();
+                            this.renderQueue();
+                            this.renderStats();
+                            
+                            // ---- STEP 6: Remove card from DOM ----
+                            document.querySelectorAll('.worker-task-card').forEach(card => {
+                                const el = card.querySelector('.task-vehicle-number');
+                                if (el && el.textContent.trim() === vehicleNumber) {
+                                    card.remove();
+                                    console.log(`🗑️ Card removed for ${vehicleNumber}`);
+                                }
+                            });
+                            
+                            // ---- STEP 7: Show success ----
+                            this.toast.show(`✅ ${vehicleNumber} delivered and archived!`, 'success', 5000);
+                            modal.close();
+                            
+                            // ---- STEP 8: Fallback reload ----
+                            setTimeout(() => {
+                                const stillVisible = document.querySelector(`.worker-task-card .task-vehicle-number:contains("${vehicleNumber}")`);
+                                if (stillVisible) {
+                                    console.log('🔄 Still visible - reloading page...');
+                                    location.reload();
+                                }
+                            }, 2000);
+                            
+                        } catch (err) {
+                            console.error('❌ Delivery error:', err);
+                            this.toast.show('Error: ' + err.message, 'error');
+                        } finally {
+                            loader.hide();
+                        }
+                    }
+                });
+
+                // ---- Bind photo upload ----
+                setTimeout(() => {
+                    const box = document.getElementById('deliveryPhotoBox');
+                    const input = document.getElementById('deliveryPhotoInput');
+                    if (box && input) {
+                        box.addEventListener('click', () => input.click());
+                        input.addEventListener('change', (e) => {
+                            if (e.target.files.length > 0) {
+                                box.innerHTML = '✅ Photo selected<br><small style="color:var(--dark-gray);">Click to change</small>';
+                                box.style.borderColor = 'var(--success)';
+                                box.style.background = '#e8f5e9';
+                                // Show preview
+                                const reader = new FileReader();
+                                reader.onload = (ev) => {
+                                    const preview = document.createElement('img');
+                                    preview.src = ev.target.result;
+                                    preview.style.cssText = 'max-width:100%;max-height:150px;margin-top:0.5rem;border-radius:var(--radius);';
+                                    box.parentNode.appendChild(preview);
+                                };
+                                reader.readAsDataURL(e.target.files[0]);
+                            }
+                        });
+                    }
+                }, 100);
+            };
+
+            // ---- 2. Override renderQueue to ensure delivery button works ----
+            const origRenderQueue = SupProto.renderQueue;
+            SupProto.renderQueue = function() {
+                origRenderQueue.call(this);
+                
+                // Ensure delivery buttons trigger the updated showDelivery
+                document.querySelectorAll('.delivery').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const vehicle = btn.dataset.vehicle;
+                        if (vehicle) {
+                            this.showDelivery(vehicle);
+                        }
+                    });
+                });
+            };
+
+            // ---- 3. Also patch the "Complete All" button to handle delivery ----
+            const origCompleteAll = SupProto.completeAllAndDeliver;
+            if (origCompleteAll) {
+                SupProto.completeAllAndDeliver = async function(vehicleNumber) {
+                    console.log(`🚀 Complete All & Deliver called for: ${vehicleNumber}`);
+                    if (!confirm(`⚠️ Complete ALL tasks for "${vehicleNumber}"?\n\n✅ All tasks → Completed\n📦 Order → Delivered\n🏷️ Vehicle → Archived\n\n⚠️ Cannot be undone!`)) return;
+
+                    const toast = new Components.Toast();
+                    const loader = new Components.Loader();
+                    loader.show();
+
+                    try {
+                        const now = new Date().toISOString();
+                        const batch = db.batch();
+
+                        // Complete all tasks
+                        const production = await DataService.getProduction();
+                        const tasks = production.filter(t => t.vehicleNumber === vehicleNumber);
+                        if (tasks.length === 0) { toast.show('No tasks.', 'warning'); loader.hide(); return; }
+                        tasks.forEach(t => {
+                            batch.update(db.collection('production').doc(t.id), {
+                                status: 'completed', endTime: now, updatedAt: now, actualHours: t.actualHours || 4
+                            });
+                        });
+
+                        // Archive vehicle
+                        const inventory = await DataService.getInventory();
+                        const vehicle = inventory.find(v => v.vehicleNumber === vehicleNumber);
+                        if (vehicle) {
+                            batch.update(db.collection('inventory').doc(vehicle.id), {
+                                inventoryStatus: 'Delivered', updatedAt: now
+                            });
+                        }
+
+                        // Update order
+                        const sales = await DataService.getSales();
+                        const order = sales.find(s => s.vehicleNumber === vehicleNumber && s.status !== 'delivered');
+                        if (order) {
+                            batch.update(db.collection('sales').doc(order.id), {
+                                status: 'delivered', progress: 100, deliveredAt: now, updatedAt: now
+                            });
+                        }
+
+                        // History
+                        const historyRef = db.collection('vehicleHistory').doc();
+                        batch.set(historyRef, {
+                            vehicleNumber, action: 'Delivered (Complete All)',
+                            notes: order ? `Order ${order.token} completed.` : 'Manual.',
+                            timestamp: now, createdAt: now
+                        });
+
+                        // Delivery record
+                        const deliveries = await DataService.getDelivery();
+                        let delivery = deliveries.find(d => d.vehicleNumber === vehicleNumber);
+                        if (delivery) {
+                            batch.update(db.collection('delivery').doc(delivery.id), {
+                                status: 'Delivered', actualDate: now, updatedAt: now
+                            });
+                        } else {
+                            const dRef = db.collection('delivery').doc();
+                            batch.set(dRef, {
+                                vehicleNumber, status: 'Delivered',
+                                estimatedDate: order?.deliveryDate || now, actualDate: now,
+                                keysHandoverPhotoUrl: '', remarks: order ? `Order ${order.token} completed.` : 'Manual.',
+                                createdAt: now, updatedAt: now
+                            });
+                        }
+
+                        await batch.commit();
+                        toast.show(`✅ ${vehicleNumber} delivered!`, 'success', 5000);
+
+                        await this.loadData();
+                        this.renderQueue();
+                        this.renderStats();
+
+                        document.querySelectorAll('.worker-task-card').forEach(c => {
+                            const el = c.querySelector('.task-vehicle-number');
+                            if (el && el.textContent.trim() === vehicleNumber) c.remove();
+                        });
+
+                        setTimeout(() => {
+                            const stillVisible = document.querySelector(`.worker-task-card .task-vehicle-number:contains("${vehicleNumber}")`);
+                            if (stillVisible) location.reload();
+                        }, 2000);
+
+                    } catch (err) {
+                        console.error(err);
+                        toast.show('Error: ' + err.message, 'error');
+                    } finally {
+                        loader.hide();
+                    }
+                };
+                console.log('✅ CompleteAllAndDeliver updated with delivery removal.');
+            }
+
+            console.log('✅ Delivery flow fixed - vehicles will be removed from queue.');
+        }
+    }, 200);
+})();
+    </script>
 </body>
 </html>
