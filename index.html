@@ -17552,5 +17552,257 @@
             console.log('  👷 Assigned worker name(s)');
        console.log('  🚚 Deliver button - one click
 </script>
+<!-- ==============================================================
+     PURCHASE INVENTORY – USAGE LOG VEHICLE SEARCH
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.PurchaseInventory) {
+            clearInterval(waitForApp);
+            applyUsageLogSearch();
+        }
+    }, 100);
+
+    function applyUsageLogSearch() {
+        console.log('🔍 Adding vehicle search to Purchase Inventory Usage Log...');
+
+        const origRenderUsageTab = Pages.PurchaseInventory.prototype.renderUsageTab;
+        const origRenderRecentUsage = Pages.PurchaseInventory.prototype.renderRecentUsage;
+
+        // ---- 1. Override renderUsageTab to add search bar above the table ----
+        Pages.PurchaseInventory.prototype.renderUsageTab = function() {
+            // Call original to build the form and table
+            origRenderUsageTab.call(this);
+
+            // Now add search bar if not already present
+            const container = document.getElementById('usageTab');
+            if (!container) return;
+
+            // Check if search already exists
+            if (container.querySelector('#usageVehicleSearch')) return;
+
+            // Find the "Recent Usage" section
+            const recentUsageDiv = container.querySelector('#recentUsage');
+            if (!recentUsageDiv) return;
+
+            // Create search wrapper
+            const searchWrapper = document.createElement('div');
+            searchWrapper.style.cssText = `
+                display: flex;
+                gap: 0.5rem;
+                margin: 0.5rem 0 0.8rem 0;
+                flex-wrap: wrap;
+                align-items: center;
+                background: white;
+                padding: 0.5rem 0.8rem;
+                border-radius: var(--radius);
+                box-shadow: var(--shadow);
+            `;
+            searchWrapper.innerHTML = `
+                <div style="flex:1;min-width:180px;position:relative;">
+                    <span class="material-icons" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);color:var(--dark-gray);font-size:20px;">search</span>
+                    <input type="text" id="usageVehicleSearch" placeholder="🔍 Search by vehicle number..." 
+                           style="width:100%;padding:0.4rem 0.6rem 0.4rem 2.2rem;border:1px solid var(--gray);border-radius:var(--radius);font-size:0.95rem;" />
+                </div>
+                <button id="usageSearchClear" class="btn btn-secondary btn-sm">✕ Clear</button>
+                <span id="usageSearchCount" style="font-size:0.8rem;color:var(--dark-gray);"></span>
+            `;
+
+            // Insert before the recent usage div
+            const form = container.querySelector('form');
+            if (form) {
+                form.after(searchWrapper);
+            } else {
+                container.prepend(searchWrapper);
+            }
+
+            // ---- Bind search events ----
+            const searchInput = document.getElementById('usageVehicleSearch');
+            const clearBtn = document.getElementById('usageSearchClear');
+            const countSpan = document.getElementById('usageSearchCount');
+
+            // Store the current search term on the page instance
+            if (!this._usageSearchTerm) this._usageSearchTerm = '';
+
+            function applyFilter() {
+                const term = searchInput.value.trim().toLowerCase();
+                this._usageSearchTerm = term;
+                this.renderRecentUsageWithFilter(term);
+            }
+
+            // Override the renderRecentUsage method to use the filter
+            this.renderRecentUsageWithFilter = function(term) {
+                const container = document.getElementById('recentUsage');
+                if (!container) return;
+
+                const allUsage = this.stockUsage || [];
+                const filtered = term ? allUsage.filter(u => 
+                    (u.vehicleNumber || '').toLowerCase().includes(term)
+                ) : allUsage;
+
+                // Update count
+                if (countSpan) {
+                    countSpan.textContent = `${filtered.length} / ${allUsage.length} records`;
+                }
+
+                if (filtered.length === 0) {
+                    container.innerHTML = `<p style="color:var(--dark-gray);">${term ? 'No usage records found for "' + term + '".' : 'No usage records yet.'}</p>`;
+                    return;
+                }
+
+                // Render table with filtered data
+                let html = `<div class="table-container"><table><thead><tr><th>Vehicle</th><th>Product</th><th>Qty Used</th><th>Remarks</th><th>Action</th></tr></thead><tbody>`;
+                filtered.slice(0, 20).forEach(u => {
+                    html += `<tr>
+                        <td><strong>${u.vehicleNumber}</strong></td>
+                        <td>${u.productName}</td>
+                        <td>${u.quantity}</td>
+                        <td>${u.remarks || ''}</td>
+                        <td><button class="btn btn-sm btn-danger delete-usage" data-id="${u.id}">Delete</button></td>
+                    </tr>`;
+                });
+                if (filtered.length > 20) {
+                    html += `<tr><td colspan="5" style="text-align:center;color:var(--dark-gray);font-size:0.8rem;">Showing 20 of ${filtered.length} records. Use search to narrow down.</td></tr>`;
+                }
+                html += `</tbody></table></div>`;
+                container.innerHTML = html;
+
+                // Re-bind delete events
+                container.querySelectorAll('.delete-usage').forEach(btn => {
+                    btn.addEventListener('click', async (e) => {
+                        e.stopPropagation();
+                        const id = btn.dataset.id;
+                        const confirmDialog = new Components.ConfirmationDialog();
+                        confirmDialog.open({
+                            title: 'Delete Usage Record',
+                            body: 'This will restore the stock quantity.',
+                            onConfirm: async () => {
+                                const loader = new Components.Loader();
+                                loader.show();
+                                try {
+                                    await DataService.deleteStockUsage(id);
+                                    new Components.Toast().show('Usage record deleted - stock restored', 'success');
+                                    await this.loadData();
+                                    this.renderUsageTab();
+                                    this.renderStockTab();
+                                    this.renderOwnerTab();
+                                } catch (e) {
+                                    new Components.Toast().show('Failed: ' + e.message, 'error');
+                                } finally {
+                                    loader.hide();
+                                }
+                            }
+                        });
+                    });
+                });
+            };
+
+            // Bind search input
+            searchInput.addEventListener('input', function(e) {
+                applyFilter.call(this, e);
+            }.bind(this));
+
+            // Bind clear button
+            clearBtn.addEventListener('click', function() {
+                searchInput.value = '';
+                this._usageSearchTerm = '';
+                this.renderRecentUsageWithFilter('');
+            }.bind(this));
+
+            // Initial render with current filter (if any)
+            setTimeout(() => {
+                this.renderRecentUsageWithFilter(this._usageSearchTerm || '');
+            }, 100);
+        };
+
+        // ---- 2. Override renderRecentUsage to use the filtered version ----
+        Pages.PurchaseInventory.prototype.renderRecentUsage = function() {
+            // This will be called by the original renderUsageTab, but we override it
+            // to use our filtered version if search exists.
+            const container = document.getElementById('recentUsage');
+            if (!container) return;
+            
+            // If there's a search input, use filtered version
+            const searchInput = document.getElementById('usageVehicleSearch');
+            if (searchInput) {
+                const term = searchInput.value.trim().toLowerCase();
+                this.renderRecentUsageWithFilter(term);
+            } else {
+                // Fallback: original behavior
+                const recent = this.stockUsage.slice(0, 10);
+                if (recent.length === 0) {
+                    container.innerHTML = '<p style="color:var(--dark-gray);">No usage records yet.</p>';
+                    return;
+                }
+                let html = `<div class="table-container"><table><thead><tr><th>Vehicle</th><th>Product</th><th>Qty Used</th><th>Remarks</th><th>Action</th></tr></thead><tbody>`;
+                recent.forEach(u => {
+                    html += `<tr>
+                        <td>${u.vehicleNumber}</td>
+                        <td>${u.productName}</td>
+                        <td>${u.quantity}</td>
+                        <td>${u.remarks || ''}</td>
+                        <td><button class="btn btn-sm btn-danger delete-usage" data-id="${u.id}">Delete</button></td>
+                    </tr>`;
+                });
+                html += `</tbody></table></div>`;
+                container.innerHTML = html;
+
+                container.querySelectorAll('.delete-usage').forEach(btn => {
+                    btn.addEventListener('click', async () => {
+                        const id = btn.dataset.id;
+                        const confirmDialog = new Components.ConfirmationDialog();
+                        confirmDialog.open({
+                            title: 'Delete Usage Record',
+                            body: 'This will restore the stock quantity.',
+                            onConfirm: async () => {
+                                const loader = new Components.Loader();
+                                loader.show();
+                                try {
+                                    await DataService.deleteStockUsage(id);
+                                    new Components.Toast().show('Usage record deleted - stock restored', 'success');
+                                    await this.loadData();
+                                    this.renderUsageTab();
+                                    this.renderStockTab();
+                                    this.renderOwnerTab();
+                                } catch (e) {
+                                    new Components.Toast().show('Failed: ' + e.message, 'error');
+                                } finally {
+                                    loader.hide();
+                                }
+                            }
+                        });
+                    });
+                });
+            }
+        };
+
+        // ---- 3. If PurchaseInventory is already open, re-render ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage && currentPage.constructor.name === 'PurchaseInventory') {
+            console.log('🔄 PurchaseInventory active – reloading with vehicle search.');
+            // Force re-render the usage tab
+            const container = document.getElementById('pageContent');
+            if (container) {
+                // Save current tab state
+                const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'purchase';
+                currentPage.render(container).then(() => {
+                    // Re-activate the usage tab if it was active
+                    if (activeTab === 'usage') {
+                        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                        const usageTab = document.querySelector('[data-tab="usage"]');
+                        if (usageTab) {
+                            usageTab.classList.add('active');
+                            document.getElementById('usageTab').classList.add('active');
+                        }
+                    }
+                });
+            }
+        }
+
+        console.log('✅ Vehicle search added to Usage Log.');
+    }
+})();
+</script>
 </body>
 </html>
