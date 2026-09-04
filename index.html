@@ -17804,5 +17804,598 @@
     }
 })();
 </script>
+<!-- ==============================================================
+     PURCHASE INVENTORY – COMPLETE USAGE LOG UPGRADE
+     ============================================================== -->
+<script>
+(function() {
+    const waitForApp = setInterval(() => {
+        if (window.__app && typeof Pages !== 'undefined' && Pages.PurchaseInventory) {
+            clearInterval(waitForApp);
+            applyCompleteUsageUpgrade();
+        }
+    }, 100);
+
+    function applyCompleteUsageUpgrade() {
+        console.log('📦 Applying complete usage log upgrade: Multi-product + Add More...');
+
+        const origRenderUsageTab = Pages.PurchaseInventory.prototype.renderUsageTab;
+        const origLoadData = Pages.PurchaseInventory.prototype.loadData;
+        const origRenderRecentUsage = Pages.PurchaseInventory.prototype.renderRecentUsage;
+
+        // ---- Helper to get vehicle options ----
+        function getVehicleOptions(vehicles) {
+            return vehicles
+                .filter(v => v.inventoryStatus !== 'Delivered')
+                .map(v => ({
+                    value: v.vehicleNumber,
+                    label: `${v.vehicleNumber} - ${v.vehicleName || '—'} (${v.inventoryStatus || 'Available'})`
+                }));
+        }
+
+        // ---- Build product checkboxes HTML ----
+        function buildProductCheckboxes(inventory, prefix = '') {
+            const productOptions = (inventory || []).map(p => ({
+                value: p.productName,
+                label: `${p.productName} (${p.quantity || 0} in stock)`,
+                stock: p.quantity || 0
+            }));
+
+            if (productOptions.length === 0) {
+                return '<p style="color:var(--dark-gray);">No stock items available. Add purchases first.</p>';
+            }
+
+            return productOptions.map(p => `
+                <div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.4rem;border-bottom:1px solid #f0f2f5;flex-wrap:wrap;">
+                    <label style="display:flex;align-items:center;gap:0.4rem;flex:1;min-width:150px;cursor:pointer;">
+                        <input type="checkbox" class="${prefix}product-checkbox" data-product="${p.value}" data-stock="${p.stock}" />
+                        <span style="font-size:0.9rem;">${p.label}</span>
+                    </label>
+                    <div style="display:flex;align-items:center;gap:0.3rem;">
+                        <label style="font-size:0.75rem;color:var(--dark-gray);">Qty:</label>
+                        <input type="number" class="${prefix}product-qty" data-product="${p.value}" value="1" min="0.5" step="0.5" style="width:60px;padding:0.2rem 0.3rem;border:1px solid var(--gray);border-radius:4px;text-align:center;" />
+                        <span style="font-size:0.7rem;color:var(--dark-gray);">(stock: ${p.stock})</span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // ---- 1. OVERRIDE: Main Usage Tab (Multi-Product Form) ----
+        Pages.PurchaseInventory.prototype.renderUsageTab = function() {
+            const container = document.getElementById('usageTab');
+            if (!container) return;
+
+            const vehicleOptions = getVehicleOptions(this.vehicles || []);
+            const productCheckboxes = buildProductCheckboxes(this.inventory || [], '');
+
+            const form = `
+                <div style="background:white;border-radius:var(--radius);padding:1.2rem;box-shadow:var(--shadow);margin-bottom:1rem;">
+                    <h4 style="margin-bottom:0.5rem;">📦 Log Multiple Products for a Vehicle</h4>
+                    <p style="font-size:0.85rem;color:var(--dark-gray);margin-bottom:0.8rem;">Select a vehicle, then check all products used and enter quantities. Submit once for all.</p>
+
+                    <div class="form-group">
+                        <label>🔍 Select Vehicle *</label>
+                        <div style="position:relative;">
+                            <input type="text" id="multiVehicleSearch" placeholder="Search vehicle by number or name..." 
+                                   style="width:100%;padding:0.5rem 0.6rem 0.5rem 2.2rem;border:1px solid var(--gray);border-radius:var(--radius);font-size:0.95rem;" />
+                            <span class="material-icons" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--dark-gray);font-size:20px;">search</span>
+                        </div>
+                        <div id="vehicleSearchResults" style="max-height:150px;overflow-y:auto;border:1px solid var(--gray);border-top:none;border-radius:0 0 var(--radius) var(--radius);background:white;display:none;position:relative;z-index:10;"></div>
+                        <input type="hidden" id="selectedVehicle" value="" />
+                        <div id="selectedVehicleDisplay" style="margin-top:0.3rem;font-weight:600;color:var(--primary-blue);font-size:0.95rem;display:none;">
+                            ✅ Selected: <span id="selectedVehicleName"></span>
+                        </div>
+                    </div>
+
+                    <div style="margin:0.8rem 0;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                            <label style="font-weight:600;font-size:0.95rem;">📋 Products Used</label>
+                            <div style="display:flex;gap:0.3rem;">
+                                <button type="button" id="selectAllProducts" class="btn btn-secondary btn-sm">Select All</button>
+                                <button type="button" id="deselectAllProducts" class="btn btn-secondary btn-sm">Deselect All</button>
+                            </div>
+                        </div>
+                        <div style="max-height:300px;overflow-y:auto;border:1px solid #eef2f6;border-radius:var(--radius);padding:0.3rem 0.5rem;background:#fafbfc;margin-top:0.3rem;">
+                            ${productCheckboxes}
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Remarks (optional)</label>
+                        <input type="text" id="multiUsageRemarks" placeholder="e.g. Chassis work, Body fabrication" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);" />
+                    </div>
+
+                    <button type="button" id="submitMultiUsage" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.6rem;">
+                        <span class="material-icons">save</span> Log All Selected Products
+                    </button>
+                    <div id="multiUsageStatus" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+                </div>
+
+                <div style="border-top:1px solid #eee;padding-top:1rem;margin-top:0.5rem;">
+                    <h4>📊 Recent Usage</h4>
+                    <div id="recentUsage"></div>
+                </div>
+            `;
+
+            container.innerHTML = form;
+
+            // ---- Vehicle search with dropdown ----
+            const vehicleSearch = document.getElementById('multiVehicleSearch');
+            const resultsContainer = document.getElementById('vehicleSearchResults');
+            const selectedVehicleHidden = document.getElementById('selectedVehicle');
+            const selectedDisplay = document.getElementById('selectedVehicleDisplay');
+            const selectedNameSpan = document.getElementById('selectedVehicleName');
+
+            const allVehicles = this.vehicles || [];
+
+            function filterVehicles(query) {
+                const q = query.toLowerCase().trim();
+                if (!q) return [];
+                return allVehicles.filter(v => {
+                    const number = (v.vehicleNumber || '').toLowerCase();
+                    const name = (v.vehicleName || '').toLowerCase();
+                    const model = (v.model || '').toLowerCase();
+                    return number.includes(q) || name.includes(q) || model.includes(q);
+                }).slice(0, 15);
+            }
+
+            function renderVehicleResults(query) {
+                const matches = filterVehicles(query);
+                if (matches.length === 0) {
+                    resultsContainer.innerHTML = '<div style="padding:0.5rem;color:var(--dark-gray);font-size:0.85rem;">No vehicles found</div>';
+                    resultsContainer.style.display = 'block';
+                    return;
+                }
+                let html = matches.map(v => `
+                    <div class="vehicle-result-item" data-vehicle="${v.vehicleNumber}" 
+                         style="padding:0.4rem 0.6rem;cursor:pointer;border-bottom:1px solid #f0f2f5;display:flex;justify-content:space-between;align-items:center;"
+                         onmouseover="this.style.background='#f0f4f8'" 
+                         onmouseout="this.style.background='transparent'">
+                        <div>
+                            <strong>${v.vehicleNumber}</strong>
+                            <span style="font-size:0.85rem;color:var(--dark-gray);margin-left:0.3rem;">${v.vehicleName || '—'}</span>
+                        </div>
+                        <span style="font-size:0.7rem;color:var(--dark-gray);">${v.inventoryStatus || 'Available'}</span>
+                    </div>
+                `).join('');
+                resultsContainer.innerHTML = html;
+                resultsContainer.style.display = 'block';
+
+                resultsContainer.querySelectorAll('.vehicle-result-item').forEach(el => {
+                    el.addEventListener('click', function() {
+                        const vehicle = this.dataset.vehicle;
+                        selectVehicle(vehicle);
+                    });
+                });
+            }
+
+            function selectVehicle(vehicleNumber) {
+                const vehicle = allVehicles.find(v => v.vehicleNumber === vehicleNumber);
+                if (!vehicle) return;
+                selectedVehicleHidden.value = vehicleNumber;
+                selectedNameSpan.textContent = `${vehicle.vehicleNumber} - ${vehicle.vehicleName || '—'} (${vehicle.inventoryStatus || 'Available'})`;
+                selectedDisplay.style.display = 'block';
+                resultsContainer.style.display = 'none';
+                vehicleSearch.value = vehicleNumber;
+                document.getElementById('multiUsageStatus').textContent = '';
+            }
+
+            vehicleSearch.addEventListener('input', function() {
+                const query = this.value;
+                if (!query.trim()) {
+                    resultsContainer.style.display = 'none';
+                    return;
+                }
+                renderVehicleResults(query);
+            });
+
+            vehicleSearch.addEventListener('focus', function() {
+                if (this.value.trim()) {
+                    renderVehicleResults(this.value);
+                }
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!e.target.closest('#multiVehicleSearch') && !e.target.closest('#vehicleSearchResults')) {
+                    resultsContainer.style.display = 'none';
+                }
+            });
+
+            // ---- Select/Deselect All ----
+            document.getElementById('selectAllProducts').addEventListener('click', function() {
+                document.querySelectorAll('.product-checkbox').forEach(cb => cb.checked = true);
+            });
+            document.getElementById('deselectAllProducts').addEventListener('click', function() {
+                document.querySelectorAll('.product-checkbox').forEach(cb => cb.checked = false);
+            });
+
+            // ---- Submit ----
+            document.getElementById('submitMultiUsage').addEventListener('click', async function() {
+                const vehicle = selectedVehicleHidden.value;
+                if (!vehicle) {
+                    document.getElementById('multiUsageStatus').innerHTML = 
+                        '<span style="color:var(--danger);">⚠️ Please select a vehicle first.</span>';
+                    return;
+                }
+
+                const selectedProducts = [];
+                document.querySelectorAll('.product-checkbox:checked').forEach(cb => {
+                    const productName = cb.dataset.product;
+                    const qtyInput = document.querySelector(`.product-qty[data-product="${productName}"]`);
+                    const qty = parseFloat(qtyInput?.value) || 0;
+                    if (qty > 0) {
+                        selectedProducts.push({ productName, quantity: qty });
+                    }
+                });
+
+                if (selectedProducts.length === 0) {
+                    document.getElementById('multiUsageStatus').innerHTML = 
+                        '<span style="color:var(--warning);">⚠️ Select at least one product with quantity > 0.</span>';
+                    return;
+                }
+
+                const remarks = document.getElementById('multiUsageRemarks').value.trim();
+
+                const loader = new Components.Loader();
+                const toast = new Components.Toast();
+                loader.show();
+
+                let successCount = 0;
+                let errorCount = 0;
+
+                try {
+                    for (const item of selectedProducts) {
+                        try {
+                            await DataService.addStockUsage({
+                                vehicleNumber: vehicle,
+                                productName: item.productName,
+                                quantity: item.quantity,
+                                remarks: remarks || `Bulk entry: ${selectedProducts.length} products`
+                            });
+                            successCount++;
+                        } catch(e) {
+                            errorCount++;
+                            console.error('Failed to log:', item.productName, e);
+                        }
+                    }
+
+                    await this.loadData();
+
+                    const statusEl = document.getElementById('multiUsageStatus');
+                    if (errorCount === 0) {
+                        statusEl.innerHTML = `<span style="color:var(--success);">✅ ${successCount} product(s) logged for ${vehicle}.</span>`;
+                        toast.show(`✅ ${successCount} products logged for ${vehicle}`, 'success');
+                        document.querySelectorAll('.product-checkbox').forEach(cb => cb.checked = false);
+                        document.querySelectorAll('.product-qty').forEach(inp => inp.value = '1');
+                        selectedVehicleHidden.value = '';
+                        selectedDisplay.style.display = 'none';
+                        vehicleSearch.value = '';
+                        document.getElementById('multiUsageRemarks').value = '';
+                    } else {
+                        statusEl.innerHTML = `<span style="color:var(--warning);">⚠️ ${successCount} logged, ${errorCount} failed.</span>`;
+                        toast.show(`${successCount} logged, ${errorCount} failed.`, 'warning');
+                    }
+
+                    this.renderRecentUsage();
+                    this.renderStockTab();
+                    this.renderOwnerTab();
+
+                } catch (e) {
+                    document.getElementById('multiUsageStatus').innerHTML = 
+                        `<span style="color:var(--danger);">❌ Error: ${e.message}</span>`;
+                    toast.show('Error: ' + e.message, 'error');
+                } finally {
+                    loader.hide();
+                }
+            }.bind(this));
+
+            // ---- Load recent usage ----
+            this.renderRecentUsage();
+        };
+
+        // ---- 2. OVERRIDE: loadData to ensure vehicle data is available ----
+        Pages.PurchaseInventory.prototype.loadData = async function() {
+            this.loader.show();
+            try {
+                const [inventory, stockUsage, vehicles] = await Promise.all([
+                    DataService.getPurchaseInventory(),
+                    DataService.getStockUsage(),
+                    DataService.getInventory()
+                ]);
+                this.inventory = inventory.map(item => ({
+                    ...item,
+                    quantity: parseFloat(item.quantity) || 0,
+                    perPieceAmount: parseFloat(item.perPieceAmount) || 0,
+                    totalAmount: parseFloat(item.totalAmount) || 0
+                }));
+                this.stockUsage = stockUsage.map(usage => ({
+                    ...usage,
+                    quantity: parseFloat(usage.quantity) || 0
+                }));
+                this.vehicles = vehicles;
+            } catch (e) {
+                this.toast.show('Failed to load data: ' + (e.message || e), 'error');
+            } finally {
+                this.loader.hide();
+            }
+        };
+
+        // ---- 3. OVERRIDE: renderRecentUsage with "Add More" button ----
+        Pages.PurchaseInventory.prototype.renderRecentUsage = function() {
+            const container = document.getElementById('recentUsage');
+            if (!container) return;
+            
+            const recent = (this.stockUsage || []).slice(0, 15);
+            if (recent.length === 0) {
+                container.innerHTML = '<p style="color:var(--dark-gray);">No usage records yet.</p>';
+                return;
+            }
+
+            // Group by vehicle to show unique vehicles with "Add More" button
+            const grouped = {};
+            recent.forEach(u => {
+                if (!grouped[u.vehicleNumber]) {
+                    grouped[u.vehicleNumber] = [];
+                }
+                grouped[u.vehicleNumber].push(u);
+            });
+
+            let html = `<div class="table-container"><table><thead><tr>
+                <th>Vehicle</th>
+                <th>Products Used</th>
+                <th>Total Items</th>
+                <th style="text-align:center;">Actions</th>
+            </tr></thead><tbody>`;
+
+            for (const [vehicle, records] of Object.entries(grouped)) {
+                const productList = records.map(r => `${r.productName} (${r.quantity})`).join(', ');
+                const totalItems = records.reduce((sum, r) => sum + (parseFloat(r.quantity) || 0), 0);
+                
+                html += `
+                    <tr>
+                        <td><strong style="font-size:0.95rem;">${vehicle}</strong></td>
+                        <td style="font-size:0.85rem;">${productList}</td>
+                        <td style="text-align:center;font-weight:600;">${totalItems}</td>
+                        <td style="text-align:center;">
+                            <button class="btn btn-sm btn-primary add-more-btn" data-vehicle="${vehicle}" style="min-width:80px;">
+                                <span class="material-icons" style="font-size:16px;">add</span> Add More
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }
+
+            html += `</tbody></table></div>`;
+            container.innerHTML = html;
+
+            // ---- Bind "Add More" buttons ----
+            container.querySelectorAll('.add-more-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const vehicleNumber = this.dataset.vehicle;
+                    openAddMoreForVehicle(vehicleNumber, this);
+                });
+            });
+        };
+
+        // ---- 4. "Add More" function ----
+        async function openAddMoreForVehicle(vehicleNumber, btnElement) {
+            const page = window.__app?.router?.currentPage;
+            if (!page || page.constructor.name !== 'PurchaseInventory') {
+                new Components.Toast().show('Please go to Purchase Inventory > Usage Log first.', 'warning');
+                return;
+            }
+
+            const toast = new Components.Toast();
+            const loader = new Components.Loader();
+
+            if (!page.vehicles || page.vehicles.length === 0) {
+                loader.show();
+                try {
+                    await page.loadData();
+                } catch(e) {
+                    toast.show('Failed to load data: ' + e.message, 'error');
+                    loader.hide();
+                    return;
+                }
+                loader.hide();
+            }
+
+            const vehicle = page.vehicles.find(v => v.vehicleNumber === vehicleNumber);
+            if (!vehicle) {
+                toast.show(`Vehicle "${vehicleNumber}" not found in inventory.`, 'warning');
+                return;
+            }
+
+            const usageTab = document.getElementById('usageTab');
+            if (!usageTab) {
+                toast.show('Please go to the Usage Log tab.', 'warning');
+                return;
+            }
+
+            let formContainer = usageTab.querySelector('.addmore-form-container');
+            if (!formContainer) {
+                formContainer = document.createElement('div');
+                formContainer.className = 'addmore-form-container';
+                formContainer.style.cssText = `
+                    background: #e8f5e9;
+                    border-radius: var(--radius);
+                    padding: 1rem;
+                    margin-bottom: 1rem;
+                    border-left: 4px solid var(--success);
+                    display: none;
+                `;
+                
+                const productCheckboxes = buildProductCheckboxes(page.inventory || [], 'addmore-');
+
+                formContainer.innerHTML = `
+                    <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.5rem;">
+                        <h4 style="margin:0;color:var(--primary-dark);">
+                            <span class="material-icons" style="font-size:20px;vertical-align:middle;">add_circle</span> 
+                            Add More Products for <span id="addmoreVehicleDisplay" style="color:var(--primary-blue);">${vehicleNumber}</span>
+                        </h4>
+                        <button type="button" id="closeAddMoreForm" class="btn btn-secondary btn-sm">
+                            <span class="material-icons" style="font-size:16px;">close</span> Close
+                        </button>
+                    </div>
+                    <input type="hidden" id="addmoreVehicle" value="${vehicleNumber}" />
+                    
+                    <div style="margin:0.5rem 0;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:0.5rem;">
+                            <label style="font-weight:600;font-size:0.9rem;">📋 Select Products to Add</label>
+                            <div style="display:flex;gap:0.3rem;">
+                                <button type="button" id="addmoreSelectAll" class="btn btn-secondary btn-sm">Select All</button>
+                                <button type="button" id="addmoreDeselectAll" class="btn btn-secondary btn-sm">Deselect All</button>
+                            </div>
+                        </div>
+                        <div style="max-height:250px;overflow-y:auto;border:1px solid #eef2f6;border-radius:var(--radius);padding:0.3rem 0.5rem;background:white;margin-top:0.3rem;">
+                            ${productCheckboxes}
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-top:0.5rem;">
+                        <label>Remarks (optional)</label>
+                        <input type="text" id="addmoreRemarks" placeholder="e.g. Additional work, extra materials" style="width:100%;padding:0.4rem 0.6rem;border:1px solid var(--gray);border-radius:var(--radius);" />
+                    </div>
+
+                    <button type="button" id="submitAddMore" class="btn btn-primary" style="width:100%;justify-content:center;padding:0.6rem;margin-top:0.5rem;">
+                        <span class="material-icons">save</span> Add Selected Products to ${vehicleNumber}
+                    </button>
+                    <div id="addmoreStatus" style="margin-top:0.5rem;font-size:0.85rem;"></div>
+                `;
+
+                const firstElement = usageTab.firstChild;
+                usageTab.insertBefore(formContainer, firstElement);
+
+                // ---- Bind Add More form events ----
+                document.getElementById('addmoreSelectAll').addEventListener('click', function() {
+                    document.querySelectorAll('.addmore-product-checkbox').forEach(cb => cb.checked = true);
+                });
+                document.getElementById('addmoreDeselectAll').addEventListener('click', function() {
+                    document.querySelectorAll('.addmore-product-checkbox').forEach(cb => cb.checked = false);
+                });
+
+                document.getElementById('closeAddMoreForm').addEventListener('click', function() {
+                    formContainer.style.display = 'none';
+                });
+
+                document.getElementById('submitAddMore').addEventListener('click', async function() {
+                    const vehicle = document.getElementById('addmoreVehicle').value;
+                    if (!vehicle) {
+                        document.getElementById('addmoreStatus').innerHTML = 
+                            '<span style="color:var(--danger);">⚠️ No vehicle selected.</span>';
+                        return;
+                    }
+
+                    const selectedProducts = [];
+                    document.querySelectorAll('.addmore-product-checkbox:checked').forEach(cb => {
+                        const productName = cb.dataset.product;
+                        const qtyInput = document.querySelector(`.addmore-product-qty[data-product="${productName}"]`);
+                        const qty = parseFloat(qtyInput?.value) || 0;
+                        if (qty > 0) {
+                            selectedProducts.push({ productName, quantity: qty });
+                        }
+                    });
+
+                    if (selectedProducts.length === 0) {
+                        document.getElementById('addmoreStatus').innerHTML = 
+                            '<span style="color:var(--warning);">⚠️ Select at least one product with quantity > 0.</span>';
+                        return;
+                    }
+
+                    const remarks = document.getElementById('addmoreRemarks').value.trim();
+
+                    const loader = new Components.Loader();
+                    const toast = new Components.Toast();
+                    loader.show();
+
+                    let successCount = 0;
+                    let errorCount = 0;
+
+                    try {
+                        for (const item of selectedProducts) {
+                            try {
+                                await DataService.addStockUsage({
+                                    vehicleNumber: vehicle,
+                                    productName: item.productName,
+                                    quantity: item.quantity,
+                                    remarks: remarks || `Added more: ${selectedProducts.length} products`
+                                });
+                                successCount++;
+                            } catch(e) {
+                                errorCount++;
+                                console.error('Failed to log:', item.productName, e);
+                            }
+                        }
+
+                        await page.loadData();
+
+                        const statusEl = document.getElementById('addmoreStatus');
+                        if (errorCount === 0) {
+                            statusEl.innerHTML = `<span style="color:var(--success);">✅ ${successCount} product(s) added to ${vehicle}.</span>`;
+                            toast.show(`✅ ${successCount} products added to ${vehicle}`, 'success');
+                            document.querySelectorAll('.addmore-product-checkbox').forEach(cb => cb.checked = false);
+                            document.querySelectorAll('.addmore-product-qty').forEach(inp => inp.value = '1');
+                            document.getElementById('addmoreRemarks').value = '';
+                            page.renderRecentUsage();
+                            page.renderStockTab();
+                            page.renderOwnerTab();
+                            setTimeout(() => { formContainer.style.display = 'none'; }, 2000);
+                        } else {
+                            statusEl.innerHTML = `<span style="color:var(--warning);">⚠️ ${successCount} added, ${errorCount} failed.</span>`;
+                            toast.show(`${successCount} added, ${errorCount} failed.`, 'warning');
+                            page.renderRecentUsage();
+                        }
+
+                    } catch (e) {
+                        document.getElementById('addmoreStatus').innerHTML = 
+                            `<span style="color:var(--danger);">❌ Error: ${e.message}</span>`;
+                        toast.show('Error: ' + e.message, 'error');
+                    } finally {
+                        loader.hide();
+                    }
+                });
+            }
+
+            // Update and show the form
+            const displaySpan = formContainer.querySelector('#addmoreVehicleDisplay');
+            if (displaySpan) displaySpan.textContent = vehicleNumber;
+            
+            const hiddenInput = formContainer.querySelector('#addmoreVehicle');
+            if (hiddenInput) hiddenInput.value = vehicleNumber;
+
+            const statusEl = formContainer.querySelector('#addmoreStatus');
+            if (statusEl) statusEl.innerHTML = '';
+
+            formContainer.style.display = 'block';
+            formContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+
+            toast.show(`Adding more products for ${vehicleNumber}`, 'info', 1500);
+        }
+
+        // ---- 5. If PurchaseInventory is already open, re-render ----
+        const currentPage = window.__app?.router?.currentPage;
+        if (currentPage && currentPage.constructor.name === 'PurchaseInventory') {
+            console.log('🔄 PurchaseInventory active – reloading with complete upgrade.');
+            const container = document.getElementById('pageContent');
+            if (container) {
+                const activeTab = document.querySelector('.tab-btn.active')?.dataset.tab || 'purchase';
+                currentPage.render(container).then(() => {
+                    if (activeTab === 'usage') {
+                        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                        const usageTab = document.querySelector('[data-tab="usage"]');
+                        if (usageTab) {
+                            usageTab.classList.add('active');
+                            document.getElementById('usageTab').classList.add('active');
+                        }
+                        currentPage.renderRecentUsage();
+                    }
+                });
+            }
+        }
+
+        console.log('✅ Complete usage log upgrade applied: Multi-product + Add More');
+    }
+})();
+</script>
 </body>
 </html>
