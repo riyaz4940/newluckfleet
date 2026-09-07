@@ -18397,5 +18397,214 @@
     }
 })();
 </script>
+<script>
+// ==============================================================
+// NOTIFICATION SYSTEM – Supervisor gets notified on new order
+// ==============================================================
+(function() {
+  const checkApp = setInterval(function() {
+    if (window.__app && window.__app.router && window.__app.auth) {
+      clearInterval(checkApp);
+      const app = window.__app;
+      const router = app.router;
+      const auth = app.auth;
+
+      // ---- 1. Override DataService.addSales to create notification ----
+      const originalAddSales = DataService.addSales;
+      DataService.addSales = async function(data) {
+        // Call the original method to save the order
+        const result = await originalAddSales.call(this, data);
+
+        // If the order was saved successfully, create a notification for supervisors
+        if (result && result.success) {
+          const orderId = result.id;
+          const token = result.token || 'New Order';
+
+          // Fetch the full order details (to get customer name, vehicle, etc.)
+          const orderDoc = await db.collection('sales').doc(orderId).get();
+          const order = orderDoc.data();
+
+          // Create a notification document in Firestore
+          const notificationData = {
+            type: 'new_order',
+            orderId: orderId,
+            token: token,
+            customerName: order?.customerName || 'Unknown',
+            vehicleNumber: order?.vehicleNumber || '',
+            message: `New order ${token} from ${order?.customerName || 'Unknown'}`,
+            timestamp: Utils.dateUtils.now(),
+            read: false,
+            recipientRole: 'supervisor', // All supervisors will see this
+            createdAt: Utils.dateUtils.now()
+          };
+
+          await db.collection('notifications').add(notificationData);
+          console.log('📢 Notification sent to supervisors for order:', token);
+        }
+        return result;
+      };
+
+      console.log('✅ DataService.addSales patched – notifications enabled.');
+
+      // ---- 2. Set up notification listener for supervisor ----
+      let unsubscribeNotifications = null;
+
+      function setupNotificationListener() {
+        // Only set up if the user is a supervisor
+        const user = auth.getCurrentUser();
+        if (!user) return;
+        if (user.role !== 'supervisor') return;
+
+        // If already listening, detach first
+        if (unsubscribeNotifications) {
+          unsubscribeNotifications();
+          unsubscribeNotifications = null;
+        }
+
+        // Listen to unread notifications for this user (by role)
+        const query = db.collection('notifications')
+          .where('recipientRole', '==', 'supervisor')
+          .where('read', '==', false)
+          .orderBy('timestamp', 'desc');
+
+        unsubscribeNotifications = query.onSnapshot((snapshot) => {
+          const count = snapshot.size;
+          const badge = document.getElementById('notifBadge');
+          if (badge) {
+            badge.textContent = count > 0 ? count : '0';
+            badge.style.display = count > 0 ? 'flex' : 'none';
+          }
+          // Also store the notifications in a global variable for later use
+          window._unreadNotifications = [];
+          snapshot.forEach(doc => {
+            window._unreadNotifications.push({ id: doc.id, ...doc.data() });
+          });
+        }, (error) => {
+          console.error('Notification listener error:', error);
+        });
+      }
+
+      // Call setup on auth change or page load
+      auth.onAuthStateChanged((user) => {
+        if (user) {
+          // Refresh user and then setup
+          auth.refreshUser().then(() => {
+            setupNotificationListener();
+          });
+        }
+      });
+
+      // Also setup when the supervisor page is rendered (override the Supervisor render)
+      // We'll patch the Supervisor class to also show notifications list
+      const originalSupervisorRender = window.Pages?.Supervisor?.prototype?.render;
+      if (originalSupervisorRender) {
+        window.Pages.Supervisor.prototype.render = async function(container) {
+          // Call original render
+          await originalSupervisorRender.call(this, container);
+
+          // Now add a notification panel to the supervisor page
+          const panel = document.createElement('div');
+          panel.id = 'notificationPanel';
+          panel.style.cssText = `
+            background: white;
+            border-radius: var(--radius);
+            padding: 1rem;
+            box-shadow: var(--shadow);
+            margin: 1rem 0;
+          `;
+          panel.innerHTML = `<h4>🔔 Recent Notifications</h4><div id="notificationList"><p style="color:var(--text-secondary);">Loading...</p></div>`;
+
+          // Insert at the top of the supervisor page content
+          const content = document.getElementById('pageContent');
+          if (content) {
+            content.prepend(panel);
+          }
+
+          // Load notifications and display
+          this.loadNotifications = async function() {
+            const list = document.getElementById('notificationList');
+            if (!list) return;
+
+            try {
+              const snapshot = await db.collection('notifications')
+                .where('recipientRole', '==', 'supervisor')
+                .orderBy('timestamp', 'desc')
+                .limit(20)
+                .get();
+
+              if (snapshot.empty) {
+                list.innerHTML = '<p style="color:var(--text-secondary);">No notifications yet.</p>';
+                return;
+              }
+
+              let html = '<div style="display:flex;flex-direction:column;gap:0.5rem;">';
+              snapshot.forEach(doc => {
+                const n = doc.data();
+                const isRead = n.read ? 'opacity:0.6;' : '';
+                const date = new Date(n.timestamp).toLocaleString();
+                html += `
+                  <div style="display:flex;justify-content:space-between;align-items:center;padding:0.5rem;border-bottom:1px solid #f0f2f5;${isRead}">
+                    <div>
+                      <strong>${n.token || 'New Order'}</strong>
+                      <span style="font-size:0.85rem;color:var(--text-secondary);">${n.message}</span>
+                      <div style="font-size:0.75rem;color:var(--text-secondary);">${date}</div>
+                    </div>
+                    ${!n.read ? `<button class="btn btn-sm btn-primary mark-read" data-id="${doc.id}" style="font-size:0.7rem;padding:0.1rem 0.4rem;">Mark read</button>` : ''}
+                  </div>
+                `;
+              });
+              html += '</div>';
+              list.innerHTML = html;
+
+              // Mark as read
+              list.querySelectorAll('.mark-read').forEach(btn => {
+                btn.addEventListener('click', async function() {
+                  const id = this.dataset.id;
+                  await db.collection('notifications').doc(id).update({ read: true });
+                  this.remove();
+                  // Re-fetch to update count
+                  setupNotificationListener();
+                  // Refresh the list
+                  if (window.__app?.router?.currentPage?.loadNotifications) {
+                    window.__app.router.currentPage.loadNotifications();
+                  }
+                });
+              });
+
+            } catch(e) {
+              console.error('Error loading notifications:', e);
+              list.innerHTML = '<p style="color:var(--text-secondary);">Failed to load notifications.</p>';
+            }
+          };
+
+          // Load initial notifications
+          await this.loadNotifications();
+
+          // Store reference to reload later
+          window._supervisorPage = this;
+        };
+        console.log('✅ Supervisor page patched – notifications panel added.');
+      }
+
+      // ---- 3. Also update the bell click to show notifications ----
+      const notifBtn = document.getElementById('notifBtn');
+      if (notifBtn) {
+        notifBtn.addEventListener('click', function() {
+          // If supervisor, navigate to supervisor page to see notifications
+          const user = auth.getCurrentUser();
+          if (user && user.role === 'supervisor') {
+            router.navigate('supervisor');
+          } else {
+            // For other roles, show a toast or modal
+            Components.Toast.show('Notifications are available for supervisors.', 'info');
+          }
+        });
+      }
+
+      console.log('✅ Notification system active.');
+    }
+  }, 300);
+})();
+</script>
 </body>
 </html>
