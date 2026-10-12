@@ -18606,5 +18606,474 @@
   }, 300);
 })();
 </script>
+    <script>
+/* ============================================================================
+   READY‑TO‑DELIVERY MODULE  v1.0
+   Drop-in script — paste just before </body>, AFTER your Firebase init code.
+   ----------------------------------------------------------------------------
+   What it does
+     • Adds "Ready to Delivery" to the sidebar
+     • Supervisor marks a vehicle ready  -> status becomes "Ready for Delivery"
+     • Vehicle instantly appears in the Ready‑to‑Delivery board (live, onSnapshot)
+     • From there supervisor can mark it "Delivered" (moves to Delivered tab)
+     • Fully self-contained: has its own page, cards, search, tabs, toast
+   ----------------------------------------------------------------------------
+   Public API (call from anywhere in your app):
+     FleetRD.markReady('DOC_ID')            // supervisor marks ready
+     FleetRD.markDelivered('DOC_ID')        // handed over to customer
+     FleetRD.open()   FleetRD.close()
+   ========================================================================== */
+(function () {
+  'use strict';
+
+  /* ======================= 1. CONFIG ======================= */
+  const CONFIG = {
+    collection    : 'inventory',              // <-- your vehicles collection
+    statusField   : 'status',
+    readyValue    : 'Ready for Delivery',
+    deliveredValue: 'Delivered',
+    historyField  : 'statusHistory',          // optional audit trail (array)
+    readyAtField  : 'readyAt',
+    deliveredAtField: 'deliveredAt',
+    supervisorRoles : ['supervisor', 'admin', 'manager', 'owner', 'super admin'],
+    allowAllIfNoRole: true                    // flip to false once roles are wired
+  };
+
+  const KEYS = {
+    num  : ['vehicleNumber','vehicleNo','regNo','registrationNumber','number',
+            'invNumber','invoiceNumber','chassisNo'],
+    name : ['vehicleName','name','title'],
+    model: ['model','vehicleModel','makeModel'],
+    cust : ['customer','customerName','client','clientName','partyName'],
+    photo: ['photo','photoUrl','image','imageUrl','vehiclePhoto'],
+    status: [CONFIG.statusField, 'stage', 'deliveryStatus']
+  };
+
+  /* ======================= 2. HELPERS ======================= */
+  const $  = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+
+  const pick = (o, keys, d) => {
+    if (!o) return d === undefined ? '' : d;
+    for (let i = 0; i < keys.length; i++) {
+      const v = o[keys[i]];
+      if (v !== undefined && v !== null && v !== '') return v;
+    }
+    return d === undefined ? '' : d;
+  };
+
+  const esc = s => String(s === undefined || s === null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
+  function currentUser() {
+    if (window.currentUser) return window.currentUser;
+    if (window.user) return window.user;
+    try {
+      return JSON.parse(localStorage.getItem('currentUser') ||
+                        localStorage.getItem('user') || 'null') || {};
+    } catch (e) { return {}; }
+  }
+
+  function getRole() {
+    const u = currentUser();
+    return String(u.role || u.userRole || u.type ||
+                  localStorage.getItem('role') || '').toLowerCase();
+  }
+
+  function userName() {
+    const u = currentUser();
+    return u.name || u.displayName || u.email ||
+           (firebase.auth && firebase.auth().currentUser
+              ? (firebase.auth().currentUser.email || '') : '');
+  }
+
+  function isSupervisor() {
+    const r = getRole();
+    if (!r) return CONFIG.allowAllIfNoRole;
+    return CONFIG.supervisorRoles.some(s => r.indexOf(s) !== -1);
+  }
+
+  function toast(msg, type) {
+    let t = $('#rdToast');
+    if (!t) {
+      t = document.createElement('div');
+      t.id = 'rdToast';
+      document.body.appendChild(t);
+    }
+    t.className = 'rd-toast show ' + (type || '');
+    t.textContent = msg;
+    clearTimeout(t._tm);
+    t._tm = setTimeout(() => { t.className = 'rd-toast'; }, 2600);
+  }
+
+  /* ======================= 3. FIRESTORE ======================= */
+  let db = null;
+
+  function getDb() {
+    if (db) return db;
+    try {
+      if (window.firebase && firebase.apps && firebase.apps.length) {
+        db = firebase.firestore();
+      }
+    } catch (e) { /* not ready yet */ }
+    return db;
+  }
+
+  /* live cache of every vehicle doc */
+  const cache = new Map();
+  let tab   = 'ready';     // ready | delivered | awaiting
+  let query = '';
+
+  function startListener() {
+    const d = getDb();
+    if (!d) { setTimeout(startListener, 700); return; }
+
+    d.collection(CONFIG.collection).onSnapshot(function (snap) {
+      cache.clear();
+      snap.forEach(function (doc) {
+        const data = doc.data() || {};
+        data.__id = doc.id;
+        cache.set(doc.id, data);
+      });
+      render();
+      updateBadge();
+    }, function (err) {
+      console.warn('[ReadyDelivery] listener error:', err);
+    });
+  }
+
+  /* ======================= 4. STATUS WRITES ======================= */
+  const norm = v => String(v || '').trim().toLowerCase();
+
+  function bucketOf(v) {
+    const s = norm(pick(v, KEYS.status, ''));
+    if (s === norm(CONFIG.readyValue))     return 'ready';
+    if (s === norm(CONFIG.deliveredValue)) return 'delivered';
+    return 'awaiting';
+  }
+
+  async function writeStatus(id, status, stampField, extra) {
+    const d = getDb();
+    if (!d) { toast('Firestore not ready yet', 'err'); return false; }
+
+    const rec = cache.get(id) || {};
+    const payload = Object.assign({}, extra || {});
+    payload[CONFIG.statusField] = status;
+    payload[stampField]         = firebase.firestore.FieldValue.serverTimestamp();
+    payload[CONFIG.historyField] = firebase.firestore.FieldValue.arrayUnion({
+      status : status,
+      by     : userName(),
+      at     : new Date().toISOString()
+    });
+
+    try {
+      await d.collection(CONFIG.collection).doc(id).set(payload, { merge: true });
+
+      // let the rest of your ERP react (e.g. refresh its own lists)
+      window.dispatchEvent(new CustomEvent('rd:status-changed', {
+        detail: { id: id, status: status, vehicle: rec }
+      }));
+      return true;
+    } catch (e) {
+      console.error('[ReadyDelivery] write failed', e);
+      toast('Could not update vehicle', 'err');
+      return false;
+    }
+  }
+
+  async function markReady(id, extra) {
+    if (!isSupervisor()) { toast('Only a supervisor can mark ready for delivery', 'err'); return false; }
+    const ok = await writeStatus(id, CONFIG.readyValue, CONFIG.readyAtField,
+      Object.assign({ readyBy: userName() }, extra || {}));
+    if (ok) {
+      toast('Moved to Ready to Delivery', 'ok');
+      tab = 'ready';
+      render();
+    }
+    return ok;
+  }
+
+  async function markDelivered(id, extra) {
+    if (!isSupervisor()) { toast('Only a supervisor can confirm delivery', 'err'); return false; }
+    const ok = await writeStatus(id, CONFIG.deliveredValue, CONFIG.deliveredAtField,
+      Object.assign({ deliveredBy: userName() }, extra || {}));
+    if (ok) {
+      toast('Vehicle marked Delivered', 'ok');
+      tab = 'delivered';
+      render();
+    }
+    return ok;
+  }
+
+  /* ======================= 5. STYLES ======================= */
+  function injectStyles() {
+    if ($('#rdStyles')) return;
+    const css = `
+    #rdPage { padding: 1rem; }
+    #rdPage .rd-toolbar { display:flex; flex-wrap:wrap; gap:.6rem; align-items:center;
+      justify-content:space-between; margin-bottom:1rem; }
+    #rdPage .rd-tabs { display:flex; gap:.35rem; background:#fff; padding:.25rem;
+      border-radius:12px; box-shadow:var(--shadow); flex-wrap:wrap; }
+    #rdPage .rd-tab { padding:.4rem .85rem; border-radius:9px; font-size:.82rem;
+      font-weight:600; color:var(--dark-gray); display:flex; align-items:center;
+      gap:.35rem; transition:.2s; }
+    #rdPage .rd-tab:hover { background:var(--light-gray); }
+    #rdPage .rd-tab.active { background:var(--primary-blue); color:#fff; }
+    #rdPage .rd-tab .cnt { background:rgba(255,255,255,.25); border-radius:20px;
+      padding:0 .4rem; font-size:.68rem; }
+    #rdPage .rd-tab:not(.active) .cnt { background:var(--light-gray);
+      color:var(--primary-dark); }
+    #rdPage .rd-search { position:relative; }
+    #rdPage .rd-search input { padding:.42rem .7rem .42rem 2rem; border:1px solid var(--gray);
+      border-radius:20px; font-size:.85rem; width:190px; background:#fff; }
+    #rdPage .rd-search input:focus { outline:none; border-color:var(--accent);
+      box-shadow:0 0 0 3px rgba(74,144,217,.12); }
+    #rdPage .rd-search .material-icons { position:absolute; left:8px; top:50%;
+      transform:translateY(-50%); font-size:18px; color:var(--dark-gray); }
+
+    #rdPage .rd-grid { display:grid; grid-template-columns:1fr; gap:.8rem; }
+    @media(min-width:700px){ #rdPage .rd-grid{ grid-template-columns:1fr 1fr; } }
+    @media(min-width:1100px){ #rdPage .rd-grid{ grid-template-columns:1fr 1fr 1fr; } }
+
+    #rdPage .rd-card { background:#fff; border-radius:var(--radius);
+      box-shadow:var(--shadow); overflow:hidden; display:flex; flex-direction:column;
+      border-top:3px solid var(--accent); transition:.2s; }
+    #rdPage .rd-card:hover { transform:translateY(-2px);
+      box-shadow:0 6px 20px rgba(0,0,0,.09); }
+    #rdPage .rd-card.is-ready { border-top-color:var(--success); }
+    #rdPage .rd-card.is-delivered { border-top-color:var(--primary-light); }
+    #rdPage .rd-card.is-awaiting { border-top-color:var(--warning); }
+    #rdPage .rd-thumb { width:100%; height:120px; object-fit:cover;
+      background:var(--light-gray); display:block; }
+    #rdPage .rd-thumb-empty { width:100%; height:80px; background:var(--light-gray);
+      display:flex; align-items:center; justify-content:center; color:var(--gray); }
+    #rdPage .rd-body { padding:.7rem .85rem; flex:1; display:flex;
+      flex-direction:column; gap:.25rem; }
+    #rdPage .rd-top { display:flex; justify-content:space-between;
+      align-items:center; gap:.5rem; }
+    #rdPage .rd-num { font-weight:700; font-size:1rem; color:var(--primary-dark); }
+    #rdPage .rd-name { font-weight:600; color:var(--primary-blue); font-size:.9rem; }
+    #rdPage .rd-sub, #rdPage .rd-meta { font-size:.76rem; color:var(--dark-gray); }
+    #rdPage .rd-pill { font-size:.62rem; font-weight:700; padding:.15rem .55rem;
+      border-radius:20px; text-transform:uppercase; letter-spacing:.4px;
+      white-space:nowrap; }
+    #rdPage .rd-pill.ready { background:#e6f7ea; color:#2f7d3c; }
+    #rdPage .rd-pill.delivered { background:#e8f0fe; color:#1a3a5c; }
+    #rdPage .rd-pill.awaiting { background:#fdf3e2; color:#9a6a11; }
+    #rdPage .rd-actions { display:flex; gap:.4rem; padding:.6rem .85rem;
+      border-top:1px solid #eef2f6; background:#fbfcfe; flex-wrap:wrap; }
+    #rdPage .rd-btn { flex:1; min-width:110px; justify-content:center;
+      padding:.42rem .7rem; border-radius:9px; font-size:.8rem; font-weight:600;
+      display:inline-flex; align-items:center; gap:.3rem; transition:.2s; }
+    #rdPage .rd-btn .material-icons { font-size:16px; }
+    #rdPage .rd-btn.primary { background:var(--primary-blue); color:#fff; }
+    #rdPage .rd-btn.primary:hover { background:var(--primary-light); }
+    #rdPage .rd-btn.success { background:var(--success); color:#fff; }
+    #rdPage .rd-btn.success:hover { background:#449d44; }
+    #rdPage .rd-btn.ghost { background:var(--light-gray); color:var(--primary-dark);
+      border:1px solid var(--gray); }
+    #rdPage .rd-btn.ghost:hover { background:var(--gray); }
+    #rdPage .rd-empty { text-align:center; padding:3rem 1rem; color:var(--dark-gray);
+      background:#fff; border-radius:var(--radius); box-shadow:var(--shadow); }
+    #rdPage .rd-empty .material-icons { font-size:44px; color:var(--gray);
+      display:block; margin-bottom:.5rem; }
+
+    .rd-count { margin-left:auto; background:var(--danger); color:#fff;
+      font-size:.62rem; font-weight:700; border-radius:20px; padding:.05rem .42rem;
+      min-width:18px; text-align:center; }
+    .rd-count.zero { display:none; }
+
+    .rd-toast { position:fixed; left:50%; bottom:calc(var(--bottom-nav-height) + 18px);
+      transform:translate(-50%,20px); background:var(--primary-dark); color:#fff;
+      padding:.6rem 1.1rem; border-radius:24px; font-size:.82rem; font-weight:500;
+      box-shadow:0 8px 24px rgba(0,0,0,.22); opacity:0; pointer-events:none;
+      transition:.28s; z-index:99999; max-width:90vw; text-align:center; }
+    .rd-toast.show { opacity:1; transform:translate(-50%,0); }
+    .rd-toast.ok  { background:#2f7d3c; }
+    .rd-toast.err { background:var(--danger); }
+    `;
+    const el = document.createElement('style');
+    el.id = 'rdStyles';
+    el.textContent = css;
+    document.head.appendChild(el);
+  }
+
+  /* ======================= 6. UI SHELL ======================= */
+  function buildShell() {
+    /* --- sidebar nav item --- */
+    const nav = $('.sidebar-nav');
+    if (nav && !$('#rdNavItem')) {
+      const item = document.createElement('div');
+      item.className = 'nav-item';
+      item.id = 'rdNavItem';
+      item.innerHTML =
+        '<span class="material-icons">local_shipping</span>' +
+        '<span>Ready to Delivery</span>' +
+        '<span class="rd-count zero" id="rdNavCount">0</span>';
+      item.addEventListener('click', open);
+      nav.appendChild(item);
+    }
+
+    /* --- optional bottom nav entry (mobile) --- */
+    const bnav = $('.bottom-nav') || $('.mobile-nav');
+    if (bnav && !$('#rdBottomNav')) {
+      const b = document.createElement('div');
+      b.className = 'bottom-nav-item';
+      b.id = 'rdBottomNav';
+      b.innerHTML = '<span class="material-icons">local_shipping</span><span>Delivery</span>';
+      b.addEventListener('click', open);
+      bnav.appendChild(b);
+    }
+
+    /* --- page container --- */
+    if (!$('#rdPage')) {
+      const main = $('.main-content') || document.body;
+      const page = document.createElement('section');
+      page.id = 'rdPage';
+      page.className = 'hidden';
+      page.innerHTML =
+        '<div class="rd-toolbar">' +
+          '<div class="rd-tabs">' +
+            '<button class="rd-tab active" data-tab="ready">Ready <span class="cnt" id="rdCntReady">0</span></button>' +
+            '<button class="rd-tab" data-tab="awaiting">Awaiting <span class="cnt" id="rdCntAwaiting">0</span></button>' +
+            '<button class="rd-tab" data-tab="delivered">Delivered <span class="cnt" id="rdCntDelivered">0</span></button>' +
+          '</div>' +
+          '<div class="rd-search">' +
+            '<span class="material-icons">search</span>' +
+            '<input type="text" id="rdSearch" placeholder="Search vehicle / customer…" />' +
+          '</div>' +
+        '</div>' +
+        '<div class="rd-grid" id="rdGrid"></div>';
+
+      const footer = $('.app-footer', main);
+      if (footer) main.insertBefore(page, footer); else main.appendChild(page);
+
+      /* tab clicks */
+      $$('#rdPage .rd-tab').forEach(function (b) {
+        b.addEventListener('click', function () {
+          tab = b.dataset.tab;
+          $$('#rdPage .rd-tab').forEach(x => x.classList.toggle('active', x === b));
+          render();
+        });
+      });
+
+      /* search */
+      $('#rdSearch').addEventListener('input', function (e) {
+        query = e.target.value.toLowerCase().trim();
+        render();
+      });
+
+      /* card action buttons (delegated) */
+      $('#rdGrid').addEventListener('click', function (e) {
+        const btn = e.target.closest('[data-act]');
+        if (!btn) return;
+        const id = btn.dataset.id;
+        if (btn.dataset.act === 'ready')     markReady(id);
+        if (btn.dataset.act === 'deliver')   markDelivered(id);
+        if (btn.dataset.act === 'open')      window.dispatchEvent(
+          new CustomEvent('rd:open-vehicle', { detail: { id: id } }));
+      });
+    }
+  }
+
+  /* ---- show / hide page ---- */
+  function open() {
+    buildShell();
+    const main = $('.main-content') || document.body;
+
+    Array.from(main.children).forEach(function (el) {
+      if (el.id === 'rdPage') return;
+      if (el.classList.contains('header') ||
+          el.classList.contains('breadcrumb') ||
+          el.classList.contains('app-footer')) return;
+      el.dataset.rdHidden = '1';
+      el.classList.add('hidden');
+    });
+
+    $('#rdPage').classList.remove('hidden');
+
+    $$('.sidebar-nav .nav-item').forEach(n => n.classList.remove('active'));
+    const nav = $('#rdNavItem'); if (nav) nav.classList.add('active');
+    $$('.bottom-nav-item, .mobile-nav-item').forEach(n => n.classList.remove('active'));
+    const bn = $('#rdBottomNav'); if (bn) bn.classList.add('active');
+
+    const t = $('.page-title'); if (t) t.textContent = 'Ready to Delivery';
+    const bc = $('.breadcrumb');
+    if (bc) bc.innerHTML = 'Dashboard / <span>Ready to Delivery</span>';
+
+    const sb = $('.sidebar');
+    if (sb && window.innerWidth < 900) sb.classList.remove('open');
+
+    render();
+  }
+
+  function close() {
+    const main = $('.main-content') || document.body;
+    Array.from(main.children).forEach(function (el) {
+      if (el.dataset && el.dataset.rdHidden) {
+        el.classList.remove('hidden');
+        delete el.dataset.rdHidden;
+      }
+    });
+    const page = $('#rdPage'); if (page) page.classList.add('hidden');
+    const nav = $('#rdNavItem'); if (nav) nav.classList.remove('active');
+    const bn = $('#rdBottomNav'); if (bn) bn.classList.remove('active');
+  }
+
+  /* ======================= 7. RENDER ======================= */
+  function cardHTML(v) {
+    const b    = bucketOf(v);
+    const id   = v.__id;
+    const num  = pick(v, KEYS.num, '—');
+    const name = pick(v, KEYS.name, '');
+    const model= pick(v, KEYS.model, '');
+    const cust = pick(v, KEYS.cust, '');
+    const img  = pick(v, KEYS.photo, '');
+    const readyAt = pick(v, [CONFIG.readyAtField, 'readyDate'], '');
+
+    const label = b === 'ready' ? 'Ready' : b === 'delivered' ? 'Delivered' : 'Awaiting';
+
+    const thumb = img
+      ? '<img class="rd-thumb" src="' + esc(img) + '" alt="" ' +
+        'onerror="this.outerHTML=\'<div class=&quot;rd-thumb-empty&quot;>' +
+        '<span class=&quot;material-icons&quot;>directions_car</span></div>\'">'
+      : '<div class="rd-thumb-empty"><span class="material-icons">directions_car</span></div>';
+
+    let actions = '';
+    if (b === 'awaiting') {
+      actions =
+        '<button class="rd-btn success" data-act="ready" data-id="' + esc(id) + '">' +
+          '<span class="material-icons">check_circle</span>Mark Ready</button>' +
+        '<button class="rd-btn ghost" data-act="open" data-id="' + esc(id) + '">' +
+          '<span class="material-icons">visibility</span>View</button>';
+    } else if (b === 'ready') {
+      actions =
+        '<button class="rd-btn primary" data-act="deliver" data-id="' + esc(id) + '">' +
+          '<span class="material-icons">local_shipping</span>Mark Delivered</button>' +
+        '<button class="rd-btn ghost" data-act="open" data-id="' + esc(id) + '">' +
+          '<span class="material-icons">visibility</span>View</button>';
+    } else {
+      actions =
+        '<button class="rd-btn ghost" data-act="open" data-id="' + esc(id) + '">' +
+          '<span class="material-icons">visibility</span>View details</button>';
+    }
+
+    return '' +
+      '<div class="rd-card is-' + b + '">' +
+        thumb +
+        '<div class="rd-body">' +
+          '<div class="rd-top">' +
+            '<span class="rd-num">#' + esc(num) + '</span>' +
+            '<span class="rd-pill ' + b + '">' + label + '</span>' +
+          '</div>' +
+          (name  ? '<div class="rd-name">' + esc(name) + '</div>' : '') +
+          (model ? '<div class="rd-sub">'  + esc(model) + '</div>' : '') +
+          (cust  ? '<div class="rd-meta"><span class="material-icons" ' +
+                   'style="font-size:13px;vertical-align:-2px">person</span> ' +
+                   esc(cust) + '</div>' : '') +
+          (b === 'ready' && readyAt
+            ? '<div class="rd-meta">Ready since ' + esc(readyAt) + '</div>' : '') +
+        '</div>'
 </body>
 </html>
