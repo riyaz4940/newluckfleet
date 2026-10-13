@@ -19278,5 +19278,206 @@
   window.markInventoryReady = markReady;
 })();
 </script>
+    <!-- ==============================================================
+     SUPERVISOR: Archive CART (non-vehicle) cards
+     Removes the cart from the Supervisor queue immediately.
+     Paste before </body>.
+     ============================================================== -->
+<script>
+(function () {
+  'use strict';
+
+  var READY     = 'Ready for Delivery';
+  var DELIVERED = 'Delivered';
+
+  function db(){
+    return (window.firebase && firebase.apps && firebase.apps.length)
+      ? firebase.firestore() : null;
+  }
+  function userName(){
+    try { var u = JSON.parse(localStorage.getItem('user')||'{}');
+          return u.fullName || u.username || 'Supervisor'; }
+    catch(e){ return 'Supervisor'; }
+  }
+
+  /* ---------- styles ---------- */
+  if (!document.getElementById('rdCartArchiveStyles')) {
+    var st = document.createElement('style');
+    st.id = 'rdCartArchiveStyles';
+    st.textContent =
+      '.rd-cart-archive{background:#f0ad4e;color:#fff;border:none;border-radius:6px;' +
+      'padding:.32rem .7rem;font-size:.78rem;font-weight:600;cursor:pointer;' +
+      'display:inline-flex;align-items:center;gap:.3rem;margin-right:.35rem;' +
+      'transition:background .2s;}' +
+      '.rd-cart-archive:hover{background:#ec971f;}' +
+      '.rd-cart-archive .material-icons{font-size:15px;}' +
+      '.rd-cart-archive:disabled{opacity:.5;cursor:not-allowed;}';
+    document.head.appendChild(st);
+  }
+
+  /* ---------- archive action ---------- */
+  async function archiveCart(orderId, label, cardEl, btnEl) {
+    if (!orderId) return;
+    var toast  = new Components.Toast();
+    var loader = new Components.Loader();
+    if (btnEl) btnEl.disabled = true;
+    loader.show();
+    try {
+      await db().collection('sales').doc(orderId).set({
+        status            : DELIVERED,
+        inSupervisorQueue : false,
+        archived          : true,
+        archivedAt        : firebase.firestore.FieldValue.serverTimestamp(),
+        archivedBy        : userName(),
+        progress          : 100,
+        deliveredAt       : firebase.firestore.FieldValue.serverTimestamp(),
+        deliveredBy       : userName(),
+        updatedAt         : firebase.firestore.FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      toast.show('📦 ' + (label || 'Cart') + ' archived', 'success');
+
+      /* remove the card from the DOM instantly */
+      if (cardEl && cardEl.parentNode) cardEl.parentNode.removeChild(cardEl);
+
+      /* refresh supervisor page in the background */
+      var page = window.__app && window.__app.router && window.__app.router.currentPage;
+      if (page && typeof page.loadData === 'function') {
+        await page.loadData();
+        if (typeof page.renderQueue === 'function') page.renderQueue();
+        if (typeof page.renderStats === 'function') page.renderStats();
+      }
+
+      /* bump the Ready to Delivery badge if it exists, else no-op */
+      if (window.FleetRD && typeof window.FleetRD.refresh === 'function') {
+        try { window.FleetRD.refresh(); } catch (e) {}
+      }
+    } catch (e) {
+      console.error('[CartArchive]', e);
+      toast.show('Failed: ' + e.message, 'error');
+      if (btnEl) btnEl.disabled = false;
+    } finally {
+      loader.hide();
+    }
+  }
+
+  /* ---------- inject archive button on cart cards ---------- */
+  function injectArchiveButtons() {
+    var page = window.__app && window.__app.router && window.__app.router.currentPage;
+    if (!page || !page.priorityQueue || !page.allSales) return;
+
+    var cards = document.querySelectorAll('.worker-task-card');
+    cards.forEach(function (card) {
+      var actions = card.querySelector('.task-actions');
+      if (!actions) return;
+      if (actions.querySelector('.rd-cart-archive')) return;
+
+      /* find identifier (vehicleNumber or productName) */
+      var info = card.querySelector('.task-info');
+      var identifier = '';
+      if (info && info.dataset && info.dataset.vehicle) identifier = info.dataset.vehicle;
+      if (!identifier) {
+        var vEl = card.querySelector('.task-vehicle-number');
+        if (vEl) identifier = vEl.textContent.trim().split(/\s+/)[0];
+      }
+      if (!identifier) return;
+
+      /* find the group in supervisor priority queue */
+      var group = page.priorityQueue.find(function (v) {
+        return v.vehicleNumber === identifier || v.productName === identifier;
+      });
+      if (!group) return;
+
+      /* only for non-vehicle (cart) items */
+      if (group.orderType !== 'non-vehicle') return;
+
+      /* find the active sales order for this cart */
+      var order = page.allSales.find(function (s) {
+        return (s.productName === group.productName) &&
+               s.status !== DELIVERED &&
+               s.status !== READY;
+      });
+      if (!order) return;
+
+      var btn = document.createElement('button');
+      btn.className = 'rd-cart-archive';
+      btn.innerHTML = '<span class="material-icons">archive</span> Archive Cart';
+      btn.title = 'Archive this cart and remove it from the supervisor queue';
+      btn.dataset.orderid = order.id;
+      btn.dataset.label   = order.productName || order.productType || 'Cart';
+
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        archiveCart(btn.dataset.orderid, btn.dataset.label, card, btn);
+      });
+
+      actions.prepend(btn);
+    });
+  }
+
+  /* ---------- keep in sync with re-renders ---------- */
+  var queued = false;
+  function tick() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () {
+      queued = false;
+      try { injectArchiveButtons(); } catch (e) {}
+    });
+  }
+
+  var obs = new MutationObserver(tick);
+  obs.observe(document.body, { childList: true, subtree: true });
+  window.addEventListener('hashchange', function () { setTimeout(tick, 200); });
+  setInterval(tick, 1200);
+
+  /* ---------- filter: hide archived carts from supervisor queue ---------- */
+  var boot = setInterval(function () {
+    if (typeof Pages === 'undefined' || !Pages.Supervisor) return;
+    clearInterval(boot);
+
+    var origLoad = Pages.Supervisor.prototype.loadData;
+    Pages.Supervisor.prototype.loadData = async function () {
+      await origLoad.call(this);
+      if (!this.priorityQueue) return;
+
+      var sales = this.allSales || [];
+      this.priorityQueue = this.priorityQueue.filter(function (v) {
+        if (v.orderType !== 'non-vehicle') return true;   // keep vehicles untouched
+
+        /* find matching sales order */
+        var order = sales.find(function (s) {
+          return s.productName === v.productName;
+        });
+        if (!order) return true;
+
+        /* drop from queue if archived / delivered / ready */
+        if (order.status === DELIVERED) return false;
+        if (order.status === READY)     return false;
+        if (order.archived === true)    return false;
+        return true;
+      });
+    };
+
+    console.log('%c[CartArchive] Archive button + filter installed ✔',
+                'color:#f0ad4e;font-weight:700');
+
+    /* re-render if supervisor is currently visible */
+    var current = window.__app && window.__app.router && window.__app.router.currentPage;
+    if (current && current.constructor.name === 'Supervisor') {
+      current.loadData().then(function () {
+        if (typeof current.renderQueue === 'function') current.renderQueue();
+        if (typeof current.renderStats === 'function') current.renderStats();
+      });
+    }
+  }, 200);
+
+  /* public API so cart buttons elsewhere can use it */
+  window.archiveCartOrder = function (orderId, label) {
+    return archiveCart(orderId, label, null, null);
+  };
+})();
+</script>
 </body>
 </html>
