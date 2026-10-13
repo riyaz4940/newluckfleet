@@ -18606,333 +18606,498 @@
   }, 300);
 })();
 </script>
- <script>
-/* ==============================================================
-   READY-TO-DELIVERY  —  one-file drop-in
-   Replaces Lead Tracker • Moves vehicles out of Supervisor queue
-   Paste once, right before </body>, after your Firebase init.
-   ============================================================== */
+<!-- ==============================================================
+     READY TO DELIVERY — single script, drop-in, works with your ERP
+     Replaces: the "READY-TO-DELIVERY — one-file drop-in" block
+     Paste once, right before </body>
+     ============================================================== -->
+<script>
 (function () {
   'use strict';
 
-  /* ---------- config (edit only if your names differ) ---------- */
-  var COLLECTION = 'inventory';               // Firestore collection
-  var READY      = 'Ready for Delivery';
-  var DELIVERED  = 'Delivered';
-  var LEAD_TXT   = 'lead tracker';            // sidebar item to remove
+  var READY     = 'Ready for Delivery';
+  var DELIVERED = 'Delivered';
+  var INPROG    = 'In Progress';
 
-  /* ---------- tiny helpers ---------- */
-  function $(s, r) { return (r || document).querySelector(s); }
-  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
-  function db() {
-    if (window.firebase && firebase.apps && firebase.apps.length &&
-        typeof firebase.firestore === 'function') return firebase.firestore();
-    return null;
+  /* -------- helpers -------- */
+  function $(s, r){ return (r || document).querySelector(s); }
+  function db(){
+    return (window.firebase && firebase.apps && firebase.apps.length)
+      ? firebase.firestore() : null;
   }
-  function user() {
-    try { var u = JSON.parse(localStorage.getItem('currentUser') || localStorage.getItem('user') || '{}');
-          return u.name || u.displayName || u.email || ''; } catch (e) { return ''; }
+  function currentUser(){
+    try { return JSON.parse(localStorage.getItem('user') || '{}'); }
+    catch(e){ return {}; }
   }
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  function userName(){
+    var u = currentUser();
+    return u.fullName || u.username || u.email || 'Supervisor';
   }
-  function toast(msg, t) {
-    var el = document.getElementById('rdToast');
-    if (!el) { el = document.createElement('div'); el.id = 'rdToast'; document.body.appendChild(el); }
-    el.className = 'rd-toast show ' + (t || '');
-    el.textContent = msg;
-    clearTimeout(el._t);
-    el._t = setTimeout(function () { el.className = 'rd-toast'; }, 2400);
+  function isReady(v){
+    if (!v) return false;
+    return v.inventoryStatus === READY || v.status === READY;
   }
-  function log() { try { console.log.apply(console, ['[RD]'].concat([].slice.call(arguments))); } catch (e) {} }
-
-  /* ---------- styles ---------- */
-  if (!document.getElementById('rdStyles')) {
-    var st = document.createElement('style');
-    st.id = 'rdStyles';
-    st.textContent = [
-      '.rd-count{background:#d9534f;color:#fff;font-size:.62rem;font-weight:700;',
-      'border-radius:20px;padding:.05rem .42rem;margin-left:auto;min-width:18px;text-align:center;}',
-      '.rd-count.zero{display:none;}',
-      '.rd-inline-btn{margin-top:.5rem;padding:.42rem .8rem;border-radius:9px;border:none;',
-      'background:#5cb85c;color:#fff;font-weight:600;font-size:.8rem;cursor:pointer;',
-      'display:inline-flex;align-items:center;gap:.3rem;}',
-      '.rd-inline-btn:hover{background:#449d44;}',
-      '#rdPage{padding:1rem;}',
-      '#rdPage h3{margin:0 0 1rem;color:#0b1e33;font-size:1.05rem;}',
-      '#rdPage .rd-grid{display:grid;gap:.8rem;grid-template-columns:1fr;}',
-      '@media(min-width:700px){#rdPage .rd-grid{grid-template-columns:1fr 1fr;}}',
-      '@media(min-width:1100px){#rdPage .rd-grid{grid-template-columns:1fr 1fr 1fr;}}',
-      '#rdPage .rd-card{background:#fff;border-radius:10px;padding:.85rem;',
-      'box-shadow:0 2px 12px rgba(0,0,0,.06);border-top:3px solid #5cb85c;',
-      'display:flex;flex-direction:column;gap:.3rem;}',
-      '#rdPage .rd-num{font-weight:700;color:#0b1e33;font-size:1rem;}',
-      '#rdPage .rd-name{font-weight:600;color:#1a3a5c;font-size:.9rem;}',
-      '#rdPage .rd-sub{font-size:.78rem;color:#6b7a8a;}',
-      '#rdPage .rd-btn{margin-top:.5rem;padding:.45rem .8rem;border-radius:9px;',
-      'border:none;background:#1a3a5c;color:#fff;font-weight:600;font-size:.8rem;cursor:pointer;}',
-      '#rdPage .rd-btn:hover{background:#2a5a8a;}',
-      '#rdPage .rd-empty{grid-column:1/-1;text-align:center;padding:2.5rem 1rem;',
-      'color:#6b7a8a;background:#fff;border-radius:10px;}',
-      '.rd-toast{position:fixed;left:50%;bottom:80px;transform:translate(-50%,20px);',
-      'background:#0b1e33;color:#fff;padding:.6rem 1.1rem;border-radius:24px;',
-      'font-size:.82rem;box-shadow:0 8px 24px rgba(0,0,0,.22);opacity:0;',
-      'pointer-events:none;transition:.28s;z-index:99999;max-width:90vw;text-align:center;}',
-      '.rd-toast.show{opacity:1;transform:translate(-50%,0);}',
-      '.rd-toast.ok{background:#2f7d3c;}',
-      '.rd-toast.err{background:#d9534f;}'
-    ].join('');
-    document.head.appendChild(st);
+  function isGone(v){
+    if (!v) return false;
+    return v.inventoryStatus === DELIVERED ||
+           v.status === DELIVERED ||
+           v.inventoryStatus === 'Archived';
   }
 
-  /* ---------- 1. sidebar: remove Lead Tracker + add RD ---------- */
-  function fixSidebar() {
-    var nav = $('.sidebar-nav');
-    if (!nav) return;
-    $$('.nav-item', nav).forEach(function (n) {
-      if (n.id === 'rdNavItem') return;
-      var txt = (n.textContent || '').toLowerCase();
-      if (txt.indexOf(LEAD_TXT) !== -1) n.parentNode.removeChild(n);
-    });
-    if (!document.getElementById('rdNavItem')) {
-      var item = document.createElement('div');
-      item.className = 'nav-item';
-      item.id = 'rdNavItem';
-      item.innerHTML =
-        '<span class="material-icons">local_shipping</span>' +
-        '<span>Ready to Delivery</span>' +
-        '<span id="rdNavCount" class="rd-count zero">0</span>';
-      nav.appendChild(item);
-    }
-  }
+  /* ==============================================================
+     1. Wait for app + register page
+     ============================================================== */
+  var boot = setInterval(function () {
+    if (!window.__app || !window.__app.router || typeof Pages === 'undefined' ||
+        !Pages.Supervisor || !window.__app.auth) return;
+    clearInterval(boot);
+    install();
+  }, 150);
 
-  /* ---------- 2. inject "Ready to Delivery" button into cards ---------- */
-  var CARD_SEL = '.inv-card,.vehicle-card,.supervisor-card,.task-card,.card';
-  var ID_ATTRS = ['data-id','data-doc-id','data-vehicle-id','data-inventory-id',
-                  'data-docid','data-key','data-uid'];
+  function install() {
+    var app    = window.__app;
+    var router = app.router;
+    var auth   = app.auth;
 
-  function extractId(card) {
-    for (var i = 0; i < ID_ATTRS.length; i++) {
-      var v = card.getAttribute(ID_ATTRS[i]);
-      if (v) return v;
-    }
-    var kids = card.querySelectorAll(ID_ATTRS.map(function (a) { return '[' + a + ']'; }).join(','));
-    for (var j = 0; j < kids.length; j++) {
-      for (var k = 0; k < ID_ATTRS.length; k++) {
-        var v2 = kids[j].getAttribute(ID_ATTRS[k]);
-        if (v2) return v2;
+    /* ============ PAGE CLASS ============ */
+    class ReadyDelivery {
+      constructor(app) {
+        this.app    = app;
+        this.toast  = new Components.Toast();
+        this.loader = new Components.Loader();
+        this.items  = [];
+        this.search = '';
+      }
+
+      async render(container) {
+        container.innerHTML =
+          '<div class="page-header" style="margin-bottom:.8rem;">' +
+            '<h2>🚚 Ready to Delivery</h2>' +
+            '<p style="color:var(--dark-gray);font-size:.85rem;">' +
+              'Vehicles released by supervisors. Click <strong>Mark Delivered</strong> once handed over.' +
+            '</p>' +
+          '</div>' +
+          '<div class="supervisor-search" style="margin-bottom:1rem;">' +
+            '<input type="text" id="rdSearchInput" placeholder="🔍 Search by vehicle, customer, token..." />' +
+            '<button class="search-clear" id="rdSearchClear">✕ Clear</button>' +
+            '<button class="btn btn-secondary btn-sm" id="rdRefreshBtn" style="margin-left:.5rem;">🔄 Refresh</button>' +
+            '<span id="rdCountBadge" style="font-size:.85rem;color:var(--dark-gray);margin-left:auto;"></span>' +
+          '</div>' +
+          '<div id="rdCardsGrid" class="inventory-cards" style="display:grid;gap:.8rem;"></div>';
+
+        await this.loadData();
+        this.renderList();
+
+        document.getElementById('rdSearchInput').addEventListener('input', (e) => {
+          this.search = e.target.value.toLowerCase().trim();
+          this.renderList();
+        });
+        document.getElementById('rdSearchClear').addEventListener('click', () => {
+          document.getElementById('rdSearchInput').value = '';
+          this.search = '';
+          this.renderList();
+        });
+        document.getElementById('rdRefreshBtn').addEventListener('click', () => {
+          this.loadData().then(() => this.renderList());
+        });
+      }
+
+      async loadData() {
+        this.loader.show();
+        try {
+          var snap = await db().collection('inventory').get();
+          var all = [];
+          snap.forEach(function(d){
+            var v = d.data() || {}; v.__id = d.id; all.push(v);
+          });
+          this.items = all.filter(isReady);
+          console.log('[RD] total inventory:', all.length, '• ready:', this.items.length);
+        } catch (e) {
+          this.toast.show('Failed to load: ' + e.message, 'error');
+          this.items = [];
+        } finally { this.loader.hide(); }
+      }
+
+      renderList() {
+        var grid  = document.getElementById('rdCardsGrid');
+        var badge = document.getElementById('rdCountBadge');
+        if (!grid) return;
+
+        var list = this.items;
+        if (this.search) {
+          list = list.filter(function(v){
+            var hay = [v.vehicleNumber, v.vehicleName, v.model,
+                       v.customer, v.customerName, v.token, v.invNumber]
+                       .join(' ').toLowerCase();
+            return hay.indexOf(this.search) !== -1;
+          }.bind(this));
+        }
+        if (badge) badge.textContent = list.length + ' of ' + this.items.length + ' vehicle(s)';
+
+        if (!list.length) {
+          grid.innerHTML =
+            '<div style="grid-column:1/-1;text-align:center;padding:2.5rem 1rem;' +
+                 'background:white;border-radius:var(--radius);' +
+                 'box-shadow:var(--shadow);color:var(--dark-gray);">' +
+              '<span class="material-icons" style="font-size:3rem;color:var(--gray);">local_shipping</span>' +
+              '<p style="margin-top:.5rem;">' +
+                (this.search ? 'No results for "' + this.search + '"'
+                             : 'No vehicles ready for delivery yet.') +
+              '</p>' +
+            '</div>';
+          return;
+        }
+
+        var self = this;
+        grid.innerHTML = list.map(function(v){
+          var num   = v.vehicleNumber || v.invNumber || '—';
+          var name  = v.vehicleName || '';
+          var model = v.model || '';
+          var cust  = v.customer || v.customerName || '';
+          var photo = v.frontPhotoUrl || '';
+          var days  = v.deliveryDate && Utils && Utils.dateUtils
+                        ? Utils.dateUtils.daysUntil(v.deliveryDate) : null;
+          var dayBadge = '';
+          if (days !== null) {
+            if (days < 0)       dayBadge = '<span class="badge badge-rejected">🔴 Overdue ' + Math.abs(days) + 'd</span>';
+            else if (days <= 3) dayBadge = '<span class="badge badge-pending_approval">🟠 ' + days + 'd left</span>';
+            else                dayBadge = '<span class="badge badge-completed">🟢 ' + days + 'd left</span>';
+          }
+          return '<div class="inv-card" style="border-top:3px solid var(--success);">' +
+            (photo ? '<img class="inv-photo-thumb" src="' + photo + '" />' : '') +
+            '<div class="inv-header">' +
+              '<span class="inv-number">' + num + '</span>' +
+              '<span class="badge badge-fc-ready">✅ READY</span>' +
+            '</div>' +
+            (name  ? '<div class="inv-name">' + name + '</div>' : '') +
+            (model ? '<div class="inv-model">' + model + '</div>' : '') +
+            (cust  ? '<div class="inv-model"><span class="material-icons" style="font-size:13px;vertical-align:-2px;">person</span> ' + cust + '</div>' : '') +
+            '<div style="margin:.3rem 0;">' + dayBadge + '</div>' +
+            '<div class="inv-actions" style="display:flex;gap:.3rem;flex-wrap:wrap;">' +
+              '<button class="btn btn-primary btn-sm rd-deliver-btn" data-id="' + v.__id + '">' +
+                '<span class="material-icons" style="font-size:16px;">local_shipping</span> Mark Delivered</button>' +
+              '<button class="btn btn-secondary btn-sm rd-back-btn" data-id="' + v.__id + '">' +
+                '<span class="material-icons" style="font-size:16px;">undo</span> Send Back</button>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+        grid.querySelectorAll('.rd-deliver-btn').forEach(function(b){
+          b.addEventListener('click', function(e){ e.stopPropagation(); self.markDelivered(b.dataset.id); });
+        });
+        grid.querySelectorAll('.rd-back-btn').forEach(function(b){
+          b.addEventListener('click', function(e){ e.stopPropagation(); self.sendBack(b.dataset.id); });
+        });
+      }
+
+      async markDelivered(id) {
+        this.loader.show();
+        try {
+          await db().collection('inventory').doc(id).set({
+            inventoryStatus: DELIVERED,
+            status: DELIVERED,
+            deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
+            deliveredBy: userName()
+          }, { merge: true });
+          this.toast.show('✅ Vehicle delivered', 'success');
+          await this.loadData();
+          this.renderList();
+        } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); }
+        finally { this.loader.hide(); }
+      }
+
+      async sendBack(id) {
+        this.loader.show();
+        try {
+          await db().collection('inventory').doc(id).set({
+            inventoryStatus: 'Available',
+            status: 'In Progress',
+            readyForDelivery: false,
+            inSupervisorQueue: true,
+            supervisorStatus: 'Returned'
+          }, { merge: true });
+          this.toast.show('↩️ Returned to supervisor queue', 'info');
+          await this.loadData();
+          this.renderList();
+        } catch (e) { this.toast.show('Failed: ' + e.message, 'error'); }
+        finally { this.loader.hide(); }
       }
     }
-    var clicks = card.querySelectorAll('[onclick]');
-    for (var m = 0; m < clicks.length; m++) {
-      var oc = clicks[m].getAttribute('onclick') || '';
-      var mm = oc.match(/['"]([A-Za-z0-9_-]{12,})['"]/);
-      if (mm) return mm[1];
-    }
-    return null;
-  }
 
-  function injectCardButtons() {
-    var cards = $$(CARD_SEL);
-    for (var i = 0; i < cards.length; i++) {
-      var card = cards[i];
-      if (card.querySelector('.rd-inline-btn')) continue;
-      if (card.closest && card.closest('#rdPage')) continue;
-      var id = extractId(card);
-      if (!id) continue;
-      var btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'btn btn-success btn-sm rd-inline-btn';
-      btn.setAttribute('data-rd-id', id);
-      btn.innerHTML =
-        '<span class="material-icons" style="font-size:15px;">check_circle</span>' +
-        'Ready to Delivery';
-      var box = card.querySelector('.inv-actions,.card-actions,.card-footer,.actions');
-      if (box) box.appendChild(btn); else card.appendChild(btn);
-    }
-  }
+    /* ============ REGISTER PAGE ============ */
+    Pages.ReadyDelivery = ReadyDelivery;
+    router.pages['readydelivery'] = ReadyDelivery;
 
-  /* ---------- 3. move vehicle(s) to Ready queue ---------- */
-  function moveToReady(ids, cardEl) {
-    var d = db();
-    if (!d) { toast('Firebase not ready yet', 'err'); return; }
-    if (!ids || !ids.length) return;
-    var col = d.collection(COLLECTION);
-    var batch = d.batch();
-    var by = user();
-    ids.forEach(function (id) {
-      batch.set(col.doc(id), {
-        status              : READY,
-        readyForDelivery    : true,
-        inSupervisorQueue   : false,     // ← drops it out of supervisor list
-        assignedToSupervisor: false,
-        supervisorStatus    : 'Released',
-        readyAt             : firebase.firestore.FieldValue.serverTimestamp(),
-        readyBy             : by
-      }, { merge: true });
-    });
-    batch.commit().then(function () {
-      toast(ids.length + ' vehicle' + (ids.length > 1 ? 's' : '') + ' → Ready', 'ok');
-      if (cardEl && cardEl.parentNode) cardEl.parentNode.removeChild(cardEl);
-      loadReady();
-    }).catch(function (e) { log('move failed', e); toast('Move failed', 'err'); });
-  }
+    var origPerm = auth.hasPermission.bind(auth);
+    auth.hasPermission = function (page) {
+      if (page === 'readydelivery') {
+        var u = this.getCurrentUser() || {};
+        return ['owner','operations_manager','supervisor'].indexOf(u.role) !== -1;
+      }
+      return origPerm(page);
+    };
 
-  function doDeliver(id) {
-    var d = db(); if (!d || !id) return;
-    d.collection(COLLECTION).doc(id)
-      .set({ status: DELIVERED,
-             deliveredAt: firebase.firestore.FieldValue.serverTimestamp(),
-             deliveredBy: user() }, { merge: true })
-      .then(function () { toast('Vehicle marked Delivered', 'ok'); loadReady(); })
-      .catch(function (e) { log(e); toast('Update failed', 'err'); });
-  }
+    /* ============ SIDEBAR ENTRY ============ */
+    function swapSidebar() {
+      var sidebar = document.getElementById('sidebarNav');
+      if (!sidebar) return;
 
-  /* ---------- 4. RD page ---------- */
-  function buildPage() {
-    if (document.getElementById('rdPage')) return;
-    var main = $('.main-content') || document.body;
-    var page = document.createElement('section');
-    page.id = 'rdPage';
-    page.className = 'hidden';
-    page.innerHTML = '<h3>Ready to Delivery</h3><div id="rdGrid" class="rd-grid"></div>';
-    var f = $('.app-footer', main);
-    if (f && f.parentNode === main) main.insertBefore(page, f); else main.appendChild(page);
-  }
+      /* remove duplicates */
+      var dupes = sidebar.querySelectorAll('[data-page="readydelivery"]');
+      for (var i = 1; i < dupes.length; i++) {
+        if (dupes[i].parentNode) dupes[i].parentNode.removeChild(dupes[i]);
+      }
 
-  var hiddenNodes = [];
-  function openPage() {
-    fixSidebar();
-    buildPage();
-    var main = $('.main-content') || document.body;
-    hiddenNodes = [];
-    Array.prototype.slice.call(main.children).forEach(function (el) {
-      if (el.id === 'rdPage') return;
-      if (el.classList.contains('header') || el.classList.contains('breadcrumb') ||
-          el.classList.contains('app-footer')) return;
-      if (!el.classList.contains('hidden')) { hiddenNodes.push(el); el.classList.add('hidden'); }
-    });
-    document.getElementById('rdPage').classList.remove('hidden');
-    $$('.sidebar-nav .nav-item').forEach(function (n) { n.classList.remove('active'); });
-    var n = document.getElementById('rdNavItem'); if (n) n.classList.add('active');
-    var t = $('.page-title'); if (t) t.textContent = 'Ready to Delivery';
-    var bc = $('.breadcrumb'); if (bc) bc.innerHTML = 'Dashboard / <span>Ready to Delivery</span>';
-    loadReady();
-  }
-  function closePage() {
-    var p = document.getElementById('rdPage');
-    if (!p || p.classList.contains('hidden')) return;
-    p.classList.add('hidden');
-    hiddenNodes.forEach(function (el) { el.classList.remove('hidden'); });
-    hiddenNodes = [];
-    var n = document.getElementById('rdNavItem'); if (n) n.classList.remove('active');
-  }
+      if (!sidebar.querySelector('[data-page="readydelivery"]')) {
+        var link = document.createElement('a');
+        link.className = 'nav-item';
+        link.dataset.page = 'readydelivery';
+        link.href = '#readydelivery';
+        link.innerHTML =
+          '<span class="material-icons">local_shipping</span>' +
+          '<span class="nav-label">Ready to Delivery</span>' +
+          '<span id="rdNavCount" class="rd-count zero" ' +
+          'style="background:#d9534f;color:#fff;font-size:.62rem;font-weight:700;' +
+          'border-radius:20px;padding:.05rem .42rem;margin-left:auto;min-width:18px;text-align:center;">0</span>';
 
-  /* ---------- 5. data ---------- */
-  var cache = [];
-  function loadReady() {
-    var d = db(); if (!d) return;
-    d.collection(COLLECTION).where('status', '==', READY).get()
-      .then(function (s) {
-        cache = s.docs.map(function (x) { var v = x.data() || {}; v.__id = x.id; return v; });
-        paintBadge(); paintGrid();
-      }).catch(function (e) { log('load failed', e); });
-  }
-  function paintBadge() {
-    var el = document.getElementById('rdNavCount'); if (!el) return;
-    el.textContent = cache.length;
-    el.classList.toggle('zero', cache.length === 0);
-  }
-  function paintGrid() {
-    var g = document.getElementById('rdGrid'); if (!g) return;
-    if (!cache.length) {
-      g.innerHTML = '<div class="rd-empty">No vehicles ready for delivery.</div>';
-      return;
-    }
-    g.innerHTML = cache.map(function (v) {
-      return '<div class="rd-card">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;">' +
-          '<span class="rd-num">#' + esc(v.vehicleNumber || v.vehicleNo || v.invNumber || v.number || '—') + '</span>' +
-          '<span style="background:#e6f7ea;color:#2f7d3c;font-size:.62rem;font-weight:700;' +
-            'padding:.15rem .5rem;border-radius:20px;">READY</span>' +
-        '</div>' +
-        (v.vehicleName || v.name ? '<div class="rd-name">' + esc(v.vehicleName || v.name) + '</div>' : '') +
-        (v.customer || v.customerName ? '<div class="rd-sub">' + esc(v.customer || v.customerName) + '</div>' : '') +
-        '<button class="rd-btn" data-rd-deliver="' + esc(v.__id) + '">Mark Delivered</button>' +
-      '</div>';
-    }).join('');
-  }
+        var sup = sidebar.querySelector('[data-page="supervisor"]');
+        if (sup && sup.nextSibling) sidebar.insertBefore(link, sup.nextSibling);
+        else sidebar.appendChild(link);
 
-  /* ---------- 6. global onclick API ---------- */
-  window.markReadyToDelivery     = function (id) { moveToReady([id], null); };
-  window.markCartReadyToDelivery = function (ids) { moveToReady([].concat(ids), null); };
-  window.goReadyToDelivery       = openPage;
-  window.FleetRD = { open: openPage, close: closePage,
-                     markReady: window.markReadyToDelivery,
-                     markCart : window.markCartReadyToDelivery,
-                     refresh  : loadReady };
+        link.addEventListener('click', function (e) {
+          e.preventDefault();
+          router.navigate('readydelivery');
+          var sb = document.getElementById('sidebar');
+          var bd = document.getElementById('sidebarBackdrop');
+          if (sb) sb.classList.remove('open');
+          if (bd) bd.classList.remove('visible');
+        });
+      }
 
-  /* ---------- 7. delegated events ---------- */
-  document.addEventListener('click', function (e) {
-    var t = e.target;
-    if (!t || !t.closest) return;
-
-    /* sidebar → open RD page */
-    if (t.closest('#rdNavItem')) { openPage(); return; }
-
-    /* inline "Ready to Delivery" button on a card */
-    var rb = t.closest('.rd-inline-btn');
-    if (rb) {
-      e.stopPropagation(); e.preventDefault();
-      var id = rb.getAttribute('data-rd-id');
-      var card = rb.closest(CARD_SEL);
-      moveToReady([id], card);
-      return;
+      var bnav = document.getElementById('bottomNav');
+      if (bnav && !bnav.querySelector('[data-page="readydelivery"]')) {
+        var btn = document.createElement('button');
+        btn.className = 'nav-btn';
+        btn.dataset.page = 'readydelivery';
+        btn.innerHTML = '<span class="material-icons">local_shipping</span>' +
+                        '<span class="nav-label">Delivery</span>';
+        bnav.appendChild(btn);
+        btn.addEventListener('click', function () { router.navigate('readydelivery'); });
+      }
     }
 
-    /* "Mark Delivered" inside RD page */
-    var del = t.closest('[data-rd-deliver]');
-    if (del) { e.stopPropagation(); doDeliver(del.getAttribute('data-rd-deliver')); return; }
-
-    /* any other sidebar item closes RD page */
-    var nv = t.closest('.sidebar-nav .nav-item');
-    if (nv && nv.id !== 'rdNavItem') closePage();
-  }, true);
-
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePage(); });
-
-  /* ---------- 8. observers (auto-inject into cards, keep sidebar tidy) ---------- */
-  function tick() { fixSidebar(); injectCardButtons(); }
-
-  var obs = new MutationObserver(tick);
-  obs.observe(document.body, { childList: true, subtree: true });
-  setInterval(tick, 1500);
-
-  /* ---------- 9. boot (wait for Firebase) ---------- */
-  (function wait(n) {
-    if (db()) {
-      fixSidebar();
-      buildPage();
-      loadReady();
-      db().collection(COLLECTION).where('status', '==', READY)
-        .onSnapshot(function (s) {
-          cache = s.docs.map(function (x) { var v = x.data() || {}; v.__id = x.id; return v; });
-          paintBadge();
-          var p = document.getElementById('rdPage');
-          if (p && !p.classList.contains('hidden')) paintGrid();
-        }, function () { loadReady(); });
-      log('Ready-to-Delivery ready ✔');
-    } else if (n < 40) {
-      setTimeout(function () { wait(n + 1); }, 500);
-    } else {
-      log('Firebase never became ready — running in offline-ish mode');
-      fixSidebar(); buildPage();
+    /* ============ LIVE COUNTER ============ */
+    function updateCount() {
+      if (!db()) return;
+      db().collection('inventory').get().then(function(snap){
+        var n = 0;
+        snap.forEach(function(d){ if (isReady(d.data())) n++; });
+        var el = document.getElementById('rdNavCount');
+        if (el) {
+          el.textContent = n;
+          el.classList.toggle('zero', n === 0);
+        }
+      }).catch(function(){});
     }
-  })(0);
 
+    /* ============ PATCH SUPERVISOR ============ */
+    var SupProto = Pages.Supervisor.prototype;
+
+    /* Hide ready/delivered vehicles from supervisor queue */
+    var origLoad = SupProto.loadData;
+    SupProto.loadData = async function () {
+      await origLoad.call(this);
+      if (this.priorityQueue) {
+        var inv = this.inventory || [];
+        this.priorityQueue = this.priorityQueue.filter(function (v) {
+          var item = inv.find(function (x) { return x.vehicleNumber === v.vehicleNumber; });
+          if (!item) return true;
+          if (isReady(item)) return false;
+          if (isGone(item))  return false;
+          return true;
+        });
+      }
+    };
+
+    /* Inject green button into each supervisor card */
+    var origRender = SupProto.renderQueue;
+    SupProto.renderQueue = function () {
+      origRender.call(this);
+      var self = this;
+
+      var cards = document.querySelectorAll('.worker-task-card');
+      cards.forEach(function (card) {
+        var actions = card.querySelector('.task-actions');
+        if (!actions) return;
+        if (actions.querySelector('.rd-sup-btn')) return;
+
+        /* find identifier (vehicle number) */
+        var info = card.querySelector('.task-info');
+        var vehicle = '';
+        if (info && info.dataset && info.dataset.vehicle) vehicle = info.dataset.vehicle;
+        if (!vehicle) {
+          var vEl = card.querySelector('.task-vehicle-number');
+          if (vEl) vehicle = vEl.textContent.trim().split(/\s+/)[0];
+        }
+        if (!vehicle) return;
+
+        /* find docId */
+        var inv = (self.inventory || []).find(function (x) { return x.vehicleNumber === vehicle; });
+        var docId = inv ? inv.id : '';
+
+        var btn = document.createElement('button');
+        btn.className = 'btn btn-success btn-sm rd-sup-btn';
+        btn.innerHTML =
+          '<span class="material-icons" style="font-size:16px;">local_shipping</span> ' +
+          'Ready to Delivery';
+        btn.style.cssText =
+          'background:#5cb85c;color:#fff;border:none;border-radius:6px;' +
+          'padding:.35rem .7rem;font-size:.78rem;font-weight:600;cursor:pointer;' +
+          'display:inline-flex;align-items:center;gap:.3rem;margin-right:.3rem;';
+        btn.dataset.vehicle = vehicle;
+        btn.dataset.docid = docId;
+        btn.addEventListener('click', async function (e) {
+          e.stopPropagation();
+          await moveReady(vehicle, docId, card);
+        });
+
+        actions.prepend(btn);
+      });
+    };
+
+    /* ============ MOVE SINGLE OR CART ============ */
+    async function moveReady(vehicleNumber, docId, cardEl) {
+      var toast  = new Components.Toast();
+      var loader = new Components.Loader();
+
+      if (!docId) {
+        loader.show();
+        try {
+          var snap = await db().collection('inventory')
+            .where('vehicleNumber', '==', vehicleNumber).limit(1).get();
+          if (snap.empty) {
+            toast.show('Vehicle not in inventory', 'warning');
+            loader.hide();
+            return;
+          }
+          docId = snap.docs[0].id;
+        } catch (e) {
+          toast.show('Error: ' + e.message, 'error');
+          loader.hide();
+          return;
+        }
+        loader.hide();
+      }
+
+      var confirmDialog = new Components.ConfirmationDialog();
+      confirmDialog.open({
+        title: 'Ready to Delivery',
+        body: 'Move "' + vehicleNumber + '" to the Ready to Delivery queue?\n\n' +
+              'Works whether or not all tasks are completed.',
+        onConfirm: async function () {
+          loader.show();
+          try {
+            await db().collection('inventory').doc(docId).set({
+              inventoryStatus     : READY,   // ← your app uses this field
+              status              : READY,   // mirror
+              readyForDelivery    : true,
+              inSupervisorQueue   : false,   // ← drops it from supervisor queue
+              assignedToSupervisor: false,
+              supervisorStatus    : 'Released',
+              readyAt             : firebase.firestore.FieldValue.serverTimestamp(),
+              readyBy             : userName()
+            }, { merge: true });
+
+            toast.show('✅ ' + vehicleNumber + ' → Ready to Delivery', 'success');
+            if (cardEl && cardEl.parentNode) cardEl.parentNode.removeChild(cardEl);
+
+            var page = router.currentPage;
+            if (page && typeof page.loadData === 'function') {
+              await page.loadData();
+              if (typeof page.renderQueue === 'function') page.renderQueue();
+              if (typeof page.renderStats === 'function') page.renderStats();
+            }
+            updateCount();
+          } catch (e) {
+            toast.show('Failed: ' + e.message, 'error');
+          } finally { loader.hide(); }
+        }
+      });
+    }
+
+    /* ============ CART SUPPORT ============ */
+    /* Public API so cart buttons can call this */
+    window.markReadyToDelivery = function (vehicleNumber) {
+      moveReady(vehicleNumber, null, null);
+    };
+    window.markCartReadyToDelivery = async function (vehicleNumbers) {
+      if (!vehicleNumbers || !vehicleNumbers.length) return;
+      var toast  = new Components.Toast();
+      var loader = new Components.Loader();
+      loader.show();
+      try {
+        /* find docIds for all vehicles */
+        var snap = await db().collection('inventory').get();
+        var docIds = [];
+        snap.forEach(function (d) {
+          var v = d.data();
+          if (vehicleNumbers.indexOf(v.vehicleNumber) !== -1) docIds.push(d.id);
+        });
+        if (!docIds.length) {
+          toast.show('No matching vehicles found', 'warning');
+          loader.hide();
+          return;
+        }
+
+        var batch = db().batch();
+        docIds.forEach(function (id) {
+          batch.set(db().collection('inventory').doc(id), {
+            inventoryStatus     : READY,
+            status              : READY,
+            readyForDelivery    : true,
+            inSupervisorQueue   : false,
+            assignedToSupervisor: false,
+            supervisorStatus    : 'Released',
+            readyAt             : firebase.firestore.FieldValue.serverTimestamp(),
+            readyBy             : userName()
+          }, { merge: true });
+        });
+        await batch.commit();
+
+        toast.show('✅ ' + docIds.length + ' vehicles → Ready to Delivery', 'success');
+        var page = router.currentPage;
+        if (page && typeof page.loadData === 'function') {
+          await page.loadData();
+          if (typeof page.renderQueue === 'function') page.renderQueue();
+        }
+        updateCount();
+      } catch (e) {
+        toast.show('Failed: ' + e.message, 'error');
+      } finally { loader.hide(); }
+    };
+
+    /* ============ KEEP SIDEBAR ALIVE ============ */
+    var sidebar = document.getElementById('sidebarNav');
+    if (sidebar) {
+      new MutationObserver(function () { swapSidebar(); })
+        .observe(sidebar, { childList: true });
+    }
+    var origRenderApp = app.renderApp.bind(app);
+    app.renderApp = function () { origRenderApp(); swapSidebar(); };
+
+    /* ============ BOOT ============ */
+    swapSidebar();
+    updateCount();
+    setInterval(updateCount, 15000);
+
+    console.log('%c[RD] Ready To Delivery loaded ✔', 'color:#5cb85c;font-weight:700');
+    console.log('  • Page → sidebar item "Ready to Delivery"');
+    console.log('  • Button → green "Ready to Delivery" on every supervisor card');
+    console.log('  • Works for single vehicle and cart (window.markCartReadyToDelivery)');
+    console.log('  • Writes inventoryStatus + status = "Ready for Delivery"');
+    console.log('  • Sets inSupervisorQueue = false → vanishes from supervisor queue');
+  }
 })();
-        </script>
+</script>
 </body>
 </html>
