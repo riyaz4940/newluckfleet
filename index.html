@@ -19479,5 +19479,163 @@
   };
 })();
 </script>
+    <!-- ==============================================================
+     SUPERVISOR: auto-hide MANUAL / FC PREP work when completed
+     - Any production task with no salesOrderId (manual work)
+     - Any fcTasks entry
+     - Removes the card from the supervisor queue once all its
+       tasks are completed (or the only task is completed).
+     Paste before </body>.
+     ============================================================== -->
+<script>
+(function () {
+  'use strict';
+
+  var READY     = 'Ready for Delivery';
+  var DELIVERED = 'Delivered';
+  var DONE      = 'completed';
+
+  function db(){
+    return (window.firebase && firebase.apps && firebase.apps.length)
+      ? firebase.firestore() : null;
+  }
+
+  /* =============================================================
+     1. Patch Supervisor.loadData to drop completed manual / FC items
+     ============================================================= */
+  var boot = setInterval(function () {
+    if (typeof Pages === 'undefined' || !Pages.Supervisor) return;
+    clearInterval(boot);
+
+    var origLoad = Pages.Supervisor.prototype.loadData;
+
+    Pages.Supervisor.prototype.loadData = async function () {
+      await origLoad.call(this);
+      if (!this.priorityQueue) return;
+
+      var sales = this.allSales || [];
+
+      this.priorityQueue = this.priorityQueue.filter(function (v) {
+        /* ---- vehicles and carts handled elsewhere ---- */
+        if (v.orderType === 'vehicle' || v.orderType === 'non-vehicle') {
+          /* but still drop them if they belong to a sales order that is
+             Ready/Delivered — the earlier patches already do this, this
+             is just a safety net. */
+          var order = sales.find(function (s) {
+            return (s.vehicleNumber && s.vehicleNumber === v.vehicleNumber) ||
+                   (s.productName  && s.productName  === v.productName);
+          });
+          if (order) {
+            if (order.status === READY)     return false;
+            if (order.status === DELIVERED) return false;
+            if (order.archived === true)    return false;
+          }
+          return true;
+        }
+
+        /* ---- manual / FC tasks ---- */
+        var tasks = v.tasks || [];
+        if (!tasks.length) return true;
+
+        /* Every task must be finished (completed or rejected) */
+        var allFinished = tasks.every(function (t) {
+          return t.status === DONE || t.status === 'rejected';
+        });
+        if (!allFinished) return true;
+
+        /* Also require that none is assigned to someone still working.
+           (belt and braces: if any task is still pending_approval, keep) */
+        var anyPendingApproval = tasks.some(function (t) {
+          return t.status === 'pending_approval';
+        });
+        if (anyPendingApproval) return true;
+
+        /* Everything is done → drop the card */
+        console.log('[ManualWork] hidden from supervisor:', v.vehicleNumber || v.productName);
+        return false;
+      });
+    };
+
+    console.log('%c[ManualWork] completed manual / FC tasks auto-hide ✔',
+                'color:#5cb85c;font-weight:700');
+
+    /* If supervisor is open right now, refresh */
+    var current = window.__app && window.__app.router && window.__app.router.currentPage;
+    if (current && current.constructor.name === 'Supervisor') {
+      current.loadData().then(function () {
+        if (typeof current.renderQueue === 'function') current.renderQueue();
+        if (typeof current.renderStats === 'function') current.renderStats();
+      });
+    }
+  }, 200);
+
+  /* =============================================================
+     2. Real-time listener: when any production / fcTasks doc changes
+        to completed, refresh the supervisor queue instantly.
+     ============================================================= */
+  var listenStarted = false;
+  function startLiveListener() {
+    if (listenStarted) return;
+    if (!db()) return;
+    listenStarted = true;
+
+    /* production collection */
+    db().collection('production').onSnapshot(function (snap) {
+      snap.docChanges().forEach(function (change) {
+        var t = change.doc.data() || {};
+        if (change.type === 'modified' &&
+            (t.status === DONE || t.status === 'rejected')) {
+          refreshSupervisor();
+        }
+        /* also refresh on add so new manual tasks appear */
+        if (change.type === 'added') {
+          refreshSupervisor();
+        }
+      });
+    }, function () {});
+
+    /* fcTasks collection */
+    db().collection('fcTasks').onSnapshot(function (snap) {
+      snap.docChanges().forEach(function (change) {
+        var t = change.doc.data() || {};
+        if (change.type === 'modified' && t.status === DONE) {
+          refreshSupervisor();
+        }
+        if (change.type === 'added') {
+          refreshSupervisor();
+        }
+      });
+    }, function () {});
+  }
+
+  function refreshSupervisor() {
+    var page = window.__app && window.__app.router && window.__app.router.currentPage;
+    if (!page || page.constructor.name !== 'Supervisor') return;
+    page.loadData().then(function () {
+      if (typeof page.renderQueue === 'function') page.renderQueue();
+      if (typeof page.renderStats === 'function') page.renderStats();
+    });
+  }
+
+  /* Start the listener once the app is ready */
+  var boot2 = setInterval(function () {
+    if (!window.__app || !window.__app.router || !db()) return;
+    clearInterval(boot2);
+    startLiveListener();
+    console.log('[ManualWork] live listener started ✔');
+  }, 300);
+
+  /* =============================================================
+     3. Manual "Refresh" — optional safety net every 20s
+     ============================================================= */
+  setInterval(function () {
+    var page = window.__app && window.__app.router && window.__app.router.currentPage;
+    if (page && page.constructor.name === 'Supervisor') {
+      /* silent refresh — doesn't touch UI unless something changed */
+      if (typeof page.loadData === 'function') page.loadData();
+    }
+  }, 20000);
+})();
+</script>
 </body>
 </html>
