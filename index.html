@@ -19099,5 +19099,184 @@
   }
 })();
 </script>
+    <!-- ==============================================================
+     INVENTORY: "Ready to Delivery" button on every row / card
+     Paste before </body>. Works with your existing Inventory page.
+     ============================================================== -->
+<script>
+(function () {
+  'use strict';
+
+  var READY     = 'Ready for Delivery';
+  var DELIVERED = 'Delivered';
+
+  function $(s, r){ return (r||document).querySelector(s); }
+  function $$(s, r){ return [].slice.call((r||document).querySelectorAll(s)); }
+  function db(){
+    return (window.firebase && firebase.apps && firebase.apps.length)
+      ? firebase.firestore() : null;
+  }
+  function userName(){
+    try { var u = JSON.parse(localStorage.getItem('user')||'{}');
+          return u.fullName || u.username || 'Supervisor'; }
+    catch(e){ return 'Supervisor'; }
+  }
+
+  /* ---------- styles ---------- */
+  if (!document.getElementById('rdInvStyles')) {
+    var st = document.createElement('style');
+    st.id = 'rdInvStyles';
+    st.textContent =
+      '.rd-inv-btn{background:#5cb85c;color:#fff;border:none;border-radius:6px;' +
+      'padding:.28rem .6rem;font-size:.75rem;font-weight:600;cursor:pointer;' +
+      'display:inline-flex;align-items:center;gap:.25rem;margin-left:.3rem;' +
+      'transition:background .2s;vertical-align:middle;}' +
+      '.rd-inv-btn:hover{background:#449d44;}' +
+      '.rd-inv-btn .material-icons{font-size:15px;}';
+    document.head.appendChild(st);
+  }
+
+  /* ---------- the move action ---------- */
+  async function markReady(docId, vehicleNumber, el) {
+    var toast  = new Components.Toast();
+    var loader = new Components.Loader();
+    if (!docId) { toast.show('Missing vehicle id', 'warning'); return; }
+    loader.show();
+    try {
+      await db().collection('inventory').doc(docId).set({
+        inventoryStatus     : READY,
+        status              : READY,
+        readyForDelivery    : true,
+        inSupervisorQueue   : false,
+        assignedToSupervisor: false,
+        supervisorStatus    : 'Released',
+        readyAt             : firebase.firestore.FieldValue.serverTimestamp(),
+        readyBy             : userName()
+      }, { merge: true });
+
+      toast.show('✅ ' + (vehicleNumber || 'Vehicle') + ' → Ready to Delivery', 'success');
+
+      /* remove button from this row/card instantly */
+      var btn = el && el.closest ? el.closest('.rd-inv-btn') : null;
+      if (btn && btn.parentNode) btn.parentNode.removeChild(btn);
+
+      /* refresh the current Inventory page */
+      var page = window.__app && window.__app.router && window.__app.router.currentPage;
+      if (page && typeof page.loadData === 'function') {
+        await page.loadData();
+        if (typeof page.applyFilters === 'function') page.applyFilters();
+      }
+    } catch (e) {
+      console.error('[RD-Inv]', e);
+      toast.show('Failed: ' + e.message, 'error');
+    } finally {
+      loader.hide();
+    }
+  }
+
+  /* ---------- skip conditions ---------- */
+  function rowState(el) {
+    var text = (el.textContent || '').toLowerCase();
+    if (text.indexOf('ready for delivery') !== -1) return 'ready';
+    if (text.indexOf('delivered') !== -1)          return 'delivered';
+    return 'available';
+  }
+
+  /* ---------- inject into desktop table ---------- */
+  function injectTableRows() {
+    $$('#invTableContainer tbody tr').forEach(function (row) {
+      if (row.querySelector('.rd-inv-btn')) return;
+      if (row.querySelector('td[colspan]')) return;   // empty row
+      if (rowState(row) !== 'available') return;
+
+      var docId = row.dataset.id;
+      if (!docId) return;
+
+      /* find the vehicle number for the toast */
+      var link = row.querySelector('.table-vehicle-link');
+      var vehicleNumber = link ? link.textContent.trim() : '';
+
+      /* add the button to the actions cell (usually the last cell) */
+      var cells = row.querySelectorAll('td');
+      var lastCell = cells[cells.length - 1];
+      if (!lastCell) return;
+
+      var btn = document.createElement('button');
+      btn.className = 'rd-inv-btn';
+      btn.innerHTML = '<span class="material-icons">local_shipping</span>Ready';
+      btn.title = 'Move to Ready to Delivery';
+      btn.dataset.docid = docId;
+      btn.dataset.vehicle = vehicleNumber;
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        markReady(btn.dataset.docid, btn.dataset.vehicle, btn);
+      });
+      lastCell.appendChild(btn);
+    });
+  }
+
+  /* ---------- inject into mobile cards ---------- */
+  function injectMobileCards() {
+    $$('#invCards .inv-card').forEach(function (card) {
+      if (card.querySelector('.rd-inv-btn')) return;
+      if (rowState(card) !== 'available') return;
+
+      var docId = card.dataset.id;
+      if (!docId) return;
+
+      var numEl = card.querySelector('.inv-number');
+      var vehicleNumber = numEl ? numEl.textContent.trim() : '';
+
+      var btn = document.createElement('button');
+      btn.className = 'rd-inv-btn';
+      btn.innerHTML = '<span class="material-icons">local_shipping</span>Ready';
+      btn.title = 'Move to Ready to Delivery';
+      btn.dataset.docid = docId;
+      btn.dataset.vehicle = vehicleNumber;
+      btn.style.marginTop = '.4rem';
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        markReady(btn.dataset.docid, btn.dataset.vehicle, btn);
+      });
+
+      var actions = card.querySelector('.inv-actions');
+      if (actions) actions.appendChild(btn);
+      else card.appendChild(btn);
+    });
+  }
+
+  /* ---------- observer to keep up with re-renders ---------- */
+  var queued = false;
+  function tick() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () {
+      queued = false;
+      try { injectTableRows(); }   catch (e) {}
+      try { injectMobileCards(); } catch (e) {}
+    });
+  }
+
+  var obs = new MutationObserver(tick);
+  obs.observe(document.body, { childList: true, subtree: true });
+
+  window.addEventListener('hashchange', function () { setTimeout(tick, 200); });
+  setInterval(tick, 1200);
+
+  /* first pass once app is ready */
+  var boot = setInterval(function () {
+    if (!window.__app || !window.__app.router) return;
+    clearInterval(boot);
+    setTimeout(tick, 400);
+    console.log('%c[RD-Inv] Ready button added to Inventory ✔',
+                'color:#5cb85c;font-weight:700');
+  }, 200);
+
+  /* expose the action for other scripts / voice commands */
+  window.markInventoryReady = markReady;
+})();
+</script>
 </body>
 </html>
